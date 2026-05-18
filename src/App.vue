@@ -42,7 +42,10 @@ import { useRouter } from 'vue-router'
 .app {
   display: flex;
   flex-direction: column;
+  height: 100dvh;
   min-height: 100vh;
+  min-height: 100dvh;
+  overflow: hidden;
   background: #f5f5f5;
 }
 
@@ -89,9 +92,13 @@ import { useRouter } from 'vue-router'
 .main {
   flex: 1;
   padding: 2rem;
+  min-height: 0;
+  overflow: auto;
 }
 
 .main--workspace {
+  display: flex;
+  flex-direction: column;
   padding: 0;
   min-height: 0;
   overflow: hidden;

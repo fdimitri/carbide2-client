@@ -34,8 +34,11 @@
             <template #default="slotProps">
               <div
                 class="prime-tree-node-label"
+                :draggable="['terminal', 'channel'].includes(slotProps.node.data?.kind)"
+                @click="onExplorerNodeSelect(slotProps.node)"
                 @dblclick.stop="onExplorerNodeDblClick(slotProps.node)"
                 @contextmenu.prevent.stop="onExplorerNodeContextMenu($event, slotProps.node)"
+                @dragstart="onExplorerNodeDragStart($event, slotProps.node)"
               >
                 <i class="pi" :class="treeIconClass(slotProps.node.data)" aria-hidden="true"></i>
                 <span>{{ slotProps.node.label }}</span>
@@ -53,83 +56,427 @@
       </aside>
 
       <section class="main-pane">
-        <Splitter class="workspace-splitter">
-          <SplitterPanel
-            v-for="(_, paneIndex) in activePanes"
-            :key="`pane-${paneIndex}`"
-            class="splitter-panel"
-          >
-            <div class="pane-shell" :class="{ 'pane-shell--active': paneIndex === activePaneIndex }" @click="activatePane(paneIndex, $event)">
-              <div class="pane-tabs">
-                <button
-                  v-for="tab in activePanes[paneIndex].tabs"
-                  :key="tab.key"
-                  class="pane-tab"
-                  :class="{ active: activePanes[paneIndex].activeTab === tab.key }"
-                  @click="activatePaneTab(paneIndex, tab.key)"
-                >
-                  <span>{{ tab.label }}</span>
-                  <span class="pane-tab-close" @click.stop="closePaneTab(paneIndex, tab.key)">×</span>
-                </button>
-                <span v-if="activePanes[paneIndex].tabs.length === 0" class="pane-tab-empty">Empty pane</span>
-              </div>
+        <Splitter v-if="paneLayout === 'one'" class="workspace-splitter" layout="horizontal">
+          <SplitterPanel class="splitter-panel">
+            <WorkspacePaneShell
+              :pane="panes[0]"
+              :pane-index="0"
+              :active-pane-index="activePaneIndex"
+              :active-pane="activePane"
+              :active-channel-name="activeChannelName"
+              :chat-users="chatUsers"
+              :selected-terminal-id="selectedTerminalId"
+              :selected-file-id="selectedFileId"
+              :chat-input="chatInput"
+              :chat-messages="chatMessages"
+              :current-user-id="currentUserId"
+              :chat-joining="chatJoining"
+              :ws-connected="wsConnected"
+              :can-send-chat="canSendChat"
+              @pane-drop="onPaneDrop"
+              @activate-tab="activatePaneTab"
+              @close-tab="closePaneTab"
+              @tab-drag-start="onTabDragStart"
+              @tab-drop="onTabDrop"
+              @rename-terminal="renameSelectedTerminal"
+              @update:chat-input="chatInput = $event"
+              @send-chat="sendChat"
+            />
+          </SplitterPanel>
+        </Splitter>
 
-              <div v-if="paneIndex !== activePaneIndex" class="pane-inactive-placeholder">
-                Click a tab to activate this pane.
-              </div>
+        <Splitter v-else-if="paneLayout === 'two-horizontal'" class="workspace-splitter" layout="horizontal">
+          <SplitterPanel class="splitter-panel">
+            <WorkspacePaneShell
+              :pane="panes[0]"
+              :pane-index="0"
+              :active-pane-index="activePaneIndex"
+              :active-pane="activePane"
+              :active-channel-name="activeChannelName"
+              :chat-users="chatUsers"
+              :selected-terminal-id="selectedTerminalId"
+              :selected-file-id="selectedFileId"
+              :chat-input="chatInput"
+              :chat-messages="chatMessages"
+              :current-user-id="currentUserId"
+              :chat-joining="chatJoining"
+              :ws-connected="wsConnected"
+              :can-send-chat="canSendChat"
+              @pane-drop="onPaneDrop"
+              @activate-tab="activatePaneTab"
+              @close-tab="closePaneTab"
+              @tab-drag-start="onTabDragStart"
+              @tab-drop="onTabDrop"
+              @rename-terminal="renameSelectedTerminal"
+              @update:chat-input="chatInput = $event"
+              @send-chat="sendChat"
+            />
+          </SplitterPanel>
+          <SplitterPanel class="splitter-panel">
+            <WorkspacePaneShell
+              :pane="panes[1]"
+              :pane-index="1"
+              :active-pane-index="activePaneIndex"
+              :active-pane="activePane"
+              :active-channel-name="activeChannelName"
+              :chat-users="chatUsers"
+              :selected-terminal-id="selectedTerminalId"
+              :selected-file-id="selectedFileId"
+              :chat-input="chatInput"
+              :chat-messages="chatMessages"
+              :current-user-id="currentUserId"
+              :chat-joining="chatJoining"
+              :ws-connected="wsConnected"
+              :can-send-chat="canSendChat"
+              @pane-drop="onPaneDrop"
+              @activate-tab="activatePaneTab"
+              @close-tab="closePaneTab"
+              @tab-drag-start="onTabDragStart"
+              @tab-drop="onTabDrop"
+              @rename-terminal="renameSelectedTerminal"
+              @update:chat-input="chatInput = $event"
+              @send-chat="sendChat"
+            />
+          </SplitterPanel>
+        </Splitter>
 
-              <template v-else>
-                <div class="panel-header pane-header">
-                  <span v-if="activePane === 'terminal'">Terminal</span>
-                  <span v-else-if="activePane === 'chat'">Channel #{{ activeChannelName }}</span>
-                  <span v-else>File {{ selectedFileId }}</span>
-                  <div class="pane-actions">
-                    <div class="pane-meta" v-if="activePane === 'chat'">{{ chatUsers.length }} online</div>
-                    <button
-                      v-if="activePane === 'terminal' && selectedTerminalId"
-                      class="btn-secondary btn-xs"
-                      @click="renameSelectedTerminal"
-                    >Rename</button>
-                  </div>
-                </div>
+        <Splitter v-else-if="paneLayout === 'two-vertical'" class="workspace-splitter" layout="vertical">
+          <SplitterPanel class="splitter-panel">
+            <WorkspacePaneShell
+              :pane="panes[0]"
+              :pane-index="0"
+              :active-pane-index="activePaneIndex"
+              :active-pane="activePane"
+              :active-channel-name="activeChannelName"
+              :chat-users="chatUsers"
+              :selected-terminal-id="selectedTerminalId"
+              :selected-file-id="selectedFileId"
+              :chat-input="chatInput"
+              :chat-messages="chatMessages"
+              :current-user-id="currentUserId"
+              :chat-joining="chatJoining"
+              :ws-connected="wsConnected"
+              :can-send-chat="canSendChat"
+              @pane-drop="onPaneDrop"
+              @activate-tab="activatePaneTab"
+              @close-tab="closePaneTab"
+              @tab-drag-start="onTabDragStart"
+              @tab-drop="onTabDrop"
+              @rename-terminal="renameSelectedTerminal"
+              @update:chat-input="chatInput = $event"
+              @send-chat="sendChat"
+            />
+          </SplitterPanel>
+          <SplitterPanel class="splitter-panel">
+            <WorkspacePaneShell
+              :pane="panes[1]"
+              :pane-index="1"
+              :active-pane-index="activePaneIndex"
+              :active-pane="activePane"
+              :active-channel-name="activeChannelName"
+              :chat-users="chatUsers"
+              :selected-terminal-id="selectedTerminalId"
+              :selected-file-id="selectedFileId"
+              :chat-input="chatInput"
+              :chat-messages="chatMessages"
+              :current-user-id="currentUserId"
+              :chat-joining="chatJoining"
+              :ws-connected="wsConnected"
+              :can-send-chat="canSendChat"
+              @pane-drop="onPaneDrop"
+              @activate-tab="activatePaneTab"
+              @close-tab="closePaneTab"
+              @tab-drag-start="onTabDragStart"
+              @tab-drop="onTabDrop"
+              @rename-terminal="renameSelectedTerminal"
+              @update:chat-input="chatInput = $event"
+              @send-chat="sendChat"
+            />
+          </SplitterPanel>
+        </Splitter>
 
-                <div v-show="activePane === 'terminal'" class="pane-content">
-                  <div :ref="setTerminalEl" class="xterm-container" @click="xterm?.focus()"></div>
-                  <div v-if="!terminalActive" class="panel-placeholder">Select or create a terminal from the tree.</div>
-                </div>
+        <Splitter v-else-if="paneLayout === 'three-horizontal-wide'" class="workspace-splitter" layout="vertical">
+          <SplitterPanel class="splitter-panel">
+            <WorkspacePaneShell
+              :pane="panes[0]"
+              :pane-index="0"
+              :active-pane-index="activePaneIndex"
+              :active-pane="activePane"
+              :active-channel-name="activeChannelName"
+              :chat-users="chatUsers"
+              :selected-terminal-id="selectedTerminalId"
+              :selected-file-id="selectedFileId"
+              :chat-input="chatInput"
+              :chat-messages="chatMessages"
+              :current-user-id="currentUserId"
+              :chat-joining="chatJoining"
+              :ws-connected="wsConnected"
+              :can-send-chat="canSendChat"
+              @pane-drop="onPaneDrop"
+              @activate-tab="activatePaneTab"
+              @close-tab="closePaneTab"
+              @tab-drag-start="onTabDragStart"
+              @tab-drop="onTabDrop"
+              @rename-terminal="renameSelectedTerminal"
+              @update:chat-input="chatInput = $event"
+              @send-chat="sendChat"
+            />
+          </SplitterPanel>
+          <SplitterPanel class="splitter-panel splitter-panel-inner">
+            <Splitter class="workspace-splitter splitter-nested" layout="horizontal">
+              <SplitterPanel class="splitter-panel">
+                <WorkspacePaneShell
+                  :pane="panes[1]"
+                  :pane-index="1"
+                  :active-pane-index="activePaneIndex"
+                  :active-pane="activePane"
+                  :active-channel-name="activeChannelName"
+                  :chat-users="chatUsers"
+                  :selected-terminal-id="selectedTerminalId"
+                  :selected-file-id="selectedFileId"
+                  :chat-input="chatInput"
+                  :chat-messages="chatMessages"
+                  :current-user-id="currentUserId"
+                  :chat-joining="chatJoining"
+                  :ws-connected="wsConnected"
+                  :can-send-chat="canSendChat"
+                  @pane-drop="onPaneDrop"
+                  @activate-tab="activatePaneTab"
+                  @close-tab="closePaneTab"
+              @tab-drag-start="onTabDragStart"
+              @tab-drop="onTabDrop"
+              @rename-terminal="renameSelectedTerminal"
+                  @update:chat-input="chatInput = $event"
+                  @send-chat="sendChat"
+                />
+              </SplitterPanel>
+              <SplitterPanel class="splitter-panel">
+                <WorkspacePaneShell
+                  :pane="panes[2]"
+                  :pane-index="2"
+                  :active-pane-index="activePaneIndex"
+                  :active-pane="activePane"
+                  :active-channel-name="activeChannelName"
+                  :chat-users="chatUsers"
+                  :selected-terminal-id="selectedTerminalId"
+                  :selected-file-id="selectedFileId"
+                  :chat-input="chatInput"
+                  :chat-messages="chatMessages"
+                  :current-user-id="currentUserId"
+                  :chat-joining="chatJoining"
+                  :ws-connected="wsConnected"
+                  :can-send-chat="canSendChat"
+                  @pane-drop="onPaneDrop"
+                  @activate-tab="activatePaneTab"
+                  @close-tab="closePaneTab"
+              @tab-drag-start="onTabDragStart"
+              @tab-drop="onTabDrop"
+              @rename-terminal="renameSelectedTerminal"
+                  @update:chat-input="chatInput = $event"
+                  @send-chat="sendChat"
+                />
+              </SplitterPanel>
+            </Splitter>
+          </SplitterPanel>
+        </Splitter>
 
-                <div v-show="activePane === 'chat'" class="pane-content chat-pane-content">
-                  <div class="chat-messages" ref="chatEl">
-                    <div v-for="(msg, i) in chatMessages" :key="i" class="chat-msg"
-                        :class="{ 'chat-msg--own': msg.user_id === currentUserId }">
-                      <span class="chat-name">{{ msg.name }}</span>
-                      <span class="chat-text">{{ msg.text }}</span>
-                      <span class="chat-time">{{ formatTime(msg.timestamp) }}</span>
-                    </div>
-                    <div v-if="chatMessages.length === 0" class="panel-placeholder">No messages yet.</div>
-                  </div>
+        <Splitter v-else-if="paneLayout === 'three-vertical-tall'" class="workspace-splitter" layout="horizontal">
+          <SplitterPanel class="splitter-panel">
+            <WorkspacePaneShell
+              :pane="panes[0]"
+              :pane-index="0"
+              :active-pane-index="activePaneIndex"
+              :active-pane="activePane"
+              :active-channel-name="activeChannelName"
+              :chat-users="chatUsers"
+              :selected-terminal-id="selectedTerminalId"
+              :selected-file-id="selectedFileId"
+              :chat-input="chatInput"
+              :chat-messages="chatMessages"
+              :current-user-id="currentUserId"
+              :chat-joining="chatJoining"
+              :ws-connected="wsConnected"
+              :can-send-chat="canSendChat"
+              @pane-drop="onPaneDrop"
+              @activate-tab="activatePaneTab"
+              @close-tab="closePaneTab"
+              @tab-drag-start="onTabDragStart"
+              @tab-drop="onTabDrop"
+              @rename-terminal="renameSelectedTerminal"
+              @update:chat-input="chatInput = $event"
+              @send-chat="sendChat"
+            />
+          </SplitterPanel>
+          <SplitterPanel class="splitter-panel splitter-panel-inner">
+            <Splitter class="workspace-splitter splitter-nested" layout="vertical">
+              <SplitterPanel class="splitter-panel">
+                <WorkspacePaneShell
+                  :pane="panes[1]"
+                  :pane-index="1"
+                  :active-pane-index="activePaneIndex"
+                  :active-pane="activePane"
+                  :active-channel-name="activeChannelName"
+                  :chat-users="chatUsers"
+                  :selected-terminal-id="selectedTerminalId"
+                  :selected-file-id="selectedFileId"
+                  :chat-input="chatInput"
+                  :chat-messages="chatMessages"
+                  :current-user-id="currentUserId"
+                  :chat-joining="chatJoining"
+                  :ws-connected="wsConnected"
+                  :can-send-chat="canSendChat"
+                  @pane-drop="onPaneDrop"
+                  @activate-tab="activatePaneTab"
+                  @close-tab="closePaneTab"
+              @tab-drag-start="onTabDragStart"
+              @tab-drop="onTabDrop"
+              @rename-terminal="renameSelectedTerminal"
+                  @update:chat-input="chatInput = $event"
+                  @send-chat="sendChat"
+                />
+              </SplitterPanel>
+              <SplitterPanel class="splitter-panel">
+                <WorkspacePaneShell
+                  :pane="panes[2]"
+                  :pane-index="2"
+                  :active-pane-index="activePaneIndex"
+                  :active-pane="activePane"
+                  :active-channel-name="activeChannelName"
+                  :chat-users="chatUsers"
+                  :selected-terminal-id="selectedTerminalId"
+                  :selected-file-id="selectedFileId"
+                  :chat-input="chatInput"
+                  :chat-messages="chatMessages"
+                  :current-user-id="currentUserId"
+                  :chat-joining="chatJoining"
+                  :ws-connected="wsConnected"
+                  :can-send-chat="canSendChat"
+                  @pane-drop="onPaneDrop"
+                  @activate-tab="activatePaneTab"
+                  @close-tab="closePaneTab"
+              @tab-drag-start="onTabDragStart"
+              @tab-drop="onTabDrop"
+              @rename-terminal="renameSelectedTerminal"
+                  @update:chat-input="chatInput = $event"
+                  @send-chat="sendChat"
+                />
+              </SplitterPanel>
+            </Splitter>
+          </SplitterPanel>
+        </Splitter>
 
-                  <div class="chat-input-row">
-                    <input
-                      v-model="chatInput"
-                      @keydown.enter="sendChat"
-                      :placeholder="chatJoining ? 'Joining channel...' : 'Type a message...'"
-                      :disabled="!wsConnected || chatJoining"
-                      class="chat-input"
-                    />
-                    <button class="btn-primary" @click="sendChat" :disabled="!canSendChat">
-                      Send
-                    </button>
-                  </div>
-                </div>
-
-                <div v-show="activePane === 'file'" class="pane-content">
-                  <div class="panel-placeholder">
-                    File preview pane for <strong>{{ selectedFileId }}</strong>.
-                  </div>
-                </div>
-              </template>
-            </div>
+        <Splitter v-else class="workspace-splitter" layout="vertical">
+          <SplitterPanel class="splitter-panel splitter-panel-inner">
+            <Splitter class="workspace-splitter splitter-nested" layout="horizontal">
+              <SplitterPanel class="splitter-panel">
+                <WorkspacePaneShell
+                  :pane="panes[0]"
+                  :pane-index="0"
+                  :active-pane-index="activePaneIndex"
+                  :active-pane="activePane"
+                  :active-channel-name="activeChannelName"
+                  :chat-users="chatUsers"
+                  :selected-terminal-id="selectedTerminalId"
+                  :selected-file-id="selectedFileId"
+                  :chat-input="chatInput"
+                  :chat-messages="chatMessages"
+                  :current-user-id="currentUserId"
+                  :chat-joining="chatJoining"
+                  :ws-connected="wsConnected"
+                  :can-send-chat="canSendChat"
+                  @pane-drop="onPaneDrop"
+                  @activate-tab="activatePaneTab"
+                  @close-tab="closePaneTab"
+              @tab-drag-start="onTabDragStart"
+              @tab-drop="onTabDrop"
+              @rename-terminal="renameSelectedTerminal"
+                  @update:chat-input="chatInput = $event"
+                  @send-chat="sendChat"
+                />
+              </SplitterPanel>
+              <SplitterPanel class="splitter-panel">
+                <WorkspacePaneShell
+                  :pane="panes[1]"
+                  :pane-index="1"
+                  :active-pane-index="activePaneIndex"
+                  :active-pane="activePane"
+                  :active-channel-name="activeChannelName"
+                  :chat-users="chatUsers"
+                  :selected-terminal-id="selectedTerminalId"
+                  :selected-file-id="selectedFileId"
+                  :chat-input="chatInput"
+                  :chat-messages="chatMessages"
+                  :current-user-id="currentUserId"
+                  :chat-joining="chatJoining"
+                  :ws-connected="wsConnected"
+                  :can-send-chat="canSendChat"
+                  @pane-drop="onPaneDrop"
+                  @activate-tab="activatePaneTab"
+                  @close-tab="closePaneTab"
+              @tab-drag-start="onTabDragStart"
+              @tab-drop="onTabDrop"
+              @rename-terminal="renameSelectedTerminal"
+                  @update:chat-input="chatInput = $event"
+                  @send-chat="sendChat"
+                />
+              </SplitterPanel>
+            </Splitter>
+          </SplitterPanel>
+          <SplitterPanel class="splitter-panel splitter-panel-inner">
+            <Splitter class="workspace-splitter splitter-nested" layout="horizontal">
+              <SplitterPanel class="splitter-panel">
+                <WorkspacePaneShell
+                  :pane="panes[2]"
+                  :pane-index="2"
+                  :active-pane-index="activePaneIndex"
+                  :active-pane="activePane"
+                  :active-channel-name="activeChannelName"
+                  :chat-users="chatUsers"
+                  :selected-terminal-id="selectedTerminalId"
+                  :selected-file-id="selectedFileId"
+                  :chat-input="chatInput"
+                  :chat-messages="chatMessages"
+                  :current-user-id="currentUserId"
+                  :chat-joining="chatJoining"
+                  :ws-connected="wsConnected"
+                  :can-send-chat="canSendChat"
+                  @pane-drop="onPaneDrop"
+                  @activate-tab="activatePaneTab"
+                  @close-tab="closePaneTab"
+              @tab-drag-start="onTabDragStart"
+              @tab-drop="onTabDrop"
+              @rename-terminal="renameSelectedTerminal"
+                  @update:chat-input="chatInput = $event"
+                  @send-chat="sendChat"
+                />
+              </SplitterPanel>
+              <SplitterPanel class="splitter-panel">
+                <WorkspacePaneShell
+                  :pane="panes[3]"
+                  :pane-index="3"
+                  :active-pane-index="activePaneIndex"
+                  :active-pane="activePane"
+                  :active-channel-name="activeChannelName"
+                  :chat-users="chatUsers"
+                  :selected-terminal-id="selectedTerminalId"
+                  :selected-file-id="selectedFileId"
+                  :chat-input="chatInput"
+                  :chat-messages="chatMessages"
+                  :current-user-id="currentUserId"
+                  :chat-joining="chatJoining"
+                  :ws-connected="wsConnected"
+                  :can-send-chat="canSendChat"
+                  @pane-drop="onPaneDrop"
+                  @activate-tab="activatePaneTab"
+                  @close-tab="closePaneTab"
+              @tab-drag-start="onTabDragStart"
+              @tab-drop="onTabDrop"
+              @rename-terminal="renameSelectedTerminal"
+                  @update:chat-input="chatInput = $event"
+                  @send-chat="sendChat"
+                />
+              </SplitterPanel>
+            </Splitter>
           </SplitterPanel>
         </Splitter>
 
@@ -190,6 +537,7 @@ import Splitter from 'primevue/splitter'
 import SplitterPanel from 'primevue/splitterpanel'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
+import WorkspacePaneShell from '../components/workspace/WorkspacePaneShell.vue'
 import workerSocket from '../services/workerSocket'
 import { listProjects, getWsToken, listChatChannels, createChatChannel, listChatMessages, createChatMessage } from '../services/projectService'
 import authService from '../services/authService'
@@ -304,11 +652,17 @@ const showCreateChannelDialog = ref(false)
 const terminalCreateName = ref('')
 const terminalCreateOptions = ref('')
 const channelCreateName = ref('')
-const paneCount = ref(1)
+const paneLayout = ref('one')
 const activePaneIndex = ref(0)
 const panes = ref(Array.from({ length: 4 }, () => ({ tabs: [], activeTab: null })))
-
-const activePanes = computed(() => panes.value.slice(0, paneCount.value))
+const paneCountsByLayout = {
+  one: 1,
+  'two-horizontal': 2,
+  'two-vertical': 2,
+  'three-horizontal-wide': 3,
+  'three-vertical-tall': 3,
+  quad: 4,
+}
 
 const menuItems = computed(() => ([
   {
@@ -321,29 +675,35 @@ const menuItems = computed(() => ([
   {
     label: 'Layout',
     items: [
-      { label: '1 Pane', command: () => setPaneCount(1) },
-      { label: '2 Panes', command: () => setPaneCount(2) },
-      { label: '3 Panes', command: () => setPaneCount(3) },
-      { label: '4 Panes', command: () => setPaneCount(4) },
+      { label: '1 Pane', command: () => setPaneLayout('one') },
+      { label: '2 Panes (horizontal)', command: () => setPaneLayout('two-horizontal') },
+      { label: '2 Panes (vertical)', command: () => setPaneLayout('two-vertical') },
+      { label: '3 Panes (Horizontal wide, two vertical)', command: () => setPaneLayout('three-horizontal-wide') },
+      { label: '3 Panes (Vertical tall, two horizontal)', command: () => setPaneLayout('three-vertical-tall') },
+      { label: '4 Panes (Quad)', command: () => setPaneLayout('quad') },
     ]
   }
 ]))
 
 const dockItems = computed(() => ([
-  { label: '1 Pane', icon: 'pi-stop', command: () => setPaneCount(1) },
-  { label: '2 Panes', icon: 'pi-pause', command: () => setPaneCount(2) },
-  { label: '3 Panes', icon: 'pi-th-large', command: () => setPaneCount(3) },
-  { label: '4 Panes', icon: 'pi-table', command: () => setPaneCount(4) },
+  { label: '1 Pane', icon: 'pi-stop', command: () => setPaneLayout('one') },
+  { label: '2H', icon: 'pi-pause', command: () => setPaneLayout('two-horizontal') },
+  { label: '2V', icon: 'pi-bars', command: () => setPaneLayout('two-vertical') },
+  { label: '3H', icon: 'pi-th-large', command: () => setPaneLayout('three-horizontal-wide') },
+  { label: '3V', icon: 'pi-clone', command: () => setPaneLayout('three-vertical-tall') },
+  { label: '4Q', icon: 'pi-table', command: () => setPaneLayout('quad') },
   { label: 'New Terminal', icon: 'pi-plus-circle', command: () => openTerminal() },
   { label: 'Focus Terminal', icon: 'pi-terminal', command: () => focusAnyTerminal() },
   { label: 'Join Channel', icon: 'pi-comments', command: () => focusAnyChannel() },
   { label: 'Open File', icon: 'pi-file', command: () => focusAnyFile() },
 ]))
 
-function setPaneCount(count) {
-  paneCount.value = Math.max(1, Math.min(4, Number(count) || 1))
-  if (activePaneIndex.value >= paneCount.value) {
-    activePaneIndex.value = paneCount.value - 1
+function setPaneLayout(layout) {
+  const nextLayout = paneCountsByLayout[layout] ? layout : 'one'
+  paneLayout.value = nextLayout
+  const nextCount = paneCountsByLayout[nextLayout]
+  if (activePaneIndex.value >= nextCount) {
+    activePaneIndex.value = nextCount - 1
   }
 }
 
@@ -392,13 +752,85 @@ function bindTabToActivePane(kind, id, label) {
   pane.activeTab = key
 }
 
-function activatePane(paneIndex, event = null) {
-  // Ignore clicks on interactive controls inside a pane (inputs, buttons, tabs).
-  if (event?.target?.closest?.('input, textarea, button, .pane-tab, .chat-input-row')) return
-  if (paneIndex === activePaneIndex.value) return
+function onExplorerNodeDragStart(event, node) {
+  const kind = node?.data?.kind
+  if (!['terminal', 'channel'].includes(kind)) return
+  const payload = {
+    kind,
+    id: Number(node.data.id),
+    label: node.label,
+  }
+  event.dataTransfer.effectAllowed = 'copy'
+  event.dataTransfer.setData('application/x-carbide-node', JSON.stringify(payload))
+}
+
+function onTabDragStart(fromPaneIndex, tabKey, event) {
+  const payload = { fromPaneIndex, tabKey }
+  event.dataTransfer.effectAllowed = 'move'
+  event.dataTransfer.setData('application/x-carbide-tab', JSON.stringify(payload))
+}
+
+async function onTabDrop(toPaneIndex, event) {
+  const raw = event?.dataTransfer?.getData('application/x-carbide-tab')
+  if (!raw) return
+  let payload = null
+  try {
+    payload = JSON.parse(raw)
+  } catch {
+    return
+  }
+  const fromPaneIndex = Number(payload?.fromPaneIndex)
+  const tabKey = payload?.tabKey
+  if (!Number.isInteger(fromPaneIndex) || typeof tabKey !== 'string') return
+  if (!panes.value[fromPaneIndex] || !panes.value[toPaneIndex]) return
+
+  const sourcePane = panes.value[fromPaneIndex]
+  const targetPane = panes.value[toPaneIndex]
+  const tabIdx = sourcePane.tabs.findIndex((t) => t.key === tabKey)
+  if (tabIdx === -1) return
+
+  if (fromPaneIndex === toPaneIndex) {
+    targetPane.activeTab = tabKey
+    activePaneIndex.value = toPaneIndex
+    await activatePaneTab(toPaneIndex, tabKey)
+    return
+  }
+
+  const [tab] = sourcePane.tabs.splice(tabIdx, 1)
+  if (!targetPane.tabs.find((t) => t.key === tab.key)) {
+    targetPane.tabs.push(tab)
+  }
+  targetPane.activeTab = tab.key
+
+  if (sourcePane.activeTab === tabKey) {
+    sourcePane.activeTab = sourcePane.tabs[sourcePane.tabs.length - 1]?.key || null
+  }
+
+  activePaneIndex.value = toPaneIndex
+  await activatePaneTab(toPaneIndex, tab.key)
+}
+
+async function onPaneDrop(paneIndex, event) {
+  const raw = event?.dataTransfer?.getData('application/x-carbide-node')
+  if (!raw) return
+  let payload = null
+  try {
+    payload = JSON.parse(raw)
+  } catch {
+    return
+  }
+  if (!payload?.kind) return
+
   activePaneIndex.value = paneIndex
-  const key = panes.value[paneIndex]?.activeTab
-  if (key) activatePaneTab(paneIndex, key)
+
+  if (payload.kind === 'terminal') {
+    await selectTerminalNode(Number(payload.id))
+    return
+  }
+
+  if (payload.kind === 'channel') {
+    await selectChannelNode(Number(payload.id))
+  }
 }
 
 async function activatePaneTab(paneIndex, key) {
@@ -472,8 +904,6 @@ function focusAnyFile() {
   }
   selectFileNode('README.md')
 }
-
-bindTabToActivePane('file', selectedFileId.value, 'README.md')
 
 // Terminal
 const terminalEl       = ref(null)
@@ -915,6 +1345,9 @@ onMounted(async () => {
 
     // Connect after registering all handlers so no initial events are missed.
     workerSocket.connect(token)
+    
+    // Initialize with README.md in the active pane
+    selectFileNode('README.md')
   } catch (e) {
     error.value = e.message || 'Failed to connect'
   }
@@ -980,51 +1413,10 @@ async function openTerminal(options = {}) {
 async function connectToTerminal(tid) {
   terminalLoading.value = true
   try {
-    // Ensure terminal container is mounted before xterm.open().
     activePane.value = 'terminal'
     terminalId = tid
     markTerminalOpen(tid)
-    await nextTick()
-
-    if (!terminalEl.value) {
-      throw new Error('Terminal pane not ready')
-    }
-
-    const needsReattach = !xterm || !terminalEl.value.querySelector('.xterm')
-
-    if (needsReattach) {
-      xterm?.dispose()
-      xterm    = new Terminal({ cursorBlink: true, fontSize: 14, theme: { background: '#1e1e1e' } })
-      fitAddon = new FitAddon()
-      xterm.loadAddon(fitAddon)
-      xterm.open(terminalEl.value)
-      fitAddon.fit()
-
-      xterm.onData(data => {
-        console.log('[xterm onData] data:', JSON.stringify(data), 'terminalId:', terminalId, 'wsReady:', workerSocket._ready)
-        workerSocket.send('term', 'input', { terminal_id: terminalId, data })
-      })
-
-      xterm.onResize(({ cols, rows }) => {
-        if (applyingRemoteResize) return
-        workerSocket.send('term', 'resize', { terminal_id: terminalId, cols, rows })
-      })
-
-      window.addEventListener('resize', onWindowResize)
-      // Keep xterm sized to its container when layout changes without window resize.
-      terminalResizeObserver = new ResizeObserver(() => fitTerminalSoon())
-      terminalResizeObserver.observe(terminalEl.value)
-    } else {
-      // Clear terminal when switching to new session
-      xterm.reset()
-      fitTerminalSoon()
-    }
-
-    workerSocket.send('term', 'join', { terminal_id: terminalId })
-    terminalActive.value = true
-    // Focus AFTER Vue re-renders (terminalActive flip may cause DOM changes)
-    await nextTick()
-    xterm.focus()
+    bindTabToActivePane('terminal', tid, terminalList.value.find(t => Number(t.id) === Number(tid))?.name || `terminal #${tid}`)
   } catch (e) {
     error.value = e.message || 'Failed to connect to terminal'
   } finally {
@@ -1101,9 +1493,10 @@ function selectFileNode(fileId, options = {}) {
   activePane.value = 'file'
 }
 
-async function renameSelectedTerminal() {
-  if (!selectedTerminalId.value) return
-  renameTerminalById(selectedTerminalId.value)
+async function renameSelectedTerminal(tid = null) {
+  const target = Number(tid) || Number(selectedTerminalId.value)
+  if (!target) return
+  renameTerminalById(target)
 }
 
 function renameTerminalById(tid) {
@@ -1192,8 +1585,8 @@ function formatTime(ts) {
   --warn: #f07167;
   display: flex;
   flex-direction: column;
+  flex: 1;
   height: 100%;
-  max-height: 100%;
   min-height: 0;
   color: var(--text);
   background:
@@ -1234,7 +1627,6 @@ function formatTime(ts) {
   grid-template-columns: 300px minmax(0, 1fr);
   flex: 1;
   min-height: 0;
-  max-height: 100%;
   overflow: hidden;
 }
 
@@ -1444,22 +1836,38 @@ function formatTime(ts) {
 .main-pane {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  width: 100%;
+  height: 100%;
   min-width: 0;
   min-height: 0;
-  max-height: 100%;
   gap: 0.45rem;
   padding: 0.4rem;
 }
 
 .workspace-splitter {
+  width: 100%;
+  height: 100%;
   flex: 1;
   min-height: 0;
+  min-width: 0;
   border: 1px solid var(--line);
   background: rgba(8, 16, 28, 0.45);
 }
 
 .splitter-panel {
   min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+.splitter-panel-inner {
+  padding: 0;
+}
+
+.splitter-nested {
+  width: 100%;
+  height: 100%;
 }
 
 .pane-shell {
