@@ -1,0 +1,46 @@
+// monacoLanguage.js — map file extension to a Monaco language identifier
+const EXT_TO_LANG = {
+  rb:    'ruby',
+  rake:  'ruby',
+  gemspec: 'ruby',
+  js:    'javascript',
+  mjs:   'javascript',
+  cjs:   'javascript',
+  ts:    'typescript',
+  tsx:   'typescript',
+  jsx:   'javascript',
+  vue:   'html',
+  html:  'html',
+  htm:   'html',
+  css:   'css',
+  scss:  'scss',
+  sass:  'scss',
+  less:  'less',
+  json:  'json',
+  yaml:  'yaml',
+  yml:   'yaml',
+  toml:  'ini',
+  md:    'markdown',
+  sh:    'shell',
+  bash:  'shell',
+  zsh:   'shell',
+  fish:  'shell',
+  py:    'python',
+  rs:    'rust',
+  go:    'go',
+  c:     'c',
+  cpp:   'cpp',
+  cc:    'cpp',
+  h:     'cpp',
+  java:  'java',
+  sql:   'sql',
+  xml:   'xml',
+  svg:   'xml',
+  lock:  'plaintext',
+  txt:   'plaintext',
+}
+
+export function extensionToLanguage(filename) {
+  const ext = (filename || '').split('.').pop().toLowerCase()
+  return EXT_TO_LANG[ext] ?? 'plaintext'
+}
