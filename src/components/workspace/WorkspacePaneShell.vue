@@ -29,9 +29,9 @@
     <div class="pane-content" v-show="activeTabKind === 'channel'">
       <ChatPane
         :messages="paneMessages"
-        :current-user-id="currentUserId"
+        :current-user-id="store.currentUserId"
         :joining="paneJoining"
-        :connected="wsConnected"
+        :connected="store.wsConnected"
         :can-send="paneCanSend"
         @send="(text) => emit('send-chat', activeChatChannelId, text)"
       />
@@ -53,24 +53,17 @@
 
 <script setup>
 import { computed, watch } from 'vue'
+import { useWorkspaceStore } from '../../stores/workspaceStore'
 import TerminalPane from './TerminalPane.vue'
 import ChatPane from './ChatPane.vue'
 import FilePane from './FilePane.vue'
+
+const store = useWorkspaceStore()
 
 const props = defineProps({
   pane: { type: Object, required: true },
   paneIndex: { type: Number, required: true },
   activePaneIndex: { type: Number, required: true },
-  activePane: { type: String, default: '' },
-  activeChannelName: { type: String, default: '' },
-  chatUsers: { type: Array, default: () => [] },
-  selectedTerminalId: { type: [Number, null], default: null },
-  selectedFileId: { type: String, default: '' },
-  chatMessagesMap: { type: Object, default: () => ({}) },
-  chatJoiningMap: { type: Object, default: () => ({}) },
-  joinedChatChannels: { default: () => new Set() },
-  currentUserId: { type: [Number, null], default: null },
-  wsConnected: { type: Boolean, default: false },
 })
 
 const effectiveActiveKey = computed(() => {
@@ -103,19 +96,19 @@ const activeChatChannelId = computed(() => {
 
 const paneMessages = computed(() => {
   const cid = activeChatChannelId.value
-  return cid ? (props.chatMessagesMap[cid] ?? []) : []
+  return cid ? (store.chatMessagesMap[cid] ?? []) : []
 })
 
 const paneJoining = computed(() => {
   const cid = activeChatChannelId.value
-  return cid ? !!(props.chatJoiningMap[cid]) : false
+  return cid ? !!(store.chatJoiningMap[cid]) : false
 })
 
 const paneCanSend = computed(() => {
   const cid = activeChatChannelId.value
-  if (!cid || !props.wsConnected) return false
+  if (!cid || !store.wsConnected) return false
   if (paneJoining.value) return false
-  return props.joinedChatChannels?.has?.(cid) ?? false
+  return store.joinedChatChannels?.has?.(cid) ?? false
 })
 
 const activeChatLabel = computed(() => {

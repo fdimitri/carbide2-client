@@ -67,16 +67,6 @@
               :pane="panes[row[0]]"
               :pane-index="row[0]"
               :active-pane-index="activePaneIndex"
-              :active-pane="activePane"
-              :active-channel-name="activeChannelName"
-              :chat-users="chatUsers"
-              :selected-terminal-id="selectedTerminalId"
-              :selected-file-id="selectedFileId"
-              :chat-messages-map="chatMessagesMap"
-              :current-user-id="currentUserId"
-              :chat-joining-map="chatJoiningMap"
-              :ws-connected="wsConnected"
-              :joined-chat-channels="joinedChatChannels"
               @pane-drop="onPaneDrop"
               @set-active-pane="setActivePane($event)"
               @activate-tab="activatePaneTab"
@@ -100,16 +90,6 @@
                   :pane="panes[paneIdx]"
                   :pane-index="paneIdx"
                   :active-pane-index="activePaneIndex"
-                  :active-pane="activePane"
-                  :active-channel-name="activeChannelName"
-                  :chat-users="chatUsers"
-                  :selected-terminal-id="selectedTerminalId"
-                  :selected-file-id="selectedFileId"
-                  :chat-messages-map="chatMessagesMap"
-                  :current-user-id="currentUserId"
-                  :chat-joining-map="chatJoiningMap"
-                  :ws-connected="wsConnected"
-                  :joined-chat-channels="joinedChatChannels"
                   @pane-drop="onPaneDrop"
                   @set-active-pane="setActivePane($event)"
                   @activate-tab="activatePaneTab"
@@ -177,9 +157,11 @@ import WorkspacePaneShell from '../components/workspace/WorkspacePaneShell.vue'
 import workerSocket from '../services/workerSocket'
 import { logInfo } from '../services/log'
 import { listProjects, getWsToken } from '../services/projectService'
-import { usePanes } from '../composables/usePanes'
+import { storeToRefs } from 'pinia'
+import { usePanes, PANE_COUNTS } from '../composables/usePanes'
 import { useTerminals } from '../composables/useTerminals'
 import { useChat } from '../composables/useChat'
+import { useWorkspaceStore } from '../stores/workspaceStore'
 
 // ── Layout configuration ──────────────────────────────────────────────────────
 // Each entry describes the outer Splitter direction, inner Splitter direction,
@@ -200,9 +182,11 @@ const route       = useRoute()
 const projectId   = Number(route.params.id)
 const project     = ref(null)
 const error       = ref('')
-const wsConnected = ref(false)
 const activePane  = ref('terminal')
 const offHandlers = []
+
+const workspaceStore = useWorkspaceStore()
+const { wsConnected, joinedChatChannels: storeJoinedChatChannels } = storeToRefs(workspaceStore)
 
 // ── Composables ───────────────────────────────────────────────────────────────
 // usePanes receives forward references to the page-level select* wrappers below
@@ -230,8 +214,8 @@ const {
 
 const chat = useChat(projectId, { wsConnected, error, bindTabToActivePane, activePane })
 const {
-  chatEl, chatChannels, selectedChatChannelId, chatMessagesMap, chatUsers,
-  chatJoiningMap, joinedChatChannels, currentUserId, activeChannelName,
+  chatEl, chatChannels, selectedChatChannelId, chatUsers,
+  activeChannelName,
   isJoinedChannel, setJoinedChannel, createChannelByName, sendChat, scrollChat,
   joinChannelFromContext, leaveChannelFromContext,
   registerHandlers: registerChatHandlers, init: initChat, cleanup: cleanupChat,
@@ -641,7 +625,7 @@ onMounted(async () => {
     offHandlers.push(
       workerSocket.on('system', 'connected', () => {
         wsConnected.value = true
-        joinedChatChannels.value = new Set()
+        storeJoinedChatChannels.value = new Set()
       })
     )
 

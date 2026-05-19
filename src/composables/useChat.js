@@ -1,20 +1,21 @@
 // useChat — chat channel state, join/leave, messaging
 import { ref, computed } from 'vue'
+import { storeToRefs } from 'pinia'
 import workerSocket from '../services/workerSocket'
-import authService from '../services/authService'
 import { listChatChannels, createChatChannel, listChatMessages, createChatMessage } from '../services/projectService'
+import { useWorkspaceStore } from '../stores/workspaceStore'
 
 export function useChat(projectId, { wsConnected, error, bindTabToActivePane, activePane }) {
+  const store = useWorkspaceStore()
+  const { chatMessagesMap, chatJoiningMap, joinedChatChannels } = storeToRefs(store)
+
   const chatEl                 = ref(null)
   const chatChannels           = ref([])
   const selectedChatChannelId  = ref(null)
-  const chatMessagesMap        = ref({})   // { [channelId]: Message[] }
-  const chatJoiningMap         = ref({})   // { [channelId]: boolean }
   const chatUsers              = ref([])
-  const joinedChatChannels     = ref(new Set())
   let joinTimeoutHandle        = null
 
-  const currentUserId  = computed(() => authService.userId())
+  const currentUserId     = computed(() => store.currentUserId)
   const activeChannelName = computed(() => {
     const ch = chatChannels.value.find(c => c.id === Number(selectedChatChannelId.value))
     return ch?.name || 'none'
@@ -180,7 +181,7 @@ export function useChat(projectId, { wsConnected, error, bindTabToActivePane, ac
       chatChannels.value = [general]
     }
     selectedChatChannelId.value = null
-    chatMessagesMap.value = {}
+    store.chatMessagesMap = {}
   }
 
   function cleanup() {
@@ -194,11 +195,7 @@ export function useChat(projectId, { wsConnected, error, bindTabToActivePane, ac
     chatEl,
     chatChannels,
     selectedChatChannelId,
-    chatMessagesMap,
-    chatJoiningMap,
     chatUsers,
-    joinedChatChannels,
-    currentUserId,
     activeChannelName,
     isJoinedChannel,
     setJoinedChannel,
