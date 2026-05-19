@@ -183,6 +183,7 @@ const projectId   = Number(route.params.id)
 const project     = ref(null)
 const error       = ref('')
 const activePane  = ref('terminal')
+const pendingNavigation = ref(null)
 const offHandlers = []
 
 const workspaceStore = useWorkspaceStore()
@@ -198,9 +199,7 @@ const {
   onTabDragStart, onTabDrop, onPaneDrop,
 } = usePanes({
   activePane,
-  selectTerminalNode: (tid, opts)     => selectTerminalNode(tid, opts),
-  selectChannelNode:  (cid, opts)     => selectChannelNode(cid, opts),
-  selectFileNode:     (fid, opts)     => selectFileNode(fid, opts),
+  pendingNavigation,
 })
 
 const terminals = useTerminals({ error, bindTabToActivePane, activePane })
@@ -378,6 +377,16 @@ function selectFileNode(fileId, options = {}) {
   }
   activePane.value = 'file'
 }
+
+// ── Pending navigation from usePanes (decouples usePanes from page functions) ──
+watch(pendingNavigation, async (pending) => {
+  if (!pending) return
+  pendingNavigation.value = null
+  const { kind, id, opts = {} } = pending
+  if (kind === 'terminal')      await selectTerminalNode(id, opts)
+  else if (kind === 'channel')  await selectChannelNode(id, opts)
+  else if (kind === 'file')     selectFileNode(id, opts)
+})
 
 // ── Explorer helpers ──────────────────────────────────────────────────────────
 function markFileOpen(fileId) {

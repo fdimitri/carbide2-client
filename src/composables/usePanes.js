@@ -11,7 +11,7 @@ export const PANE_COUNTS = {
   quad:                   4,
 }
 
-export function usePanes({ activePane, selectTerminalNode, selectChannelNode, selectFileNode }) {
+export function usePanes({ activePane, pendingNavigation }) {
   const paneLayout     = ref('one')
   const activePaneIndex = ref(0)
   const panes          = ref(Array.from({ length: 4 }, () => ({ tabs: [], activeTab: null })))
@@ -68,22 +68,11 @@ export function usePanes({ activePane, selectTerminalNode, selectChannelNode, se
     pane.activeTab = key
   }
 
-  async function activatePaneTab(paneIndex, key) {
+  function activatePaneTab(paneIndex, key) {
     activePaneIndex.value = paneIndex
     const parsed = parseTabKey(key)
     if (!parsed) return
-
-    if (parsed.kind === 'file') {
-      selectFileNode(parsed.id, { skipPaneTab: true })
-      return
-    }
-    if (parsed.kind === 'terminal') {
-      await selectTerminalNode(parsed.id, { skipPaneTab: true })
-      return
-    }
-    if (parsed.kind === 'channel') {
-      await selectChannelNode(parsed.id, { skipPaneTab: true })
-    }
+    pendingNavigation.value = { kind: parsed.kind, id: parsed.id, opts: { skipPaneTab: true } }
   }
 
   function closePaneTab(paneIndex, key) {
@@ -155,7 +144,7 @@ export function usePanes({ activePane, selectTerminalNode, selectChannelNode, se
     await activatePaneTab(toPaneIndex, tab.key)
   }
 
-  async function onPaneDrop(paneIndex, event) {
+  function onPaneDrop(paneIndex, event) {
     const raw = event?.dataTransfer?.getData('application/x-carbide-node')
     if (!raw) return
     let payload = null
@@ -166,15 +155,15 @@ export function usePanes({ activePane, selectTerminalNode, selectChannelNode, se
     activePaneIndex.value = paneIndex
 
     if (payload.kind === 'terminal') {
-      await selectTerminalNode(Number(payload.id))
+      pendingNavigation.value = { kind: 'terminal', id: Number(payload.id), opts: {} }
       return
     }
     if (payload.kind === 'channel') {
-      await selectChannelNode(Number(payload.id))
+      pendingNavigation.value = { kind: 'channel', id: Number(payload.id), opts: {} }
       return
     }
     if (payload.kind === 'file') {
-      await selectFileNode(String(payload.id))
+      pendingNavigation.value = { kind: 'file', id: String(payload.id), opts: {} }
     }
   }
 
