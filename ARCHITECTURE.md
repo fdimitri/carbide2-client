@@ -647,13 +647,16 @@ the previous circular dependency: `ProjectPage` → `usePanes` → callbacks →
 
 ## Cross-cutting architectural problems (summary)
 
-1. **Global singletons masquerading as per-pane state.** `activePane`, `selectedTerminalId`,
-   `selectedChatChannelId` are single refs shared by all panes. Any action in one pane mutates
-   state that all other panes read. **Remaining work.**
+1. **`selectedTerminalId` / `selectedChatChannelId` global cursors.** These are not display
+   selectors — display is driven entirely by `pane.activeTab` (the tab key encodes kind + id,
+   e.g. `"terminal:5"`). They are imperative-operation cursors used as fallbacks in functions
+   like `renameTerminalById(tid || selectedTerminalId)`. They affect nothing visually but are
+   still global. Low priority; could be eliminated by always requiring an explicit ID at the
+   call site. **Remaining work.**
 
-2. **No pane-local resource selection.** Each `panes[i]` object only holds `{ tabs, activeTab }`.
-   It should also hold `{ activePaneKind, activeTerminalId, activeChannelId, activeFileId }` so
-   that each pane independently tracks what it is showing. **Remaining work.**
+2. **`activePane` global kind string.** Used to decide which tab type a new resource gets
+   assigned to on the active pane. Should be derivable from the active pane's `activeTab`
+   key (or replaced with an explicit pane-index argument at each call site). **Remaining work.**
 
 3. ~~**14-prop prop-drilling.**~~ **Resolved.** `WorkspacePaneShell` now reads `chatMessagesMap`,
    `chatJoiningMap`, `joinedChatChannels`, `currentUserId`, and `wsConnected` directly from
