@@ -2,10 +2,11 @@
   <div
     class="pane-shell"
     :class="{ 'pane-shell--active': paneIndex === activePaneIndex }"
+    @mousedown.capture="emit('set-active-pane', paneIndex)"
     @dragover.prevent
-    @drop.prevent="emit('pane-drop', paneIndex, $event)"
+    @drop.prevent="onPaneDrop($event)"
   >
-    <div class="pane-tabs" @dragover.prevent @drop.prevent="emit('tab-drop', paneIndex, $event)">
+    <div class="pane-tabs" @dragover.prevent @drop.prevent="onTabBarDrop($event)">
       <button
         v-for="tab in pane.tabs"
         :key="tab.key"
@@ -28,13 +29,13 @@
     <div class="pane-content" v-show="activeTabKind === 'channel'">
       <ChatPane
         :input="chatInput"
-        :messages="chatMessages"
+        :messages="paneMessages"
         :current-user-id="currentUserId"
-        :joining="chatJoining"
+        :joining="paneJoining"
         :connected="wsConnected"
-        :can-send="canSendChat"
+        :can-send="paneCanSend"
         @update:input="emit('update:chatInput', $event)"
-        @send="emit('send-chat')"
+        @send="emit('send-chat', activeChatChannelId)"
       />
     </div>
 
@@ -68,11 +69,11 @@ const props = defineProps({
   selectedTerminalId: { type: [Number, null], default: null },
   selectedFileId: { type: String, default: '' },
   chatInput: { type: String, default: '' },
-  chatMessages: { type: Array, default: () => [] },
+  chatMessagesMap: { type: Object, default: () => ({}) },
+  chatJoiningMap: { type: Object, default: () => ({}) },
+  joinedChatChannels: { default: () => new Set() },
   currentUserId: { type: [Number, null], default: null },
-  chatJoining: { type: Boolean, default: false },
   wsConnected: { type: Boolean, default: false },
-  canSendChat: { type: Boolean, default: false },
 })
 
 const effectiveActiveKey = computed(() => {
@@ -98,6 +99,28 @@ const activeFileId = computed(() => {
   return (effectiveActiveKey.value || '').split(':').slice(1).join(':')
 })
 
+const activeChatChannelId = computed(() => {
+  if (activeTabKind.value !== 'channel') return null
+  return Number((effectiveActiveKey.value || '').split(':')[1]) || null
+})
+
+const paneMessages = computed(() => {
+  const cid = activeChatChannelId.value
+  return cid ? (props.chatMessagesMap[cid] ?? []) : []
+})
+
+const paneJoining = computed(() => {
+  const cid = activeChatChannelId.value
+  return cid ? !!(props.chatJoiningMap[cid]) : false
+})
+
+const paneCanSend = computed(() => {
+  const cid = activeChatChannelId.value
+  if (!cid || !props.wsConnected || !props.chatInput?.trim()) return false
+  if (paneJoining.value) return false
+  return props.joinedChatChannels?.has?.(cid) ?? false
+})
+
 const activeChatLabel = computed(() => {
   if (activeTabKind.value !== 'channel') return ''
   const fromTab = props.pane?.tabs?.find((t) => t.key === effectiveActiveKey.value)?.label
@@ -113,7 +136,26 @@ const emit = defineEmits([
   'pane-drop',
   'tab-drag-start',
   'tab-drop',
+  'set-active-pane',
 ])
+
+function onTabBarDrop(event) {
+  // Tab bar accepts both tab moves and node drops
+  if (event.dataTransfer.types.includes('application/x-carbide-tab')) {
+    emit('tab-drop', props.paneIndex, event)
+  } else {
+    emit('pane-drop', props.paneIndex, event)
+  }
+}
+
+function onPaneDrop(event) {
+  // Pane body accepts both tab moves and node drops
+  if (event.dataTransfer.types.includes('application/x-carbide-tab')) {
+    emit('tab-drop', props.paneIndex, event)
+  } else {
+    emit('pane-drop', props.paneIndex, event)
+  }
+}
 </script>
 
 <style scoped>
