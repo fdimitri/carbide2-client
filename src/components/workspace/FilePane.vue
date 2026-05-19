@@ -47,14 +47,16 @@ function requestFile(path) {
   workerSocket.send('fs', 'read', { path })
 }
 
+function normPath(p) { return (p || '').replace(/^\//, '') }
+
 function onFsContent(payload) {
-  if (payload.path !== props.fileId) return
+  if (normPath(payload.path) !== normPath(props.fileId)) return
   loading.value = false
   content.value = payload.content ?? ''
 }
 
 function onFsError(payload) {
-  if (payload.path !== props.fileId) return
+  if (normPath(payload.path) !== normPath(props.fileId)) return
   loading.value   = false
   loadError.value = payload.error || 'unknown error'
 }
