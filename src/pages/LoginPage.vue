@@ -1,21 +1,56 @@
 <template>
-  <div class="login-container">
-    <div class="login-card">
-      <h1>Login to Carbide2 IDE</h1>
-      <form @submit.prevent="handleLogin">
-        <div class="form-group">
-          <label for="email">Email</label>
-          <input v-model="email" type="email" id="email" placeholder="dev@example.com" required />
+  <div class="relative flex min-h-screen items-center justify-center px-4 workspace-bg overflow-hidden">
+    <!-- ambient glows -->
+    <div class="pointer-events-none absolute -top-60 -left-60 w-[500px] h-[500px] rounded-full bg-accent/8 blur-[120px]"></div>
+    <div class="pointer-events-none absolute -bottom-60 -right-40 w-[400px] h-[400px] rounded-full bg-[rgba(85,130,255,0.08)] blur-[100px]"></div>
+
+    <div class="relative w-full max-w-[360px]">
+      <!-- Brand -->
+      <div class="text-center mb-8">
+        <div class="inline-flex items-center gap-2 mb-4">
+          <span class="text-accent text-2xl">◈</span>
+          <span class="text-text font-bold text-xl tracking-wide">Carbide2 IDE</span>
         </div>
-        <div class="form-group">
-          <label for="password">Password</label>
-          <input v-model="password" type="password" id="password" placeholder="password" required />
+        <p class="text-muted text-sm">Sign in to your workspace</p>
+      </div>
+
+      <!-- Card -->
+      <div class="rounded-2xl border border-accent/20 bg-bg-1/85 backdrop-blur-2xl p-10 shadow-[0_32px_80px_rgba(0,0,0,0.7)]">
+        <form @submit.prevent="handleLogin" class="flex flex-col gap-5">
+
+          <div class="flex flex-col gap-2">
+            <label class="text-muted text-label font-semibold uppercase tracking-widest mb-1" for="email">Email</label>
+            <input v-model="email" type="email" id="email" placeholder="dev@example.com" required
+              class="px-4 py-3 rounded-lg bg-bg-input border border-line text-text text-sm
+                     placeholder:text-dim focus:outline-none focus:border-accent
+                     focus:shadow-[0_0_0_3px_rgba(46,196,182,0.12)] transition-all" />
+          </div>
+
+          <div class="flex flex-col gap-2">
+            <label class="text-muted text-label font-semibold uppercase tracking-widest mb-1" for="password">Password</label>
+            <input v-model="password" type="password" id="password" placeholder="••••••••" required
+              class="px-4 py-3 rounded-lg bg-bg-input border border-line text-text text-sm
+                     placeholder:text-dim focus:outline-none focus:border-accent
+                     focus:shadow-[0_0_0_3px_rgba(46,196,182,0.12)] transition-all" />
+          </div>
+
+          <button type="submit" :disabled="loading"
+            class="mt-4 w-full py-3.5 rounded-lg font-bold text-sm text-accent-text
+                   bg-accent border-0 cursor-pointer
+                   hover:brightness-110 active:scale-[0.98] transition-all
+                   disabled:opacity-50 disabled:cursor-not-allowed
+                   shadow-[0_4px_24px_rgba(46,196,182,0.35)]"
+          >{{ loading ? 'Signing in…' : 'Sign in' }}</button>
+
+          <p v-if="error" class="text-warn text-xs text-center -mt-1">{{ error }}</p>
+        </form>
+
+        <div class="mt-6 pt-5 border-t border-line/50 text-center">
+          <p class="text-dim text-label font-mono tracking-wide">
+            demo · dev@example.com · password
+          </p>
         </div>
-        <button type="submit" class="btn-primary" :disabled="loading">{{ loading ? 'Logging in...' : 'Login' }}</button>
-        <p v-if="error" class="error">{{ error }}</p>
-      </form>
-      <hr />
-      <p class="hint">Demo: dev@example.com / password</p>
+      </div>
     </div>
   </div>
 </template>
@@ -46,94 +81,4 @@ const handleLogin = async () => {
 }
 </script>
 
-<style scoped>
-.login-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-}
 
-.login-card {
-  background: white;
-  padding: 2rem;
-  border-radius: 8px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
-  width: 100%;
-  max-width: 400px;
-}
-
-.login-card h1 {
-  margin-bottom: 2rem;
-  text-align: center;
-  color: #2c3e50;
-  font-size: 1.5rem;
-}
-
-.form-group {
-  margin-bottom: 1rem;
-}
-
-.form-group label {
-  display: block;
-  margin-bottom: 0.5rem;
-  color: #2c3e50;
-  font-weight: 500;
-}
-
-.form-group input {
-  width: 100%;
-  padding: 0.75rem;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 1rem;
-}
-
-.form-group input:focus {
-  outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-}
-
-.btn-primary {
-  width: 100%;
-  padding: 0.75rem;
-  background: #667eea;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  font-size: 1rem;
-  font-weight: 600;
-  cursor: pointer;
-  margin-top: 1rem;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: #5568d3;
-}
-
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.error {
-  color: #e74c3c;
-  margin-top: 1rem;
-  font-size: 0.9rem;
-  text-align: center;
-}
-
-hr {
-  margin: 1.5rem 0;
-  border: none;
-  border-top: 1px solid #eee;
-}
-
-.hint {
-  text-align: center;
-  color: #999;
-  font-size: 0.85rem;
-}
-</style>

@@ -9,9 +9,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const wsConnected       = ref(false)
   const currentUserId     = computed(() => authService.userId())
 
-  // ── Pane focus ──────────────────────────────────────────────────────────────
-  const activePaneIndex   = ref(0)
-
   // ── Chat ────────────────────────────────────────────────────────────────────
   const chatMessagesMap    = ref({})   // { [channelId]: Message[] }
   const chatJoiningMap     = ref({})   // { [channelId]: boolean }
@@ -20,7 +17,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   return {
     wsConnected,
     currentUserId,
-    activePaneIndex,
     chatMessagesMap,
     chatJoiningMap,
     joinedChatChannels,

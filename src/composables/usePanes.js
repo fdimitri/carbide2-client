@@ -69,7 +69,10 @@ export function usePanes({ activePane, pendingNavigation }) {
   }
 
   function activatePaneTab(paneIndex, key) {
+    const pane = panes.value[paneIndex]
+    if (!pane) return
     activePaneIndex.value = paneIndex
+    pane.activeTab = key
     const parsed = parseTabKey(key)
     if (!parsed) return
     pendingNavigation.value = { kind: parsed.kind, id: parsed.id, opts: { skipPaneTab: true } }

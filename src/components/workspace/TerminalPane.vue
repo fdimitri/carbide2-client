@@ -1,7 +1,7 @@
 <template>
-  <div class="terminal-pane">
-    <div ref="terminalContainer" class="terminal-pane__container" />
-    <div v-if="!terminalId" class="terminal-pane__placeholder">
+  <div class="relative flex flex-col flex-1 min-h-0">
+    <div ref="terminalContainer" class="flex-1 min-h-0 p-[0.35rem] bg-[#0b1017]" />
+    <div v-if="!terminalId" class="absolute inset-0 grid place-items-center text-center text-muted p-4 pointer-events-none">
       Select or create a terminal from the tree.
     </div>
   </div>
@@ -150,30 +150,4 @@ onBeforeUnmount(() => {
 })
 </script>
 
-<style scoped>
-.terminal-pane {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-}
 
-.terminal-pane__container {
-  flex: 1;
-  min-height: 0;
-  padding: 0.35rem;
-  background: #0b1017;
-}
-
-.terminal-pane__placeholder {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  text-align: center;
-  color: #91a2bc;
-  padding: 1rem;
-  pointer-events: none;
-}
-</style>

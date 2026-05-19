@@ -1,13 +1,23 @@
 <template>
-  <div class="app">
-    <nav class="navbar">
-      <div class="nav-brand">Carbide2 IDE</div>
-      <div class="nav-menu" v-if="authService.isAuthenticated">
-        <span class="nav-user">{{ authService.currentUser?.email }}</span>
-        <button class="btn-logout" @click="logout">Logout</button>
+  <div class="flex flex-col h-[100dvh] overflow-hidden bg-[#0d1219]">
+    <nav v-if="$route.path !== '/login'"
+      class="flex justify-between items-center shrink-0 px-6 py-0 h-11 bg-[rgba(11,18,28,0.95)] border-b border-[rgba(43,61,88,0.8)] backdrop-blur-sm"
+    >
+      <div class="flex items-center gap-3">
+        <span class="text-accent font-mono text-xs tracking-[0.2em] uppercase opacity-70">◈</span>
+        <span class="text-text font-bold text-sm tracking-wide">Carbide2 IDE</span>
+      </div>
+      <div v-if="authService.isAuthenticated" class="flex gap-3 items-center">
+        <span class="text-muted text-xs font-mono">{{ authService.currentUser?.email }}</span>
+        <button
+          class="px-3 py-1 text-xs rounded border border-[rgba(240,113,103,0.5)] text-[#f07167] bg-transparent cursor-pointer hover:bg-[rgba(240,113,103,0.12)] transition-colors"
+          @click="logout">Logout</button>
       </div>
     </nav>
-    <main class="main" :class="{ 'main--workspace': $route.path.startsWith('/projects/') }">
+    <main
+      class="flex-1 min-h-0 overflow-auto"
+      :class="$route.path.startsWith('/projects/') ? 'flex flex-col overflow-hidden' : ''"
+    >
       <router-view />
     </main>
   </div>
@@ -38,69 +48,4 @@ export default {
 import { useRouter } from 'vue-router'
 </script>
 
-<style scoped>
-.app {
-  display: flex;
-  flex-direction: column;
-  height: 100dvh;
-  min-height: 100vh;
-  min-height: 100dvh;
-  overflow: hidden;
-  background: #f5f5f5;
-}
 
-.navbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: #2c3e50;
-  color: white;
-  padding: 1rem 2rem;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.nav-brand {
-  font-size: 1.5rem;
-  font-weight: bold;
-}
-
-.nav-menu {
-  display: flex;
-  gap: 1rem;
-  align-items: center;
-}
-
-.nav-user {
-  font-size: 0.9rem;
-  opacity: 0.8;
-}
-
-.btn-logout {
-  background: #e74c3c;
-  color: white;
-  border: none;
-  padding: 0.5rem 1rem;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.9rem;
-}
-
-.btn-logout:hover {
-  background: #c0392b;
-}
-
-.main {
-  flex: 1;
-  padding: 2rem;
-  min-height: 0;
-  overflow: auto;
-}
-
-.main--workspace {
-  display: flex;
-  flex-direction: column;
-  padding: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-</style>
