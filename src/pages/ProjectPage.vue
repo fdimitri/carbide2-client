@@ -143,7 +143,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import '@xterm/xterm/css/xterm.css'
 import Tree from 'primevue/tree'
