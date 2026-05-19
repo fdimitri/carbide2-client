@@ -1,7 +1,8 @@
 # carbide2-client — Architecture & Codebase Reference
 
-Vue 3 + Vite frontend for the Carbide2 IDE. No Pinia — all state lives in composables
-instantiated once in `ProjectPage.vue` and passed down as props.
+Vue 3 + Vite frontend for the Carbide2 IDE. Shared cross-cutting state lives in a Pinia
+store (`workspaceStore`). Per-session composables are instantiated once in `ProjectPage.vue`;
+per-pane display state is read directly from the store by `WorkspacePaneShell`.
 
 ---
 
@@ -13,6 +14,7 @@ instantiated once in `ProjectPage.vue` and passed down as props.
 | `services/authService.js` | JWT auth — login, logout, token storage |
 | `services/projectService.js` | REST calls to Rails API |
 | `services/log.js` | Levelled, bitmask-controlled console logging |
+| `stores/workspaceStore.js` | Pinia store — cross-cutting reactive state (wsConnected, chat maps, userId, activePaneIndex) |
 | `composables/usePanes.js` | Multi-pane layout, tab management, drag-drop |
 | `composables/useChat.js` | Chat channel state, join/leave, messaging |
 | `composables/useTerminals.js` | Terminal list, create, xterm lifecycle |
@@ -173,6 +175,39 @@ as the base. Auth header is read from `localStorage` on every call via `authHead
 
 ---
 
+## `stores/workspaceStore.js`
+
+**Role:** Pinia store holding cross-cutting reactive state that was previously drilled as
+props from `ProjectPage` through `WorkspacePaneShell`. Imported directly by any component
+or composable that needs these values — no prop passing required.
+
+**State:**
+
+| Field | Type | Purpose |
+|---|---|---|
+| `wsConnected` | `ref<boolean>` | `true` once `system:connected` fires; reset to `false` on reconnect |
+| `currentUserId` | `computed` | Derived from `authService.userId()` |
+| `activePaneIndex` | `ref<number>` | Which pane index (0–3) is currently active. Currently also tracked in `usePanes` — these should be reconciled. |
+| `chatMessagesMap` | `ref<Object>` | `{ [channelId]: Message[] }` — message history for all channels |
+| `chatJoiningMap` | `ref<Object>` | `{ [channelId]: boolean }` — join-in-progress flags |
+| `joinedChatChannels` | `ref<Set<number>>` | Channel IDs the client has joined |
+
+**Usage pattern:**
+```js
+// In any component or composable:
+const store = useWorkspaceStore()
+const { wsConnected, chatMessagesMap } = storeToRefs(store)
+// or read directly (non-reactive):
+store.wsConnected
+```
+
+**Known issues / design notes:**
+- `activePaneIndex` is declared in the store but `usePanes` still maintains its own local
+  `activePaneIndex` ref that is exported and used for the active-pane highlight. These should
+  be consolidated — `usePanes` should read/write the store's copy.
+
+---
+
 ## `composables/usePanes.js`
 
 **Role:** Multi-pane layout state, tab management, and drag-drop. Instantiated once in
@@ -189,9 +224,7 @@ PANE_COUNTS = { one: 1, 'two-horizontal': 2, 'two-vertical': 2,
 | Parameter | What it is |
 |---|---|
 | `activePane` | `ref<string>` — shared global active-pane kind (`'terminal'`/`'chat'`/`'file'`). **Architectural problem: should be per-pane.** |
-| `selectTerminalNode(tid, opts)` | Callback into `ProjectPage` — activates a terminal in the active pane |
-| `selectChannelNode(cid, opts)` | Callback into `ProjectPage` — activates a chat channel |
-| `selectFileNode(fid, opts)` | Callback into `ProjectPage` — activates a file |
+| `pendingNavigation` | `ref<{kind, id, opts}\|null>` — written by `usePanes` when a tab activation or node drop requires a resource to be loaded; `ProjectPage` watches this ref and dispatches to `selectTerminalNode`/`selectChannelNode`/`selectFileNode`. Replaces the three callback parameters that previously created a circular dependency. |
 
 **Reactive state:**
 
@@ -212,30 +245,28 @@ A `Tab` is `{ key: string, kind: string, id: number|string, label: string }` whe
 | `parseTabKey(key)` | Splits `"kind:id"` into `{ kind, id }`. Returns `null` if malformed. |
 | `bindTabToActivePane(kind, id, label)` | Adds a tab to `panes[activePaneIndex]` if not present, sets it active. |
 | `bindTabToPane(paneIndex, kind, id, label)` | Same but targets a specific pane index. Also sets `activePaneIndex`. |
-| `activatePaneTab(paneIndex, key)` | Sets the pane's `activeTab`, then calls the appropriate `select*` callback to load the resource. |
+| `activatePaneTab(paneIndex, key)` | Sets the pane's `activeTab`, writes `pendingNavigation` so `ProjectPage` loads the resource. |
 | `closePaneTab(paneIndex, key)` | Removes the tab. If it was active, activates the previous tab (or clears to `null`). |
 | `onTabDragStart(fromPaneIndex, tabKey, event)` | Sets `dataTransfer` with `application/x-carbide-tab` payload. |
 | `onTabDrop(toPaneIndex, event)` | Moves the tab from source pane to target pane (or just activates if same pane). Calls `activatePaneTab`. |
-| `onPaneDrop(paneIndex, event)` | Handles `application/x-carbide-node` drops (from explorer tree). Calls `select*` callback for the dropped resource. |
+| `onPaneDrop(paneIndex, event)` | Handles `application/x-carbide-node` drops (from explorer tree). Writes `pendingNavigation` for the dropped resource. |
 
 **Known issues / design notes:**
-- `activatePaneTab` calls `selectTerminalNode`/`selectChannelNode`/`selectFileNode` which
-  are page-level wrappers that also update `selectedTerminalId`, `selectedChatChannelId`, etc.
-  Those are **global singletons** — meaning activating a tab in pane 2 updates the global
-  selected ID, affecting what pane 1 shows if it uses those globals. This is the root of the
-  per-pane isolation problems.
+- `activatePaneTab` and `onPaneDrop` no longer call page-level functions directly; they write
+  `pendingNavigation` which `ProjectPage` watches. This breaks the previous circular dependency.
 - `panes` is always length 4 regardless of layout. Panes beyond the current layout count
   retain their tabs silently — switching from quad back to one doesn't lose pane 2–4 tabs.
   This is intentional persistence but undocumented.
-- `onPaneDrop` calls `select*` after setting `activePaneIndex`, but the select callbacks call
-  `bindTabToActivePane` which reads `activePaneIndex` — so the order matters.
+- `activePaneIndex` is still local state in `usePanes` (not in the store). It is exported and
+  passed as a prop to `WorkspacePaneShell` for the active-pane highlight class.
 
 ---
 
 ## `composables/useChat.js`
 
 **Role:** All chat state — channel list, message history, join/leave, send. Instantiated once
-in `ProjectPage.vue`. Results passed as props to every `WorkspacePaneShell`.
+in `ProjectPage.vue`. Chat maps and user identity live in `workspaceStore` and are read directly
+by `WorkspacePaneShell` — they are no longer passed as props.
 
 **Inputs (injected at construction):**
 
@@ -253,12 +284,18 @@ in `ProjectPage.vue`. Results passed as props to every `WorkspacePaneShell`.
 |---|---|---|
 | `chatChannels` | `ref<Channel[]>` | All channels for this project |
 | `selectedChatChannelId` | `ref<number\|null>` | The most recently selected channel. **Global — not per-pane.** |
-| `chatMessagesMap` | `ref<{ [channelId]: Message[] }>` | Message history, keyed by channel ID |
-| `chatJoiningMap` | `ref<{ [channelId]: boolean }>` | `true` while waiting for `chat:joined` confirmation |
 | `chatUsers` | `ref<User[]>` | User list for the **currently selected** channel only |
-| `joinedChatChannels` | `ref<Set<number>>` | Set of channel IDs the client has joined |
-| `currentUserId` | `computed` | Calls `authService.userId()` |
 | `activeChannelName` | `computed` | Name of `selectedChatChannelId` channel |
+
+**State moved to `workspaceStore`** (no longer local to `useChat`):
+
+| Store field | Type | Purpose |
+|---|---|---|
+| `chatMessagesMap` | `{ [channelId]: Message[] }` | Message history, keyed by channel ID |
+| `chatJoiningMap` | `{ [channelId]: boolean }` | `true` while waiting for `chat:joined` confirmation |
+| `joinedChatChannels` | `Set<number>` | Set of channel IDs the client has joined |
+| `currentUserId` | `computed` | Derived from `authService.userId()` |
+| `wsConnected` | `boolean` | WS open state |
 
 **Exported functions:**
 
@@ -291,12 +328,12 @@ in `ProjectPage.vue`. Results passed as props to every `WorkspacePaneShell`.
 **Known issues / design notes:**
 - `selectedChatChannelId` is a single global ref. Two panes opening different channels
   overwrite each other. `chatUsers` similarly reflects only the last selected channel.
-- `chatMessagesMap` is shared across all panes — correct for message storage, but
-  `WorkspacePaneShell` reads `chatMessagesMap[activeChatChannelId]` where
-  `activeChatChannelId` comes from the pane's own active tab key, so display isolation
-  actually works. The problem is writes: `chat:message` only appends if the array already
-  exists (history loaded), so a channel opened in pane 2 whose history wasn't pre-fetched
-  will silently drop incoming messages until the pane is clicked and `switchChatChannel` runs.
+- `chatMessagesMap` is in the store and shared across all panes — correct for message storage.
+  `WorkspacePaneShell` reads `store.chatMessagesMap[activeChatChannelId]` where
+  `activeChatChannelId` comes from the pane's own active tab key, so display isolation works.
+  The problem is writes: `chat:message` only appends if the array already exists (history
+  loaded), so a channel opened in a pane whose history wasn't pre-fetched will silently drop
+  incoming messages until `switchChatChannel` runs.
 - Join timeout (4.5 s) is a single handle — joining a second channel before the first
   times out cancels the first channel's timeout.
 - `sendChat` both HTTP-posts and sends a WS frame. The WS frame is the broadcast path
@@ -306,10 +343,10 @@ in `ProjectPage.vue`. Results passed as props to every `WorkspacePaneShell`.
 
 ## `composables/useTerminals.js`
 
-**Role:** Terminal list, create, connect, and the xterm.js instance lifecycle. Instantiated once
-in `ProjectPage.vue`. There is **one xterm instance** in this composable — it is reused across
-all panes. The actual per-pane xterm is now in `TerminalPane.vue` (see below); this composable
-is partially superseded but still owns the terminal list, create flow, and rename.
+**Role:** Terminal list, create, connect, rename. Instantiated once in `ProjectPage.vue`.
+The xterm instance has been removed from this composable — all xterm lifecycle is now owned
+exclusively by `TerminalPane.vue`. This composable handles only the terminal list, create
+flow (dialog → WS send → `term:created` receive), and rename.
 
 **Inputs (injected at construction):**
 
@@ -336,11 +373,7 @@ is partially superseded but still owns the terminal list, create flow, and renam
 
 | Variable | Purpose |
 |---|---|
-| `xterm` | The composable's own `Terminal` instance (now redundant — `TerminalPane` has its own) |
-| `fitAddon` | `FitAddon` for the composable's xterm |
-| `terminalId` | Which terminal ID the composable's xterm is bound to |
 | `createTerminalTimeout` | 5 s timeout handle for `term:create` → `term:created` |
-| `applyingRemoteResize` | Flag to suppress echo when applying a server-sent resize |
 
 **Exported functions:**
 
@@ -349,16 +382,13 @@ is partially superseded but still owns the terminal list, create flow, and renam
 | `openCreateTerminalDialog()` | Auto-names next terminal, shows dialog |
 | `confirmCreateTerminal()` | Reads name from dialog, calls `openTerminal({ name })` |
 | `openTerminal(options)` | Sends `term:create`. Sets a 5 s timeout that shows an error if `term:created` doesn't arrive. |
-| `selectTerminalNode(tid, options)` | Sets `selectedTerminalId`, adds/activates tab via `bindTabToActivePane`, calls `connectToTerminal` |
-| `connectToTerminal(tid)` | Sets `activePane = 'terminal'`, sets `terminalId`, calls `bindTabToActivePane` |
+| `selectTerminalNode(tid, options)` | Sets `selectedTerminalId`, adds/activates tab via `bindTabToActivePane` |
 | `renameTerminalById(tid)` | `window.prompt` for new name, sends `term:rename` |
 | `renameSelectedTerminal(tid)` | Delegates to `renameTerminalById`. Used by `WorkspacePaneShell` context menu. |
 | `terminalModeNoop(tid)` | Sets error message — incognito/exclusive mode not implemented |
 | `registerHandlers(offHandlers, onTerminalCreated)` | Registers all WS handlers. Optional callback overrides the default `selectTerminalNode` on `term:created`. |
-| `mountXterm(el)` | Creates/replaces the composable's own xterm on a DOM element. **Now only called from `ProjectPage` watcher — may be dead code since `TerminalPane` handles its own mount.** |
-| `cleanup()` | Disposes xterm, clears create timeout, disconnects ResizeObserver |
-| `getXterm()` | Returns the composable's xterm instance |
-| `getTerminalId()` | Returns `terminalId` |
+| `cleanup()` | Clears create timeout |
+| `getXterm()` | Returns `null` — xterm removed from composable; retained for call-site compatibility |
 
 **WS handlers registered by `registerHandlers`:**
 
@@ -368,21 +398,11 @@ is partially superseded but still owns the terminal list, create flow, and renam
 | `term:list` | Replaces `terminalList` |
 | `term:created` | Clears timeout, eagerly pushes to `terminalList`, calls `onTerminalCreated` or `selectTerminalNode` |
 | `term:renamed` | Updates the terminal's name in `terminalList` |
-| `term:output` | Writes to composable xterm if `terminal_id` matches `terminalId` |
-| `term:joined` | Applies remote resize to composable xterm, calls `fitTerminalSoon` |
-| `term:resized` | Applies remote resize to composable xterm |
-| `term:exit` | Writes `[session ended]` to composable xterm |
 
 **Known issues / design notes:**
-- There are now **two parallel xterm implementations**: this composable's `xterm`/`fitAddon`
-  and the one inside each `TerminalPane.vue` instance. Both register `term:output` handlers.
-  Output for a given `terminal_id` goes to whichever handler matches `boundTerminalId`/`terminalId`.
-  In practice `TerminalPane` wins because it checks its own `boundTerminalId` while the composable
-  checks `terminalId` which is only set by `connectToTerminal`. This split should be resolved by
-  removing the composable's xterm entirely.
-- `selectedTerminalId` is global — same per-pane isolation problem as chat.
-- `terminalActive` is watched by `ProjectPage` to re-focus xterm, but `TerminalPane` handles its
-  own focus via a `watch` on `props.active`. The `ProjectPage` watcher is likely dead code.
+- The composable's xterm has been removed. All `term:output`/`term:joined`/`term:resized`/`term:exit`
+  handling is now exclusively in `TerminalPane.vue`. This resolves the dual-xterm problem.
+- `selectedTerminalId` is still global — same per-pane isolation problem as chat.
 
 ---
 
@@ -487,16 +507,11 @@ appropriate content component. Forwards user actions upward as events to `Projec
 | `pane` | `Object` | `{ tabs: Tab[], activeTab: string\|null }` — the pane's tab state from `usePanes` |
 | `paneIndex` | `number` | This pane's index (0–3) |
 | `activePaneIndex` | `number` | Which pane is currently active (from `usePanes`) |
-| `activePane` | `string` | Global active-pane kind — **not used for display**, passed through |
-| `activeChannelName` | `string` | Name of the global selected channel — **not used for display** |
-| `chatUsers` | `User[]` | Global chat user list — not currently rendered in shell, passed implicitly |
-| `selectedTerminalId` | `number\|null` | Global selected terminal — **not used here**, passed through |
-| `selectedFileId` | `string` | Global selected file — **not used here** |
-| `chatMessagesMap` | `Object` | `{ [channelId]: Message[] }` — read to get this pane's messages |
-| `chatJoiningMap` | `Object` | `{ [channelId]: boolean }` — read to get this pane's joining state |
-| `joinedChatChannels` | `Set<number>` | Read to determine `paneCanSend` |
-| `currentUserId` | `number\|null` | Passed to `ChatPane` |
-| `wsConnected` | `boolean` | Passed to `ChatPane` for `connected` prop |
+
+All other data previously passed as props (`chatMessagesMap`, `chatJoiningMap`,
+`joinedChatChannels`, `currentUserId`, `wsConnected`, `activePane`, `activeChannelName`,
+`chatUsers`, `selectedTerminalId`, `selectedFileId`) is now read directly from
+`useWorkspaceStore()` inside this component.
 
 **Emits:**
 
@@ -520,17 +535,11 @@ appropriate content component. Forwards user actions upward as events to `Projec
 | `activeTerminalId` | `effectiveActiveKey.split(':')[1]` | Terminal ID for `TerminalPane` |
 | `activeFileId` | `effectiveActiveKey.split(':').slice(1)` | File path for `FilePane` |
 | `activeChatChannelId` | `effectiveActiveKey.split(':')[1]` | Channel ID for message lookup |
-| `paneMessages` | `chatMessagesMap[activeChatChannelId]` | Messages for this pane's active channel |
-| `paneJoining` | `chatJoiningMap[activeChatChannelId]` | Join spinner state |
-| `paneCanSend` | `joinedChatChannels.has(cid) && wsConnected && !joining` | Send button enable |
+| `paneMessages` | `store.chatMessagesMap[activeChatChannelId]` | Messages for this pane's active channel |
+| `paneJoining` | `store.chatJoiningMap[activeChatChannelId]` | Join spinner state |
+| `paneCanSend` | `store.joinedChatChannels.has(cid) && store.wsConnected && !joining` | Send button enable |
 
 **Known issues / design notes:**
-- 9 of the 14 props (`activePane`, `activeChannelName`, `chatUsers`, `selectedTerminalId`,
-  `selectedFileId`, and parts of `chatMessagesMap`/`chatJoiningMap`) are global state that
-  should either be per-pane or not needed here at all. They exist because `ProjectPage` had no
-  other way to pass information except drilling every ref as a prop.
-- The same 14 props + 11 event handlers are copy-pasted once per pane instance in every layout
-  variant in `ProjectPage.vue` — 4 panes × 6 layouts = up to 24 copies.
 - `TerminalPane` is keyed as `` `term-${paneIndex}-${activeTerminalId || 'none'}` `` so
   switching terminals forces a full remount. This is correct behaviour but means terminal
   scroll history is lost on switch unless the xterm buffers it.
@@ -544,18 +553,25 @@ explorer tree, the layout switcher, context menus, and all dialogs. All composab
 instantiated here and their results are drilled as props into `WorkspacePaneShell` instances.
 
 **Composables instantiated:**
-- `usePanes({ activePane, selectTerminalNode, selectChannelNode, selectFileNode })`
+- `usePanes({ activePane, pendingNavigation })`
 - `useTerminals({ error, bindTabToActivePane, activePane })`
 - `useChat(projectId, { wsConnected, error, bindTabToActivePane, activePane })`
 
-**Top-level refs (not from composables):**
+**Store usage:**
+```js
+const workspaceStore = useWorkspaceStore()
+const { wsConnected, joinedChatChannels: storeJoinedChatChannels } = storeToRefs(workspaceStore)
+```
+`wsConnected` is now a store ref; `system:connected` sets it via the store-backed ref.
+
+**Top-level refs (not from composables or store):**
 
 | Ref | Purpose |
 |---|---|
 | `project` | Loaded project object |
 | `error` | Error banner text, shared by all composables |
-| `wsConnected` | Set `true` on `system:connected`, reset to `false` (indirectly) on reconnect |
 | `activePane` | Global active-pane kind string. **Should be per-pane.** |
+| `pendingNavigation` | Written by `usePanes`; watched here to dispatch `select*` calls |
 | `offHandlers` | Array of unsubscribe functions, called in `onBeforeUnmount` |
 
 **Explorer tree state:**
@@ -586,9 +602,9 @@ instantiated here and their results are drilled as props into `WorkspacePaneShel
 | `selectChannelNode(channelId, options)` | Updates `selectionKeys`, delegates to `chat.selectChannelNode` |
 | `selectFileNode(fileId, options)` | Updates `selectedFileId`, `selectionKeys`, marks file open, calls `bindTabToPane` or `bindTabToActivePane` |
 
-These wrappers are injected into `usePanes` as callbacks so `usePanes` can trigger navigation
-when a tab is activated or a node is dropped — creating a circular dependency:
-`ProjectPage` → `usePanes` → `ProjectPage` wrappers → composables → `ProjectPage` refs.
+These wrappers are called from a `watch(pendingNavigation, ...)` inside `ProjectPage`.
+`usePanes` writes to `pendingNavigation` instead of calling the wrappers directly, breaking
+the previous circular dependency: `ProjectPage` → `usePanes` → callbacks → `ProjectPage`.
 
 **Explorer event handlers:**
 
@@ -620,18 +636,11 @@ when a tab is activated or a node is dropped — creating a circular dependency:
 | `onBeforeUnmount` | Removes keydown/resize listeners, calls all `offHandlers`, `cleanupChat`, `cleanupTerminals`, `workerSocket.disconnect` |
 
 **Known issues / design notes:**
-- The layout template section (lines 1–505 of the template) contains 6 `<Splitter>` variants
-  with the same `WorkspacePaneShell` block copy-pasted once per pane per layout — up to 24
-  instances of the same 14-prop/11-event block. Adding or removing a prop requires editing
-  every instance. **This should be a `v-for` over `panes.slice(0, PANE_COUNTS[paneLayout])`
-  with a computed layout grid, eliminating all repetition.**
-- `activePane`, `selectedTerminalId`, `selectedChatChannelId` are global singletons shared
-  across all panes. Activating a terminal in pane 2 sets `selectedTerminalId` globally,
-  which means pane 1's content display depends on what pane 2 last activated. **These should
-  live inside the `panes[i]` objects.**
-- The circular dependency between `ProjectPage` wrappers and `usePanes` callbacks makes it
-  impossible to test `usePanes` in isolation. **Fix: move the resource-selection logic fully
-  into the composables; `ProjectPage` should only own UI state (dialogs, explorer selection).**
+- The layout template uses `LAYOUT_CONFIGS` + a single `v-for` over rows/panes — the
+  copy-pasted 6-layout block has been eliminated.
+- `activePane`, `selectedTerminalId`, `selectedChatChannelId` are still global singletons.
+  Activating a terminal in pane 2 sets `selectedTerminalId` globally. **These should
+  live inside the `panes[i]` objects** (remaining work).
 - `fileTree` is hardcoded. A live FS sync is a planned feature (inotify-backed in-database FS).
 
 ---
@@ -640,23 +649,22 @@ when a tab is activated or a node is dropped — creating a circular dependency:
 
 1. **Global singletons masquerading as per-pane state.** `activePane`, `selectedTerminalId`,
    `selectedChatChannelId` are single refs shared by all panes. Any action in one pane mutates
-   state that all other panes read.
+   state that all other panes read. **Remaining work.**
 
 2. **No pane-local resource selection.** Each `panes[i]` object only holds `{ tabs, activeTab }`.
    It should also hold `{ activePaneKind, activeTerminalId, activeChannelId, activeFileId }` so
-   that each pane independently tracks what it is showing.
+   that each pane independently tracks what it is showing. **Remaining work.**
 
-3. **14-prop prop-drilling.** Everything flows from `ProjectPage` → `WorkspacePaneShell` as
-   individual props. Adding any new piece of per-pane data requires touching every pane
-   instantiation in the template. **Fix: Pinia store or `provide`/`inject` keyed by pane index.**
+3. ~~**14-prop prop-drilling.**~~ **Resolved.** `WorkspacePaneShell` now reads `chatMessagesMap`,
+   `chatJoiningMap`, `joinedChatChannels`, `currentUserId`, and `wsConnected` directly from
+   `useWorkspaceStore()`. The 10-prop chain from `ProjectPage` is eliminated.
 
-4. **Copy-pasted layout template.** 6 layout variants × up to 4 panes = up to 24 copies of
-   the same component block. **Fix: `v-for` + CSS grid.**
+4. ~~**Copy-pasted layout template.**~~ **Resolved.** The template now uses `LAYOUT_CONFIGS` +
+   a `v-for` over rows and panes. One `WorkspacePaneShell` block covers all layouts.
 
-5. **Dual xterm instances.** `useTerminals` and `TerminalPane` both own an xterm and both
-   register WS output handlers. **Fix: remove the composable's xterm entirely; it is superseded
-   by `TerminalPane`.**
+5. ~~**Dual xterm instances.**~~ **Resolved.** The xterm, FitAddon, and ResizeObserver have been
+   removed from `useTerminals`. All xterm lifecycle lives exclusively in `TerminalPane.vue`.
 
-6. **Circular dependency.** `usePanes` calls back into `ProjectPage` wrapper functions which
-   call back into composables. **Fix: invert the dependency — composables emit events or return
-   action objects that `ProjectPage` handles.**
+6. ~~**Circular dependency.**~~ **Resolved.** `usePanes` no longer receives callback functions
+   from `ProjectPage`. It writes `pendingNavigation`; `ProjectPage` owns a `watch()` that
+   dispatches to `selectTerminalNode` / `selectChannelNode` / `selectFileNode`.
