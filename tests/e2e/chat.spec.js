@@ -101,7 +101,7 @@ test('chat: two channels are isolated per-pane', { timeout: 30000 }, async ({ pa
   await expect(page.locator('.splitter-panel')).toHaveCount(2, { timeout: 3000 })
 
   // Create a second channel if only one exists
-  await page.locator('.p-tree-node-label', { hasText: 'Channels' }).first().rightclick()
+  await page.locator('.p-tree-node-label', { hasText: 'Channels' }).first().click({ button: 'right' })
   const newChanItem = page.locator('.p-contextmenu-item', { hasText: 'New Channel' }).first()
   if (await newChanItem.isVisible({ timeout: 1000 }).catch(() => false)) {
     await newChanItem.click()
@@ -145,9 +145,9 @@ test('terminal: create, prompt appears, ls runs', { timeout: 30000 }, async ({ p
   const termTab = page.locator('.pane-tab', { hasText: /terminal/i }).first()
   await expect(termTab).toBeVisible({ timeout: 8000 })
 
-  // xterm canvas should be present
-  const termCanvas = page.locator('.xterm-screen canvas').first()
-  await expect(termCanvas).toBeVisible({ timeout: 5000 })
+  // xterm container should be present (canvas renderer isn't used in headless, check for the viewport)
+  const termEl = page.locator('.terminal-pane__container .xterm-viewport').first()
+  await expect(termEl).toBeVisible({ timeout: 5000 })
 
   // Send ls
   await page.keyboard.type('ls')
@@ -157,7 +157,10 @@ test('terminal: create, prompt appears, ls runs', { timeout: 30000 }, async ({ p
   await page.waitForTimeout(1500)
 
   // Verify some WS output came back
-  const termOutput = wsFrames.filter(f => f.dir === '←' && f.data?.includes('term:output'))
+  const termOutput = wsFrames.filter(f => {
+    if (f.dir !== '←') return false
+    try { const m = JSON.parse(f.data); return m.cs === 'term' && m.cmd === 'output' } catch { return false }
+  })
   console.log(`[TERM TEST] term:output frames received: ${termOutput.length}`)
   expect(termOutput.length).toBeGreaterThan(0)
 
