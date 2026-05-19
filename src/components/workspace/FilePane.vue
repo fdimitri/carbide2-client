@@ -1,16 +1,16 @@
 <template>
-  <div class="file-pane">
-    <div v-if="!fileId" class="file-pane__placeholder">
+  <div class="flex flex-col flex-1 min-h-0 overflow-hidden">
+    <div v-if="!fileId" class="flex-1 grid place-items-center text-center text-muted p-4">
       Open a file from the explorer.
     </div>
     <template v-else>
-      <div class="file-pane__title-bar">
-        <span class="file-pane__filename">{{ filename }}</span>
-        <span v-if="loading" class="file-pane__status">Loading…</span>
-        <span v-if="loadError" class="file-pane__status file-pane__status--error">{{ loadError }}</span>
+      <div class="flex items-center gap-3 px-3 py-1 bg-[#1e1e1e] border-b border-[#333] text-[0.75rem] shrink-0">
+        <span class="text-[#cdd6f4] font-medium">{{ filename }}</span>
+        <span v-if="loading" class="text-[#6c7086] italic">Loading…</span>
+        <span v-if="loadError" class="text-[#f38ba8]">{{ loadError }}</span>
       </div>
       <MonacoEditor
-        class="file-pane__editor"
+        class="flex-1 min-h-0"
         :content="content"
         :language="language"
         :path="fileId"
@@ -72,52 +72,4 @@ onBeforeUnmount(() => {
 })
 </script>
 
-<style scoped>
-.file-pane {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
 
-.file-pane__placeholder {
-  flex: 1;
-  display: grid;
-  place-items: center;
-  text-align: center;
-  color: #91a2bc;
-  padding: 1rem;
-}
-
-.file-pane__title-bar {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.25rem 0.75rem;
-  background: #1e1e1e;
-  border-bottom: 1px solid #333;
-  font-size: 0.75rem;
-  flex-shrink: 0;
-}
-
-.file-pane__filename {
-  color: #cdd6f4;
-  font-weight: 500;
-}
-
-.file-pane__status {
-  color: #6c7086;
-  font-style: italic;
-}
-
-.file-pane__status--error {
-  color: #f38ba8;
-  font-style: normal;
-}
-
-.file-pane__editor {
-  flex: 1;
-  min-height: 0;
-}
-</style>

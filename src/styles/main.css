@@ -1,0 +1,127 @@
+@import "tailwindcss";
+
+/* ── Design tokens ──────────────────────────────────────────────────────── */
+@theme {
+  /* Dark IDE backgrounds */
+  --color-bg-0: #0d1219;
+  --color-bg-1: #111a26;
+  --color-bg-2: #162233;
+  --color-bg-3: #1f2f45;
+
+  /* UI colours */
+  --color-line:       #2b3d58;
+  --color-text:       #dce6f7;
+  --color-muted:      #91a2bc;
+  --color-accent:      #2ec4b6;
+  --color-accent-fg:   #d7fff6;
+  --color-accent-text: #051210;   /* Dark text on accent-coloured surfaces */
+  --color-warn:        #f07167;
+
+  /* Supplemental text shades */
+  --color-dim:         #3a4d64;   /* Placeholder / helper / very subdued text */
+
+  /* Input / deepest surface */
+  --color-bg-input:    #080f18;
+
+  /* Typography */
+  --font-ui:   "IBM Plex Sans", "Manrope", "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", "Fira Code", monospace;
+
+  /* Font-size scale additions */
+  --text-label: 0.7rem;           /* Small uppercase form/column labels */
+}
+
+/* ── Base ─────────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body, #app {
+  height: 100%;
+  margin: 0;
+  font-family: var(--font-ui);
+}
+
+/* ── Custom utilities ─────────────────────────────────────────────────────── */
+
+/* Workspace radial-gradient background */
+@utility workspace-bg {
+  background:
+    radial-gradient(circle at 0% 0%,   rgba(46, 196, 182, 0.08) 0, transparent 30%),
+    radial-gradient(circle at 100% 100%, rgba(85, 130, 255, 0.1) 0, transparent 35%),
+    var(--color-bg-0);
+}
+
+/* Monaco editor runtime CSS-var colours — single-property so variants work */
+@utility monaco-bg      { background: var(--vscode-editor-background, #1e1e1e); }
+@utility monaco-fg      { color:      var(--vscode-editor-foreground, #d4d4d4); }
+@utility monaco-tabs-bg { background: var(--vscode-editorGroupHeader-tabsBackground, #252526); }
+@utility monaco-input-bg     { background:   var(--vscode-input-background, #3c3c3c); }
+@utility monaco-input-fg     { color:        var(--vscode-input-foreground, #cccccc); }
+@utility monaco-input-border { border-color: var(--vscode-input-border, transparent); }
+@utility monaco-panel-border { border-color: var(--vscode-panel-border, #444); }
+@utility monaco-focus-border { border-color: var(--vscode-focusBorder, #007acc); }
+@utility monaco-focus-bg     { background:   var(--vscode-focusBorder, #007acc); }
+@utility monaco-line-fg      { color:        var(--vscode-editorLineNumber-foreground, #858585); }
+
+/* ── PrimeVue global overrides ────────────────────────────────────────────── */
+
+/* Workspace Menubar */
+.workspace-menubar.p-menubar {
+  border: 0;
+  border-bottom: 1px solid var(--color-line);
+  border-radius: 0;
+  background: linear-gradient(180deg, #101a29, #0f1724);
+}
+.workspace-menubar .p-menubar-item-link {
+  color: var(--color-text);
+}
+
+/* Explorer context menu */
+.tree-context-overlay.p-contextmenu {
+  background: #0d1522;
+  border: 1px solid rgba(115, 148, 191, 0.45);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+}
+
+/* Explorer Tree */
+.explorer-file-tree .p-tree-root {
+  padding: 0.2rem;
+}
+.explorer-file-tree .p-tree-node-content {
+  border-radius: 0.3rem;
+  padding: 0.25rem 0.35rem;
+  color: var(--color-text);
+}
+.explorer-file-tree .p-tree-node-content:hover {
+  background: rgba(74, 110, 157, 0.35);
+}
+.explorer-file-tree .p-tree-node-toggle-button {
+  width: 1rem;
+  height: 1rem;
+  color: #9cb1cf;
+}
+.explorer-file-tree .p-tree-node-selectable.p-tree-node-selected > .p-tree-node-content,
+.explorer-file-tree .p-tree-node-content.p-tree-node-selectable.p-tree-node-selected {
+  background: rgba(46, 196, 182, 0.17);
+  box-shadow: inset 2px 0 0 var(--color-accent);
+  color: var(--color-accent-fg);
+}
+.explorer-file-tree .pi-folder,
+.explorer-file-tree .pi-file {
+  color: #86d7ff;
+  font-size: 0.82rem;
+}
+.explorer-file-tree .p-tree-container .p-treenode .p-treenode-content {
+  border-radius: 0.32rem;
+}
+
+/* Workspace Splitter */
+.workspace-splitter.p-splitter {
+  border: 1px solid var(--color-line);
+  background: rgba(8, 16, 28, 0.45);
+}
+.workspace-splitter .p-splitter-gutter {
+  background: var(--color-bg-1);
+}
+.workspace-splitter .p-splitter-gutter-handle {
+  background: var(--color-line);
+}

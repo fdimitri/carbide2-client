@@ -1,13 +1,13 @@
 <template>
-  <div class="workspace">
-    <header class="workspace-header">
-      <span class="project-name">{{ project?.name || 'Loading...' }}</span>
-      <button class="btn-secondary" @click="$router.push('/dashboard')">← Dashboard</button>
+  <div class="flex flex-col flex-1 h-full min-h-0 text-text font-ui workspace-bg">
+    <header class="flex items-center justify-between px-4 py-[0.65rem] bg-gradient-to-r from-bg-2 to-[#132135] border-b border-line">
+      <span class="text-[1.05rem] font-bold tracking-[0.01em]">{{ project?.name || 'Loading...' }}</span>
+      <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-[#587296] text-[#c5d4ea] text-[0.85rem] rounded-[0.35rem] cursor-pointer hover:border-[#7ce9de] hover:text-[#dffffa]" @click="$router.push('/dashboard')">← Dashboard</button>
     </header>
 
     <Menubar :model="menuItems" class="workspace-menubar" />
 
-    <div class="workspace-body">
+    <div class="grid flex-1 min-h-0 overflow-hidden [grid-template-columns:300px_minmax(0,1fr)] max-[980px]:[grid-template-columns:1fr] max-[980px]:[grid-template-rows:42vh_minmax(0,1fr)]">
       <ExplorerPane
         :terminal-list="terminalList"
         :chat-channels="chatChannels"
@@ -25,12 +25,12 @@
         @leave-channel="leaveChannelFromContext"
       />
 
-      <section class="main-pane">
-        <Splitter :key="paneLayout" :layout="layoutConfig.outer" class="workspace-splitter">
+      <section class="flex flex-col flex-1 w-full h-full min-w-0 min-h-0 gap-0 px-[0.4rem] pt-[0.4rem]">
+        <Splitter :key="paneLayout" :layout="layoutConfig.outer" class="workspace-splitter flex-1 min-h-0 min-w-0">
           <SplitterPanel
             v-for="(row, rowIdx) in layoutConfig.rows"
             :key="rowIdx"
-            :class="row.length > 1 ? 'splitter-panel splitter-panel-inner' : 'splitter-panel'"
+            :class="row.length > 1 ? 'min-w-0 min-h-0 h-full p-0' : 'min-w-0 min-h-0 h-full'"
           >
             <WorkspacePaneShell
               v-if="row.length === 1"
@@ -49,12 +49,12 @@
             <Splitter
               v-else
               :layout="layoutConfig.inner"
-              class="workspace-splitter splitter-nested"
+              class="workspace-splitter w-full h-full min-h-0 min-w-0"
             >
               <SplitterPanel
                 v-for="paneIdx in row"
                 :key="paneIdx"
-                class="splitter-panel"
+              class="min-w-0 min-h-0 h-full"
               >
                 <WorkspacePaneShell
                   :pane="panes[paneIdx]"
@@ -74,39 +74,41 @@
           </SplitterPanel>
         </Splitter>
 
-        <nav class="workspace-dock">
-          <button v-for="item in dockItems" :key="item.label" class="dock-btn" :title="item.label" @click="item.command">
+        <nav class="flex items-center justify-center gap-1 px-2 py-1 border-t border-[rgba(43,61,88,0.7)] bg-[rgba(10,18,30,0.9)] shrink-0">
+            <button v-for="item in dockItems" :key="item.label"
+            class="inline-flex items-center justify-center w-8 h-8 rounded-lg border-0 bg-transparent text-muted cursor-pointer text-[0.95rem] transition-colors hover:bg-accent/15 hover:text-accent"
+            :title="item.label" @click="item.command">
             <i class="pi" :class="item.icon"></i>
           </button>
         </nav>
       </section>
     </div>
 
-    <div v-if="error" class="error-banner">{{ error }}</div>
+    <div v-if="error" class="px-3 py-2 bg-[#4d1b27] text-[#ffb9c8] border-t border-[#7f3243] text-[0.84rem]">{{ error }}</div>
 
     <Dialog v-model:visible="showCreateTerminalDialog" modal header="Create Terminal" :style="{ width: '28rem' }">
-      <div class="form-row">
-        <label class="form-label" for="terminal-name">Name</label>
-        <InputText id="terminal-name" v-model="terminalCreateName" class="form-input" @keydown.enter="confirmCreateTerminal" />
+      <div class="flex flex-col gap-[0.35rem] mb-[0.7rem]">
+        <label class="text-muted text-[0.78rem] font-semibold" for="terminal-name">Name</label>
+        <InputText id="terminal-name" v-model="terminalCreateName" class="w-full" @keydown.enter="confirmCreateTerminal" />
       </div>
-      <div class="form-row">
-        <label class="form-label" for="terminal-options">Options (placeholder)</label>
-        <InputText id="terminal-options" v-model="terminalCreateOptions" class="form-input" placeholder="Not implemented yet" disabled />
+      <div class="flex flex-col gap-[0.35rem] mb-[0.7rem]">
+        <label class="text-muted text-[0.78rem] font-semibold" for="terminal-options">Options (placeholder)</label>
+        <InputText id="terminal-options" v-model="terminalCreateOptions" class="w-full" placeholder="Not implemented yet" disabled />
       </div>
       <template #footer>
-        <button class="btn-secondary" @click="showCreateTerminalDialog = false">Cancel</button>
-        <button class="btn-primary" @click="confirmCreateTerminal">Create</button>
+        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-[#587296] text-[#c5d4ea] text-[0.85rem] rounded-[0.35rem] cursor-pointer hover:border-[#7ce9de] hover:text-[#dffffa]" @click="showCreateTerminalDialog = false">Cancel</button>
+        <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-[#123549] border border-accent text-[#9efdf3] rounded-[0.35rem] cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" @click="confirmCreateTerminal">Create</button>
       </template>
     </Dialog>
 
     <Dialog v-model:visible="showCreateChannelDialog" modal header="Create Channel" :style="{ width: '24rem' }">
-      <div class="form-row">
-        <label class="form-label" for="channel-name">Channel Name</label>
-        <InputText id="channel-name" v-model="channelCreateName" class="form-input" @keydown.enter="confirmCreateChannel" />
+      <div class="flex flex-col gap-[0.35rem] mb-[0.7rem]">
+        <label class="text-muted text-[0.78rem] font-semibold" for="channel-name">Channel Name</label>
+        <InputText id="channel-name" v-model="channelCreateName" class="w-full" @keydown.enter="confirmCreateChannel" />
       </div>
       <template #footer>
-        <button class="btn-secondary" @click="showCreateChannelDialog = false">Cancel</button>
-        <button class="btn-primary" @click="confirmCreateChannel">Create</button>
+        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-[#587296] text-[#c5d4ea] text-[0.85rem] rounded-[0.35rem] cursor-pointer hover:border-[#7ce9de] hover:text-[#dffffa]" @click="showCreateChannelDialog = false">Cancel</button>
+        <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-[#123549] border border-accent text-[#9efdf3] rounded-[0.35rem] cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" @click="confirmCreateChannel">Create</button>
       </template>
     </Dialog>
   </div>
@@ -332,208 +334,4 @@ onBeforeUnmount(() => {
 })
 </script>
 
-<style scoped>
-.workspace {
-  --bg-0: #0d1219;
-  --bg-1: #111a26;
-  --bg-2: #162233;
-  --bg-3: #1f2f45;
-  --line: #2b3d58;
-  --text: #dce6f7;
-  --muted: #91a2bc;
-  --accent: #2ec4b6;
-  --warn: #f07167;
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  height: 100%;
-  min-height: 0;
-  color: var(--text);
-  background:
-    radial-gradient(circle at 0% 0%, rgba(46, 196, 182, 0.08) 0, transparent 30%),
-    radial-gradient(circle at 100% 100%, rgba(85, 130, 255, 0.1) 0, transparent 35%),
-    var(--bg-0);
-  font-family: "IBM Plex Sans", "Manrope", "Segoe UI", sans-serif;
-}
 
-.workspace-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.65rem 1rem;
-  background: linear-gradient(90deg, var(--bg-2), #132135);
-  border-bottom: 1px solid var(--line);
-}
-
-:deep(.workspace-menubar.p-menubar) {
-  border: 0;
-  border-bottom: 1px solid var(--line);
-  border-radius: 0;
-  background: linear-gradient(180deg, #101a29, #0f1724);
-}
-
-:deep(.workspace-menubar .p-menubar-item-link) {
-  color: var(--text);
-}
-
-.project-name {
-  font-size: 1.05rem;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-}
-
-.workspace-body {
-  display: grid;
-  grid-template-columns: 300px minmax(0, 1fr);
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.main-pane {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  min-height: 0;
-  gap: 0;
-  padding: 0.4rem 0.4rem 0 0.4rem;
-}
-
-.workspace-splitter {
-  width: 100%;
-  height: 100%;
-  flex: 1;
-  min-height: 0;
-  min-width: 0;
-  border: 1px solid var(--line);
-  background: rgba(8, 16, 28, 0.45);
-}
-
-.splitter-panel {
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
-}
-
-.splitter-panel-inner {
-  padding: 0;
-}
-
-.splitter-nested {
-  width: 100%;
-  height: 100%;
-}
-
-.btn-primary,
-.btn-secondary {
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-  gap: 0.25rem;
-  padding: 0.35rem 0.75rem;
-  margin: 0.3rem auto 0.35rem;
-  border: 1px solid rgba(115, 148, 191, 0.45);
-  border-radius: 0.9rem;
-  background: rgba(10, 18, 30, 0.86);
-  backdrop-filter: blur(8px);
-}
-
-.dock-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2rem;
-  height: 2rem;
-  border-radius: 0.5rem;
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 0.95rem;
-  transition: background 0.15s, color 0.15s;
-}
-
-.dock-btn:hover {
-  background: rgba(46, 196, 182, 0.15);
-  color: var(--accent);
-}
-
-.btn-primary,
-.btn-secondary {
-  border-radius: 0.35rem;
-  cursor: pointer;
-}
-
-.btn-xs {
-  padding: 0.2rem 0.45rem;
-  font-size: 0.72rem;
-}
-
-.btn-primary {
-  padding: 0.42rem 0.85rem;
-  background: #123549;
-  border: 1px solid #2ec4b6;
-  color: #9efdf3;
-}
-
-.btn-primary:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.btn-secondary {
-  padding: 0.34rem 0.7rem;
-  background: transparent;
-  border: 1px solid #587296;
-  color: #c5d4ea;
-  font-size: 0.85rem;
-}
-
-.btn-secondary:hover {
-  border-color: #7ce9de;
-  color: #dffffa;
-}
-
-.form-row {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  margin-bottom: 0.7rem;
-}
-
-.form-label {
-  color: var(--muted);
-  font-size: 0.78rem;
-  font-weight: 600;
-}
-
-.form-input {
-  width: 100%;
-}
-
-.error-banner {
-  padding: 0.5rem 0.8rem;
-  background: #4d1b27;
-  color: #ffb9c8;
-  border-top: 1px solid #7f3243;
-  font-size: 0.84rem;
-}
-
-@media (max-width: 980px) {
-  .workspace-body {
-    grid-template-columns: 1fr;
-    grid-template-rows: 42vh minmax(0, 1fr);
-    max-height: 100%;
-  }
-
-  .explorer {
-    border-right: none;
-    border-bottom: 1px solid var(--line);
-  }
-}
-</style>

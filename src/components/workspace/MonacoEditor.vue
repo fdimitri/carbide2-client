@@ -1,6 +1,6 @@
 <!-- MonacoEditor.vue — thin wrapper around monaco-editor -->
 <template>
-  <div ref="containerEl" class="monaco-editor-container" />
+  <div ref="containerEl" class="w-full h-full min-h-0" />
 </template>
 
 <script setup>
@@ -100,10 +100,4 @@ onBeforeUnmount(() => {
 })
 </script>
 
-<style scoped>
-.monaco-editor-container {
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-}
-</style>
+

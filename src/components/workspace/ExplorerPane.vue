@@ -1,11 +1,11 @@
 <template>
-  <aside class="explorer">
-    <div class="explorer-header">
+  <aside class="border-r border-line bg-gradient-to-b from-[rgba(23,34,51,0.95)] to-[rgba(16,25,39,0.95)] flex flex-col min-h-0 min-w-0">
+    <div class="flex items-center justify-between px-3 py-[0.65rem] border-b border-line text-[0.84rem] font-bold uppercase tracking-[0.08em]">
       <span>Explorer</span>
     </div>
-    <input v-model="explorerSearch" class="tree-search" placeholder="Filter explorer..." />
+    <input v-model="explorerSearch" class="mx-[0.6rem] mt-[0.6rem] mb-[0.4rem] px-[0.55rem] py-[0.45rem] text-[0.82rem] bg-[#0f1724] border border-line text-text rounded-[0.35rem] focus:outline-none focus:border-[#67e8dc]" placeholder="Filter explorer..." />
 
-    <div class="tree-file-list">
+    <div class="flex-1 min-h-0 overflow-y-auto">
       <Tree
         class="explorer-file-tree"
         :value="explorerNodes"
@@ -20,7 +20,7 @@
       >
         <template #default="slotProps">
           <div
-            class="prime-tree-node-label"
+            class="flex items-center gap-[0.45rem] w-full min-w-0"
             :draggable="!['group-files','group-terminals','group-channels','dir'].includes(slotProps.node.data?.kind)"
             @click="onExplorerNodeSelect(slotProps.node)"
             @dblclick.stop="onExplorerNodeDblClick(slotProps.node)"
@@ -31,7 +31,7 @@
             <span>{{ slotProps.node.label }}</span>
             <i
               v-if="slotProps.node.data?.isOpen"
-              class="pi pi-circle-fill node-open-indicator"
+              class="pi pi-circle-fill ml-auto text-[#7ce9de] text-[0.52rem] opacity-90"
               title="Open in this browser context"
               aria-hidden="true"
             ></i>
@@ -367,110 +367,4 @@ function renameFileById(fileId) {
 defineExpose({ markTerminalOpen, markFileOpen })
 </script>
 
-<style scoped>
-.explorer {
-  border-right: 1px solid var(--line);
-  background: linear-gradient(180deg, rgba(23, 34, 51, 0.95), rgba(16, 25, 39, 0.95));
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  min-width: 0;
-}
 
-.explorer-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.65rem 0.75rem;
-  border-bottom: 1px solid var(--line);
-  font-size: 0.84rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.tree-search {
-  margin: 0.6rem 0.6rem 0.4rem;
-  padding: 0.45rem 0.55rem;
-  font-size: 0.82rem;
-  background: #0f1724;
-  border: 1px solid var(--line);
-  color: var(--text);
-  border-radius: 0.35rem;
-}
-
-.tree-search:focus {
-  outline: none;
-  border-color: #67e8dc;
-}
-
-.tree-file-list {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-}
-
-:deep(.tree-context-overlay.p-contextmenu) {
-  background: #0d1522;
-  border: 1px solid rgba(115, 148, 191, 0.45);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
-}
-
-.explorer-file-tree {
-  background: transparent;
-  border: 0;
-  color: var(--text);
-}
-
-.prime-tree-node-label {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  width: 100%;
-  min-width: 0;
-}
-
-.node-open-indicator {
-  margin-left: auto;
-  color: #7ce9de;
-  font-size: 0.52rem;
-  opacity: 0.9;
-}
-
-:deep(.explorer-file-tree .p-tree-root) {
-  padding: 0.2rem;
-}
-
-:deep(.explorer-file-tree .p-tree-node-content) {
-  border-radius: 0.3rem;
-  padding: 0.25rem 0.35rem;
-  color: var(--text);
-}
-
-:deep(.explorer-file-tree .p-tree-node-content:hover) {
-  background: rgba(74, 110, 157, 0.35);
-}
-
-:deep(.explorer-file-tree .p-tree-node-toggle-button) {
-  width: 1rem;
-  height: 1rem;
-  color: #9cb1cf;
-}
-
-:deep(.explorer-file-tree .p-tree-node-selectable.p-tree-node-selected > .p-tree-node-content),
-:deep(.explorer-file-tree .p-tree-node-content.p-tree-node-selectable.p-tree-node-selected) {
-  background: rgba(46, 196, 182, 0.17);
-  box-shadow: inset 2px 0 0 var(--accent);
-  color: #d7fff6;
-}
-
-:deep(.explorer-file-tree .pi-folder),
-:deep(.explorer-file-tree .pi-file) {
-  color: #86d7ff;
-  font-size: 0.82rem;
-}
-
-:deep(.explorer-file-tree .p-tree-container .p-treenode .p-treenode-content) {
-  border-radius: 0.32rem;
-}
-</style>
