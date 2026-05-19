@@ -7,12 +7,10 @@ import { useWorkspaceStore } from '../stores/workspaceStore'
 
 export function useChat(projectId, { wsConnected, error, bindTabToActivePane, activePane }) {
   const store = useWorkspaceStore()
-  const { chatMessagesMap, chatJoiningMap, joinedChatChannels } = storeToRefs(store)
+  const { chatMessagesMap, chatJoiningMap, joinedChatChannels, chatChannels, selectedChatChannelId } = storeToRefs(store)
 
-  const chatEl                 = ref(null)
-  const chatChannels           = ref([])
-  const selectedChatChannelId  = ref(null)
-  const chatUsers              = ref([])
+  const chatEl     = ref(null)
+  const chatUsers  = ref([])
   let joinTimeoutHandle        = null
 
   const currentUserId     = computed(() => store.currentUserId)

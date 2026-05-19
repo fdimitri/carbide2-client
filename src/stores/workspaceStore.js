@@ -9,14 +9,24 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const wsConnected       = ref(false)
   const currentUserId     = computed(() => authService.userId())
 
+  // ── Terminals ───────────────────────────────────────────────────────────────
+  const terminalList       = ref([])   // [{ id, name, status }]
+  const selectedTerminalId = ref(null)
+
   // ── Chat ────────────────────────────────────────────────────────────────────
-  const chatMessagesMap    = ref({})   // { [channelId]: Message[] }
-  const chatJoiningMap     = ref({})   // { [channelId]: boolean }
-  const joinedChatChannels = ref(new Set())
+  const chatChannels           = ref([])   // [{ id, name }]
+  const selectedChatChannelId  = ref(null)
+  const chatMessagesMap        = ref({})   // { [channelId]: Message[] }
+  const chatJoiningMap         = ref({})   // { [channelId]: boolean }
+  const joinedChatChannels     = ref(new Set())
 
   return {
     wsConnected,
     currentUserId,
+    terminalList,
+    selectedTerminalId,
+    chatChannels,
+    selectedChatChannelId,
     chatMessagesMap,
     chatJoiningMap,
     joinedChatChannels,

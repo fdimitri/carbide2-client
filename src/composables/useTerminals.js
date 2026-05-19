@@ -2,13 +2,16 @@
 // xterm lifecycle is fully owned by TerminalPane.vue; this composable
 // only manages the server-side terminal objects and the create/select flow.
 import { ref } from 'vue'
+import { storeToRefs } from 'pinia'
 import workerSocket from '../services/workerSocket'
 import { logInfo, logWs } from '../services/log'
+import { useWorkspaceStore } from '../stores/workspaceStore'
 
 export function useTerminals({ error, bindTabToActivePane, activePane }) {
+  const store = useWorkspaceStore()
+  const { terminalList, selectedTerminalId } = storeToRefs(store)
+
   const terminalLoading          = ref(false)
-  const terminalList             = ref([])
-  const selectedTerminalId       = ref(null)
   const showCreateTerminalDialog = ref(false)
   const terminalCreateName       = ref('')
   const terminalCreateOptions    = ref('')

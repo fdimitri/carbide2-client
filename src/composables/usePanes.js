@@ -35,9 +35,30 @@ export function usePanes({ activePane, pendingNavigation }) {
   ])
 
   function setPaneLayout(layout) {
-    const next = PANE_COUNTS[layout] ? layout : 'one'
-    paneLayout.value = next
+    const next      = PANE_COUNTS[layout] ? layout : 'one'
     const nextCount = PANE_COUNTS[next]
+    const prevCount = PANE_COUNTS[paneLayout.value]
+
+    // Evict tabs from panes being hidden into the last visible pane.
+    if (nextCount < prevCount) {
+      const targetPane = panes.value[nextCount - 1]
+      for (let i = nextCount; i < prevCount; i++) {
+        const hiddenPane = panes.value[i]
+        for (const tab of hiddenPane.tabs) {
+          if (!targetPane.tabs.find((t) => t.key === tab.key)) {
+            targetPane.tabs.push(tab)
+          }
+        }
+        // If the target had nothing active, inherit from the evicted pane.
+        if (!targetPane.activeTab && hiddenPane.activeTab) {
+          targetPane.activeTab = hiddenPane.activeTab
+        }
+        hiddenPane.tabs      = []
+        hiddenPane.activeTab = null
+      }
+    }
+
+    paneLayout.value = next
     if (activePaneIndex.value >= nextCount) activePaneIndex.value = nextCount - 1
   }
 
