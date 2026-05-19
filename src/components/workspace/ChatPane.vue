@@ -29,24 +29,15 @@ import { ref, watch, nextTick } from 'vue'
 
 const props = defineProps({
   messages: { type: Array, default: () => [] },
-  input: { type: String, default: '' },
   currentUserId: { type: [Number, String], default: null },
   joining: { type: Boolean, default: false },
   connected: { type: Boolean, default: false },
   canSend: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['update:input', 'send'])
+const emit = defineEmits(['send'])
 const chatEl = ref(null)
-const localInput = ref(props.input)
-
-watch(() => props.input, (value) => {
-  localInput.value = value
-})
-
-watch(localInput, (value) => {
-  emit('update:input', value)
-})
+const localInput = ref('')
 
 watch(
   () => props.messages.length,
@@ -57,8 +48,10 @@ watch(
 )
 
 function emitSend() {
-  if (!props.canSend) return
-  emit('send')
+  const text = localInput.value.trim()
+  if (!text || !props.canSend) return
+  emit('send', text)
+  localInput.value = ''
 }
 
 function formatTime(ts) {

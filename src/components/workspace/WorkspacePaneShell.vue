@@ -28,14 +28,12 @@
 
     <div class="pane-content" v-show="activeTabKind === 'channel'">
       <ChatPane
-        :input="chatInput"
         :messages="paneMessages"
         :current-user-id="currentUserId"
         :joining="paneJoining"
         :connected="wsConnected"
         :can-send="paneCanSend"
-        @update:input="emit('update:chatInput', $event)"
-        @send="emit('send-chat', activeChatChannelId)"
+        @send="(text) => emit('send-chat', activeChatChannelId, text)"
       />
     </div>
 
@@ -68,7 +66,6 @@ const props = defineProps({
   chatUsers: { type: Array, default: () => [] },
   selectedTerminalId: { type: [Number, null], default: null },
   selectedFileId: { type: String, default: '' },
-  chatInput: { type: String, default: '' },
   chatMessagesMap: { type: Object, default: () => ({}) },
   chatJoiningMap: { type: Object, default: () => ({}) },
   joinedChatChannels: { default: () => new Set() },
@@ -116,7 +113,7 @@ const paneJoining = computed(() => {
 
 const paneCanSend = computed(() => {
   const cid = activeChatChannelId.value
-  if (!cid || !props.wsConnected || !props.chatInput?.trim()) return false
+  if (!cid || !props.wsConnected) return false
   if (paneJoining.value) return false
   return props.joinedChatChannels?.has?.(cid) ?? false
 })
@@ -131,7 +128,6 @@ const emit = defineEmits([
   'activate-tab',
   'close-tab',
   'rename-terminal',
-  'update:chatInput',
   'send-chat',
   'pane-drop',
   'tab-drag-start',

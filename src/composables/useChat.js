@@ -11,7 +11,6 @@ export function useChat(projectId, { wsConnected, error, bindTabToActivePane, ac
   const chatMessagesMap        = ref({})   // { [channelId]: Message[] }
   const chatJoiningMap         = ref({})   // { [channelId]: boolean }
   const chatUsers              = ref([])
-  const chatInput              = ref('')
   const joinedChatChannels     = ref(new Set())
   let joinTimeoutHandle        = null
 
@@ -91,10 +90,10 @@ export function useChat(projectId, { wsConnected, error, bindTabToActivePane, ac
     await switchChatChannel()
   }
 
-  async function sendChat(channelId) {
+  async function sendChat(channelId, text) {
     const cid = channelId ? Number(channelId) : Number(selectedChatChannelId.value)
-    const text = chatInput.value.trim()
-    if (!text || !cid) return
+    const trimmed = (text || '').trim()
+    if (!trimmed || !cid) return
 
     if (!isJoinedChannel(cid)) {
       error.value = 'Not joined to this channel yet.'
@@ -104,14 +103,13 @@ export function useChat(projectId, { wsConnected, error, bindTabToActivePane, ac
     error.value = ''
 
     try {
-      await createChatMessage(projectId, cid, text)
+      await createChatMessage(projectId, cid, trimmed)
     } catch (e) {
       error.value = e.message || 'Failed to save chat message'
       return
     }
 
-    workerSocket.send('chat', 'message', { channel_id: cid, text })
-    chatInput.value = ''
+    workerSocket.send('chat', 'message', { channel_id: cid, text: trimmed })
   }
 
   function scrollChat() {
@@ -199,7 +197,6 @@ export function useChat(projectId, { wsConnected, error, bindTabToActivePane, ac
     chatMessagesMap,
     chatJoiningMap,
     chatUsers,
-    chatInput,
     joinedChatChannels,
     currentUserId,
     activeChannelName,

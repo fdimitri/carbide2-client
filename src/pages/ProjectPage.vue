@@ -67,7 +67,6 @@
               :chat-users="chatUsers"
               :selected-terminal-id="selectedTerminalId"
               :selected-file-id="selectedFileId"
-              :chat-input="chatInput"
               :chat-messages-map="chatMessagesMap"
               :current-user-id="currentUserId"
               :chat-joining-map="chatJoiningMap"
@@ -80,8 +79,7 @@
               @tab-drag-start="onTabDragStart"
               @tab-drop="onTabDrop"
               @rename-terminal="renameSelectedTerminal"
-              @update:chat-input="chatInput = $event"
-              @send-chat="sendChat($event)"
+              @send-chat="(channelId, text) => sendChat(channelId, text)"
             />
           </SplitterPanel>
         </Splitter>
@@ -97,7 +95,6 @@
               :chat-users="chatUsers"
               :selected-terminal-id="selectedTerminalId"
               :selected-file-id="selectedFileId"
-              :chat-input="chatInput"
               :chat-messages-map="chatMessagesMap"
               :current-user-id="currentUserId"
               :chat-joining-map="chatJoiningMap"
@@ -110,8 +107,7 @@
               @tab-drag-start="onTabDragStart"
               @tab-drop="onTabDrop"
               @rename-terminal="renameSelectedTerminal"
-              @update:chat-input="chatInput = $event"
-              @send-chat="sendChat($event)"
+              @send-chat="(channelId, text) => sendChat(channelId, text)"
             />
           </SplitterPanel>
           <SplitterPanel class="splitter-panel">
@@ -124,7 +120,6 @@
               :chat-users="chatUsers"
               :selected-terminal-id="selectedTerminalId"
               :selected-file-id="selectedFileId"
-              :chat-input="chatInput"
               :chat-messages-map="chatMessagesMap"
               :current-user-id="currentUserId"
               :chat-joining-map="chatJoiningMap"
@@ -137,8 +132,7 @@
               @tab-drag-start="onTabDragStart"
               @tab-drop="onTabDrop"
               @rename-terminal="renameSelectedTerminal"
-              @update:chat-input="chatInput = $event"
-              @send-chat="sendChat($event)"
+              @send-chat="(channelId, text) => sendChat(channelId, text)"
             />
           </SplitterPanel>
         </Splitter>
@@ -154,7 +148,6 @@
               :chat-users="chatUsers"
               :selected-terminal-id="selectedTerminalId"
               :selected-file-id="selectedFileId"
-              :chat-input="chatInput"
               :chat-messages-map="chatMessagesMap"
               :current-user-id="currentUserId"
               :chat-joining-map="chatJoiningMap"
@@ -167,8 +160,7 @@
               @tab-drag-start="onTabDragStart"
               @tab-drop="onTabDrop"
               @rename-terminal="renameSelectedTerminal"
-              @update:chat-input="chatInput = $event"
-              @send-chat="sendChat($event)"
+              @send-chat="(channelId, text) => sendChat(channelId, text)"
             />
           </SplitterPanel>
           <SplitterPanel class="splitter-panel">
@@ -181,7 +173,6 @@
               :chat-users="chatUsers"
               :selected-terminal-id="selectedTerminalId"
               :selected-file-id="selectedFileId"
-              :chat-input="chatInput"
               :chat-messages-map="chatMessagesMap"
               :current-user-id="currentUserId"
               :chat-joining-map="chatJoiningMap"
@@ -194,8 +185,7 @@
               @tab-drag-start="onTabDragStart"
               @tab-drop="onTabDrop"
               @rename-terminal="renameSelectedTerminal"
-              @update:chat-input="chatInput = $event"
-              @send-chat="sendChat($event)"
+              @send-chat="(channelId, text) => sendChat(channelId, text)"
             />
           </SplitterPanel>
         </Splitter>
@@ -211,7 +201,6 @@
               :chat-users="chatUsers"
               :selected-terminal-id="selectedTerminalId"
               :selected-file-id="selectedFileId"
-              :chat-input="chatInput"
               :chat-messages-map="chatMessagesMap"
               :current-user-id="currentUserId"
               :chat-joining-map="chatJoiningMap"
@@ -224,8 +213,7 @@
               @tab-drag-start="onTabDragStart"
               @tab-drop="onTabDrop"
               @rename-terminal="renameSelectedTerminal"
-              @update:chat-input="chatInput = $event"
-              @send-chat="sendChat($event)"
+              @send-chat="(channelId, text) => sendChat(channelId, text)"
             />
           </SplitterPanel>
           <SplitterPanel class="splitter-panel splitter-panel-inner">
@@ -240,7 +228,6 @@
                   :chat-users="chatUsers"
                   :selected-terminal-id="selectedTerminalId"
                   :selected-file-id="selectedFileId"
-                  :chat-input="chatInput"
                   :chat-messages-map="chatMessagesMap"
                   :current-user-id="currentUserId"
                   :chat-joining-map="chatJoiningMap"
@@ -253,8 +240,7 @@
               @tab-drag-start="onTabDragStart"
               @tab-drop="onTabDrop"
               @rename-terminal="renameSelectedTerminal"
-                  @update:chat-input="chatInput = $event"
-                  @send-chat="sendChat($event)"
+                  @send-chat="(channelId, text) => sendChat(channelId, text)"
                 />
               </SplitterPanel>
               <SplitterPanel class="splitter-panel">
@@ -267,7 +253,6 @@
                   :chat-users="chatUsers"
                   :selected-terminal-id="selectedTerminalId"
                   :selected-file-id="selectedFileId"
-                  :chat-input="chatInput"
                   :chat-messages-map="chatMessagesMap"
                   :current-user-id="currentUserId"
                   :chat-joining-map="chatJoiningMap"
@@ -280,8 +265,7 @@
               @tab-drag-start="onTabDragStart"
               @tab-drop="onTabDrop"
               @rename-terminal="renameSelectedTerminal"
-                  @update:chat-input="chatInput = $event"
-                  @send-chat="sendChat($event)"
+                  @send-chat="(channelId, text) => sendChat(channelId, text)"
                 />
               </SplitterPanel>
             </Splitter>
@@ -299,7 +283,6 @@
               :chat-users="chatUsers"
               :selected-terminal-id="selectedTerminalId"
               :selected-file-id="selectedFileId"
-              :chat-input="chatInput"
               :chat-messages-map="chatMessagesMap"
               :current-user-id="currentUserId"
               :chat-joining-map="chatJoiningMap"
@@ -312,8 +295,7 @@
               @tab-drag-start="onTabDragStart"
               @tab-drop="onTabDrop"
               @rename-terminal="renameSelectedTerminal"
-              @update:chat-input="chatInput = $event"
-              @send-chat="sendChat($event)"
+              @send-chat="(channelId, text) => sendChat(channelId, text)"
             />
           </SplitterPanel>
           <SplitterPanel class="splitter-panel splitter-panel-inner">
@@ -328,7 +310,6 @@
                   :chat-users="chatUsers"
                   :selected-terminal-id="selectedTerminalId"
                   :selected-file-id="selectedFileId"
-                  :chat-input="chatInput"
                   :chat-messages-map="chatMessagesMap"
                   :current-user-id="currentUserId"
                   :chat-joining-map="chatJoiningMap"
@@ -341,8 +322,7 @@
               @tab-drag-start="onTabDragStart"
               @tab-drop="onTabDrop"
               @rename-terminal="renameSelectedTerminal"
-                  @update:chat-input="chatInput = $event"
-                  @send-chat="sendChat($event)"
+                  @send-chat="(channelId, text) => sendChat(channelId, text)"
                 />
               </SplitterPanel>
               <SplitterPanel class="splitter-panel">
@@ -355,7 +335,6 @@
                   :chat-users="chatUsers"
                   :selected-terminal-id="selectedTerminalId"
                   :selected-file-id="selectedFileId"
-                  :chat-input="chatInput"
                   :chat-messages-map="chatMessagesMap"
                   :current-user-id="currentUserId"
                   :chat-joining-map="chatJoiningMap"
@@ -368,8 +347,7 @@
               @tab-drag-start="onTabDragStart"
               @tab-drop="onTabDrop"
               @rename-terminal="renameSelectedTerminal"
-                  @update:chat-input="chatInput = $event"
-                  @send-chat="sendChat($event)"
+                  @send-chat="(channelId, text) => sendChat(channelId, text)"
                 />
               </SplitterPanel>
             </Splitter>
@@ -389,7 +367,6 @@
                   :chat-users="chatUsers"
                   :selected-terminal-id="selectedTerminalId"
                   :selected-file-id="selectedFileId"
-                  :chat-input="chatInput"
                   :chat-messages-map="chatMessagesMap"
                   :current-user-id="currentUserId"
                   :chat-joining-map="chatJoiningMap"
@@ -402,8 +379,7 @@
               @tab-drag-start="onTabDragStart"
               @tab-drop="onTabDrop"
               @rename-terminal="renameSelectedTerminal"
-                  @update:chat-input="chatInput = $event"
-                  @send-chat="sendChat($event)"
+                  @send-chat="(channelId, text) => sendChat(channelId, text)"
                 />
               </SplitterPanel>
               <SplitterPanel class="splitter-panel">
@@ -416,7 +392,6 @@
                   :chat-users="chatUsers"
                   :selected-terminal-id="selectedTerminalId"
                   :selected-file-id="selectedFileId"
-                  :chat-input="chatInput"
                   :chat-messages-map="chatMessagesMap"
                   :current-user-id="currentUserId"
                   :chat-joining-map="chatJoiningMap"
@@ -429,8 +404,7 @@
               @tab-drag-start="onTabDragStart"
               @tab-drop="onTabDrop"
               @rename-terminal="renameSelectedTerminal"
-                  @update:chat-input="chatInput = $event"
-                  @send-chat="sendChat($event)"
+                  @send-chat="(channelId, text) => sendChat(channelId, text)"
                 />
               </SplitterPanel>
             </Splitter>
@@ -447,7 +421,6 @@
                   :chat-users="chatUsers"
                   :selected-terminal-id="selectedTerminalId"
                   :selected-file-id="selectedFileId"
-                  :chat-input="chatInput"
                   :chat-messages-map="chatMessagesMap"
                   :current-user-id="currentUserId"
                   :chat-joining-map="chatJoiningMap"
@@ -460,8 +433,7 @@
               @tab-drag-start="onTabDragStart"
               @tab-drop="onTabDrop"
               @rename-terminal="renameSelectedTerminal"
-                  @update:chat-input="chatInput = $event"
-                  @send-chat="sendChat($event)"
+                  @send-chat="(channelId, text) => sendChat(channelId, text)"
                 />
               </SplitterPanel>
               <SplitterPanel class="splitter-panel">
@@ -474,7 +446,6 @@
                   :chat-users="chatUsers"
                   :selected-terminal-id="selectedTerminalId"
                   :selected-file-id="selectedFileId"
-                  :chat-input="chatInput"
                   :chat-messages-map="chatMessagesMap"
                   :current-user-id="currentUserId"
                   :chat-joining-map="chatJoiningMap"
@@ -487,8 +458,7 @@
               @tab-drag-start="onTabDragStart"
               @tab-drop="onTabDrop"
               @rename-terminal="renameSelectedTerminal"
-                  @update:chat-input="chatInput = $event"
-                  @send-chat="sendChat($event)"
+                  @send-chat="(channelId, text) => sendChat(channelId, text)"
                 />
               </SplitterPanel>
             </Splitter>
@@ -589,7 +559,7 @@ const {
 const chat = useChat(projectId, { wsConnected, error, bindTabToActivePane, activePane })
 const {
   chatEl, chatChannels, selectedChatChannelId, chatMessagesMap, chatUsers,
-  chatInput, chatJoiningMap, joinedChatChannels, currentUserId, activeChannelName,
+  chatJoiningMap, joinedChatChannels, currentUserId, activeChannelName,
   isJoinedChannel, setJoinedChannel, createChannelByName, sendChat, scrollChat,
   joinChannelFromContext, leaveChannelFromContext,
   registerHandlers: registerChatHandlers, init: initChat, cleanup: cleanupChat,
