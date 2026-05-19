@@ -4,6 +4,7 @@
 //        workerSocket.connect(token)
 //        workerSocket.on('term', 'output', handler)
 //        workerSocket.send('chat', 'message', { text: 'hello' })
+import { logWs, logInfo, logWarn } from './log'
 
 const getWorkerUrl = () => {
   if (import.meta.env.VITE_WORKER_URL) return import.meta.env.VITE_WORKER_URL
@@ -11,17 +12,33 @@ const getWorkerUrl = () => {
   return `ws://${host}:8080`
 }
 
+const RECONNECT_BASE_MS  = 1000
+const RECONNECT_MAX_MS   = 30000
+const RECONNECT_MAX_TRIES = 10
+
 class WorkerSocket {
   constructor() {
-    this._ws       = null
-    this._handlers = {}  // { "cs:cmd": [fn, ...] }
-    this._ready    = false
-    this._queue    = []
-    this._generation = 0  // incremented on each connect() to ignore stale close events
+    this._ws         = null
+    this._handlers   = {}   // { "cs:cmd": [fn, ...] }
+    this._ready      = false
+    this._queue      = []
+    this._generation = 0    // incremented on each connect() to ignore stale close events
+    this._token      = null
+    this._reconnectAttempt = 0
+    this._reconnectTimer   = null
+    this._stopped    = false // true after explicit disconnect()
   }
 
   connect(token) {
-    // Close old socket WITHOUT letting its onclose reset _ready for the new one
+    this._token   = token
+    this._stopped = false
+    this._reconnectAttempt = 0
+    this._clearReconnectTimer()
+    this._open()
+  }
+
+  _open() {
+    // Close old socket without letting its onclose trigger reconnect for the new one
     if (this._ws) {
       const old = this._ws
       old.onclose = null
@@ -30,14 +47,15 @@ class WorkerSocket {
     }
 
     const gen = ++this._generation
-    const url = `${getWorkerUrl()}/?token=${encodeURIComponent(token)}`
-    console.log('[WorkerSocket] connecting to', url.replace(/token=.*/, 'token=…'))
+    const url = `${getWorkerUrl()}/?token=${encodeURIComponent(this._token)}`
+    logInfo('WorkerSocket', 'connecting to', url)
     this._ws = new WebSocket(url)
 
     this._ws.onopen = () => {
-      if (this._generation !== gen) return  // stale
-      console.log('[WorkerSocket] connected')
+      if (this._generation !== gen) return
+      logInfo('WorkerSocket', 'connected')
       this._ready = true
+      this._reconnectAttempt = 0
       this._queue.forEach(m => this._ws.send(m))
       this._queue = []
     }
@@ -46,7 +64,7 @@ class WorkerSocket {
       if (this._generation !== gen) return
       let msg
       try { msg = JSON.parse(event.data) } catch { return }
-      console.debug('[WorkerSocket] ←', msg.cs, msg.cmd, msg.payload)
+      logWs('recv', msg.cs, msg.cmd, msg.payload)
       const key = `${msg.cs}:${msg.cmd}`
       const handlers = this._handlers[key] || []
       const wildcards = this._handlers[`${msg.cs}:*`] || []
@@ -55,19 +73,47 @@ class WorkerSocket {
 
     this._ws.onclose = (e) => {
       if (this._generation !== gen) return
-      console.warn('[WorkerSocket] closed', e.code, e.reason)
+      logWarn('WorkerSocket', 'closed', e.code, e.reason)
       this._ready = false
+      if (!this._stopped) this._scheduleReconnect()
     }
 
     this._ws.onerror = (e) => {
       if (this._generation !== gen) return
-      console.error('[WorkerSocket] error', e)
+      logWarn('WorkerSocket', 'error', e)
+    }
+  }
+
+  _scheduleReconnect() {
+    if (this._stopped || this._reconnectAttempt >= RECONNECT_MAX_TRIES) {
+      logWarn('WorkerSocket', 'giving up reconnect after', this._reconnectAttempt, 'attempts')
+      return
+    }
+    const delay = Math.min(RECONNECT_BASE_MS * 2 ** this._reconnectAttempt, RECONNECT_MAX_MS)
+    this._reconnectAttempt++
+    logInfo('WorkerSocket', `reconnecting in ${delay}ms (attempt ${this._reconnectAttempt})`)
+    this._reconnectTimer = setTimeout(() => {
+      if (!this._stopped) this._open()
+    }, delay)
+  }
+
+  _clearReconnectTimer() {
+    if (this._reconnectTimer !== null) {
+      clearTimeout(this._reconnectTimer)
+      this._reconnectTimer = null
     }
   }
 
   disconnect() {
-    this._ws?.close()
-    this._ws    = null
+    this._stopped = true
+    this._clearReconnectTimer()
+    if (this._ws) {
+      const old = this._ws
+      old.onclose = null
+      old.onerror = null
+      old.close()
+      this._ws = null
+    }
     this._ready = false
     this._queue = []
   }
@@ -75,10 +121,10 @@ class WorkerSocket {
   send(cs, cmd, payload = {}) {
     const msg = JSON.stringify({ cs, cmd, payload })
     if (this._ready) {
-      console.debug('[WorkerSocket] →', cs, cmd, payload)
+      logWs('send', cs, cmd, payload)
       this._ws.send(msg)
     } else {
-      console.warn('[WorkerSocket] not ready, queuing', cs, cmd)
+      logWarn('WorkerSocket', 'not ready, queuing', cs, cmd)
       this._queue.push(msg)
     }
   }
