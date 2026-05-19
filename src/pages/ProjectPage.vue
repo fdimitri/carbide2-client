@@ -1141,9 +1141,11 @@ function formatTime(ts) {
 }
 
 .prime-tree-node-label {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 0.45rem;
+  width: 100%;
+  min-width: 0;
 }
 
 .node-open-indicator {
