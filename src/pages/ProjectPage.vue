@@ -504,7 +504,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, nextTick, computed, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import '@xterm/xterm/css/xterm.css'
 import Tree from 'primevue/tree'
@@ -548,12 +548,11 @@ const {
 
 const terminals = useTerminals({ error, bindTabToActivePane, activePane })
 const {
-  terminalEl, terminalActive, terminalLoading, terminalList, selectedTerminalId,
+  terminalLoading, terminalList, selectedTerminalId,
   showCreateTerminalDialog, terminalCreateName, terminalCreateOptions,
-  fitTerminalSoon, openCreateTerminalDialog, confirmCreateTerminal,
+  openCreateTerminalDialog, confirmCreateTerminal,
   openTerminal, renameTerminalById, renameSelectedTerminal, terminalModeNoop,
-  registerHandlers: registerTerminalHandlers, mountXterm, cleanup: cleanupTerminals,
-  getXterm,
+  registerHandlers: registerTerminalHandlers, cleanup: cleanupTerminals,
 } = terminals
 
 const chat = useChat(projectId, { wsConnected, error, bindTabToActivePane, activePane })
@@ -954,7 +953,6 @@ function focusAnyFile() {
 }
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
-const onWindowResize = () => fitTerminalSoon()
 
 onMounted(async () => {
   try {
@@ -982,22 +980,7 @@ onMounted(async () => {
   }
 })
 
-watch(terminalActive, (active) => {
-  if (active) nextTick(() => { fitTerminalSoon(); getXterm()?.focus() })
-})
-
-function onDocumentKeydown() {
-  if (!terminalActive.value || !getXterm() || activePane.value !== 'terminal') return
-  const tag = document.activeElement?.tagName
-  if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return
-  getXterm().focus()
-}
-
-onMounted(() => { document.addEventListener('keydown', onDocumentKeydown) })
-
 onBeforeUnmount(() => {
-  document.removeEventListener('keydown', onDocumentKeydown)
-  window.removeEventListener('resize', onWindowResize)
   offHandlers.forEach(off => off())
   cleanupChat()
   cleanupTerminals()
