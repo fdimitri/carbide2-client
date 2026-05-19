@@ -44,11 +44,12 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import Tree from 'primevue/tree'
 import ContextMenu from 'primevue/contextmenu'
 import { logInfo } from '../../services/log'
 import { PANE_COUNTS } from '../../composables/usePanes'
+import workerSocket from '../../services/workerSocket'
 
 const props = defineProps({
   terminalList:     { type: Array,  required: true },
@@ -82,91 +83,39 @@ const expandedExplorerKeys  = ref({
   'group:files':     true,
   'group:terminals': true,
   'group:channels':  true,
-  app:               true,
-  'app/controllers': true,
-  frontend:          true,
-  'frontend/src':    true,
-  worker:            true,
 })
 
-const fileTree = ref([
-  {
-    id: 'app',
-    name: 'app',
-    type: 'dir',
-    children: [
-      {
-        id: 'app/controllers',
-        name: 'controllers',
-        type: 'dir',
-        children: [
-          { id: 'app/controllers/application_controller.rb', name: 'application_controller.rb', type: 'file' },
-          {
-            id: 'app/controllers/api',
-            name: 'api',
-            type: 'dir',
-            children: [
-              { id: 'app/controllers/api/chat_channels_controller.rb', name: 'chat_channels_controller.rb', type: 'file' },
-              { id: 'app/controllers/api/chat_messages_controller.rb', name: 'chat_messages_controller.rb', type: 'file' },
-            ],
-          },
-        ],
-      },
-      {
-        id: 'app/models',
-        name: 'models',
-        type: 'dir',
-        children: [
-          { id: 'app/models/project.rb',       name: 'project.rb',       type: 'file' },
-          { id: 'app/models/chat_channel.rb',  name: 'chat_channel.rb',  type: 'file' },
-          { id: 'app/models/chat_message.rb',  name: 'chat_message.rb',  type: 'file' },
-        ],
-      },
-    ],
-  },
-  {
-    id: 'frontend',
-    name: 'frontend',
-    type: 'dir',
-    children: [
-      {
-        id: 'frontend/src',
-        name: 'src',
-        type: 'dir',
-        children: [
-          {
-            id: 'frontend/src/pages',
-            name: 'pages',
-            type: 'dir',
-            children: [{ id: 'frontend/src/pages/ProjectPage.vue', name: 'ProjectPage.vue', type: 'file' }],
-          },
-          {
-            id: 'frontend/src/services',
-            name: 'services',
-            type: 'dir',
-            children: [
-              { id: 'frontend/src/services/workerSocket.js',    name: 'workerSocket.js',    type: 'file' },
-              { id: 'frontend/src/services/projectService.js',  name: 'projectService.js',  type: 'file' },
-            ],
-          },
-        ],
-      },
-    ],
-  },
-  {
-    id: 'worker',
-    name: 'worker',
-    type: 'dir',
-    children: [
-      { id: 'worker/worker.rb',            name: 'worker.rb',            type: 'file' },
-      { id: 'worker/terminal_instance.rb', name: 'terminal_instance.rb', type: 'file' },
-      { id: 'worker/chat_room.rb',         name: 'chat_room.rb',         type: 'file' },
-      { id: 'worker/session.rb',           name: 'session.rb',           type: 'file' },
-    ],
-  },
-  { id: 'README.md',   name: 'README.md',   type: 'file' },
-  { id: 'UX_NOTES.md', name: 'UX_NOTES.md', type: 'file' },
-])
+const fileTree = ref([])
+
+// ── File tree from WebSocket ─────────────────────────────────────────────────
+function serverNodeToInternal(node) {
+  const id = node.path === '/' ? '' : node.path.replace(/^\//, '')
+  const result = { id: id || node.name, name: node.name, type: node.type === 'folder' ? 'dir' : 'file' }
+  if (node.type === 'folder') result.children = (node.children || []).map(serverNodeToInternal)
+  return result
+}
+
+function requestFileTree() {
+  workerSocket.send('fs', 'tree', {})
+}
+
+const _offFsTree      = ref(null)
+const _offWsConnected = ref(null)
+
+onMounted(() => {
+  _offFsTree.value = workerSocket.on('fs', 'tree', (payload) => {
+    const root = payload?.tree
+    if (!root || Array.isArray(root)) { fileTree.value = []; return }
+    fileTree.value = (root.children || []).map(serverNodeToInternal)
+  })
+  _offWsConnected.value = workerSocket.on('system', 'connected', () => requestFileTree())
+  requestFileTree()
+})
+
+onBeforeUnmount(() => {
+  _offFsTree.value?.()
+  _offWsConnected.value?.()
+})
 
 // ── Computed tree nodes ───────────────────────────────────────────────────────
 const primeFileNodes = computed(() => {
