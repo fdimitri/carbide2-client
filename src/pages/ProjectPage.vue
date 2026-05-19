@@ -24,12 +24,8 @@
             :filter="true"
             filterMode="lenient"
             :filterValue="explorerSearch"
-            :draggableNodes="true"
-            :droppableNodes="true"
-            draggableScope="files"
-            droppableScope="files"
-            @node-drop="onExplorerNodeDrop"
             @node-select="onExplorerNodeSelect"
+            @node-context-menu="onExplorerNodeContextMenuEvent"
           >
             <template #default="slotProps">
               <div
@@ -38,7 +34,7 @@
                 @click="onExplorerNodeSelect(slotProps.node)"
                 @dblclick.stop="onExplorerNodeDblClick(slotProps.node)"
                 @contextmenu.prevent.stop="onExplorerNodeContextMenu($event, slotProps.node)"
-                @dragstart="onExplorerNodeDragStart($event, slotProps.node)"
+                @dragstart.stop="onExplorerNodeDragStart($event, slotProps.node)"
               >
                 <i class="pi" :class="treeIconClass(slotProps.node.data)" aria-hidden="true"></i>
                 <span>{{ slotProps.node.label }}</span>
@@ -542,11 +538,17 @@ function buildContextMenuItems(node) {
 function onExplorerNodeDragStart(event, node) {
   const kind = node?.data?.kind
   if (['group-files', 'group-terminals', 'group-channels', 'dir'].includes(kind)) return
-  event.dataTransfer.effectAllowed = 'copy'
   // For file nodes, id is a string path; for terminal/channel, id is numeric
   const id = kind === 'file' ? String(node.data.id) : Number(node.data.id)
   logInfo('ProjectPage', 'dragstart node', kind, id)
+  event.dataTransfer.clearData()
+  event.dataTransfer.effectAllowed = 'copy'
   event.dataTransfer.setData('application/x-carbide-node', JSON.stringify({ kind, id, label: node.label }))
+}
+
+function onExplorerNodeContextMenuEvent(event) {
+  // Fired by PrimeVue Tree @node-context-menu for clicks outside the label div
+  onExplorerNodeContextMenu(event.originalEvent, event.node)
 }
 
 function onExplorerNodeDrop(event) {

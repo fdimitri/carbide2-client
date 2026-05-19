@@ -29,6 +29,33 @@ const props = defineProps({
 const containerEl = ref(null)
 const editor      = shallowRef(null)
 
+// The CSS variables Monaco injects are scoped to .monaco-editor, not :root.
+// Promote the ones we need to :root so other components (e.g. ChatPane) can
+// reference them and stay in sync with whatever theme is active.
+const THEME_VARS = [
+  '--vscode-editor-background',
+  '--vscode-editor-foreground',
+  '--vscode-input-background',
+  '--vscode-input-foreground',
+  '--vscode-input-border',
+  '--vscode-focusBorder',
+  '--vscode-editorGroupHeader-tabsBackground',
+  '--vscode-panel-border',
+  '--vscode-editorLineNumber-foreground',
+  '--vscode-editor-selectionBackground',
+  '--vscode-editor-inactiveSelectionBackground',
+]
+
+function propagateThemeVars() {
+  const editorEl = containerEl.value?.querySelector('.monaco-editor')
+  if (!editorEl) return
+  const computed = getComputedStyle(editorEl)
+  THEME_VARS.forEach((v) => {
+    const val = computed.getPropertyValue(v).trim()
+    if (val) document.documentElement.style.setProperty(v, val)
+  })
+}
+
 onMounted(async () => {
   const m = await loader.init()
   editor.value = m.editor.create(containerEl.value, {
@@ -45,6 +72,10 @@ onMounted(async () => {
     wordWrap:          'off',
     readOnly:          true,        // read-only for now — editing comes later
   })
+  // Promote theme vars after editor paints (one rAF is enough)
+  requestAnimationFrame(propagateThemeVars)
+  // Re-promote whenever the theme changes
+  editor.value.onDidChangeConfiguration(() => requestAnimationFrame(propagateThemeVars))
 })
 
 // Replace content when the file changes without recreating the editor

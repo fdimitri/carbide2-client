@@ -17,7 +17,7 @@
         :disabled="!connected || joining"
         class="chat-input"
       />
-      <button class="btn-primary" @click="emitSend" :disabled="!canSend">
+      <button class="chat-send-btn" @click="emitSend" :disabled="!canSend">
         Send
       </button>
     </div>
@@ -66,7 +66,8 @@ function formatTime(ts) {
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  background: linear-gradient(180deg, #0f1826, #0c1420);
+  background: var(--vscode-editor-background, #1e1e1e);
+  color: var(--vscode-editor-foreground, #d4d4d4);
 }
 
 .chat-pane__messages {
@@ -83,7 +84,7 @@ function formatTime(ts) {
   flex: 1;
   display: grid;
   place-items: center;
-  color: #91a2bc;
+  color: var(--vscode-editorLineNumber-foreground, #858585);
   padding: 1rem;
 }
 
@@ -94,31 +95,74 @@ function formatTime(ts) {
   max-width: 80ch;
 }
 
-.chat-msg--own .chat-name { color: #8df4e9; }
+.chat-msg--own .chat-name {
+  color: var(--vscode-focusBorder, #007acc);
+}
 
 .chat-name {
-  color: #b4c5df;
   font-size: 0.8rem;
   font-weight: 600;
+  color: var(--vscode-editor-foreground, #d4d4d4);
+  opacity: 0.75;
 }
 
 .chat-text {
-  color: #eff5ff;
+  color: var(--vscode-editor-foreground, #d4d4d4);
   font-size: 0.86rem;
   line-height: 1.3;
   word-break: break-word;
 }
 
 .chat-time {
-  color: #778ba8;
   font-size: 0.72rem;
+  color: var(--vscode-editorLineNumber-foreground, #858585);
 }
 
 .chat-input-row {
   display: flex;
   gap: 0.5rem;
   padding: 0.55rem;
-  border-top: 1px solid #2b3d58;
-  background: rgba(17, 26, 38, 0.85);
+  border-top: 1px solid var(--vscode-panel-border, #444);
+  background: var(--vscode-editorGroupHeader-tabsBackground, #252526);
+}
+
+.chat-input {
+  flex: 1;
+  padding: 0.45rem 0.65rem;
+  font-size: 0.85rem;
+  background: var(--vscode-input-background, #3c3c3c);
+  color: var(--vscode-input-foreground, #cccccc);
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 0.3rem;
+  outline: none;
+  font-family: inherit;
+}
+
+.chat-input:focus {
+  border-color: var(--vscode-focusBorder, #007acc);
+}
+
+.chat-input::placeholder {
+  color: var(--vscode-editorLineNumber-foreground, #858585);
+}
+
+.chat-send-btn {
+  padding: 0.45rem 0.9rem;
+  font-size: 0.85rem;
+  background: var(--vscode-focusBorder, #007acc);
+  color: #fff;
+  border: none;
+  border-radius: 0.3rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.chat-send-btn:hover:not(:disabled) {
+  filter: brightness(1.15);
+}
+
+.chat-send-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 </style>
