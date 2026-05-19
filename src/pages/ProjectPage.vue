@@ -56,22 +56,17 @@
       </aside>
 
       <section class="main-pane">
-        <Splitter v-if="paneLayout === 'one'" class="workspace-splitter" layout="horizontal">
-          <SplitterPanel class="splitter-panel">
+        <Splitter :key="paneLayout" :layout="layoutConfig.outer" class="workspace-splitter">
+          <SplitterPanel
+            v-for="(row, rowIdx) in layoutConfig.rows"
+            :key="rowIdx"
+            :class="row.length > 1 ? 'splitter-panel splitter-panel-inner' : 'splitter-panel'"
+          >
             <WorkspacePaneShell
-              :pane="panes[0]"
-              :pane-index="0"
+              v-if="row.length === 1"
+              :pane="panes[row[0]]"
+              :pane-index="row[0]"
               :active-pane-index="activePaneIndex"
-              :active-pane="activePane"
-              :active-channel-name="activeChannelName"
-              :chat-users="chatUsers"
-              :selected-terminal-id="selectedTerminalId"
-              :selected-file-id="selectedFileId"
-              :chat-messages-map="chatMessagesMap"
-              :current-user-id="currentUserId"
-              :chat-joining-map="chatJoiningMap"
-              :ws-connected="wsConnected"
-              :joined-chat-channels="joinedChatChannels"
               @pane-drop="onPaneDrop"
               @set-active-pane="setActivePane($event)"
               @activate-tab="activatePaneTab"
@@ -81,383 +76,27 @@
               @rename-terminal="renameSelectedTerminal"
               @send-chat="(channelId, text) => sendChat(channelId, text)"
             />
-          </SplitterPanel>
-        </Splitter>
-
-        <Splitter v-else-if="paneLayout === 'two-horizontal'" class="workspace-splitter" layout="horizontal">
-          <SplitterPanel class="splitter-panel">
-            <WorkspacePaneShell
-              :pane="panes[0]"
-              :pane-index="0"
-              :active-pane-index="activePaneIndex"
-              :active-pane="activePane"
-              :active-channel-name="activeChannelName"
-              :chat-users="chatUsers"
-              :selected-terminal-id="selectedTerminalId"
-              :selected-file-id="selectedFileId"
-              :chat-messages-map="chatMessagesMap"
-              :current-user-id="currentUserId"
-              :chat-joining-map="chatJoiningMap"
-              :ws-connected="wsConnected"
-              :joined-chat-channels="joinedChatChannels"
-              @pane-drop="onPaneDrop"
-              @set-active-pane="setActivePane($event)"
-              @activate-tab="activatePaneTab"
-              @close-tab="closePaneTab"
-              @tab-drag-start="onTabDragStart"
-              @tab-drop="onTabDrop"
-              @rename-terminal="renameSelectedTerminal"
-              @send-chat="(channelId, text) => sendChat(channelId, text)"
-            />
-          </SplitterPanel>
-          <SplitterPanel class="splitter-panel">
-            <WorkspacePaneShell
-              :pane="panes[1]"
-              :pane-index="1"
-              :active-pane-index="activePaneIndex"
-              :active-pane="activePane"
-              :active-channel-name="activeChannelName"
-              :chat-users="chatUsers"
-              :selected-terminal-id="selectedTerminalId"
-              :selected-file-id="selectedFileId"
-              :chat-messages-map="chatMessagesMap"
-              :current-user-id="currentUserId"
-              :chat-joining-map="chatJoiningMap"
-              :ws-connected="wsConnected"
-              :joined-chat-channels="joinedChatChannels"
-              @pane-drop="onPaneDrop"
-              @set-active-pane="setActivePane($event)"
-              @activate-tab="activatePaneTab"
-              @close-tab="closePaneTab"
-              @tab-drag-start="onTabDragStart"
-              @tab-drop="onTabDrop"
-              @rename-terminal="renameSelectedTerminal"
-              @send-chat="(channelId, text) => sendChat(channelId, text)"
-            />
-          </SplitterPanel>
-        </Splitter>
-
-        <Splitter v-else-if="paneLayout === 'two-vertical'" class="workspace-splitter" layout="vertical">
-          <SplitterPanel class="splitter-panel">
-            <WorkspacePaneShell
-              :pane="panes[0]"
-              :pane-index="0"
-              :active-pane-index="activePaneIndex"
-              :active-pane="activePane"
-              :active-channel-name="activeChannelName"
-              :chat-users="chatUsers"
-              :selected-terminal-id="selectedTerminalId"
-              :selected-file-id="selectedFileId"
-              :chat-messages-map="chatMessagesMap"
-              :current-user-id="currentUserId"
-              :chat-joining-map="chatJoiningMap"
-              :ws-connected="wsConnected"
-              :joined-chat-channels="joinedChatChannels"
-              @pane-drop="onPaneDrop"
-              @set-active-pane="setActivePane($event)"
-              @activate-tab="activatePaneTab"
-              @close-tab="closePaneTab"
-              @tab-drag-start="onTabDragStart"
-              @tab-drop="onTabDrop"
-              @rename-terminal="renameSelectedTerminal"
-              @send-chat="(channelId, text) => sendChat(channelId, text)"
-            />
-          </SplitterPanel>
-          <SplitterPanel class="splitter-panel">
-            <WorkspacePaneShell
-              :pane="panes[1]"
-              :pane-index="1"
-              :active-pane-index="activePaneIndex"
-              :active-pane="activePane"
-              :active-channel-name="activeChannelName"
-              :chat-users="chatUsers"
-              :selected-terminal-id="selectedTerminalId"
-              :selected-file-id="selectedFileId"
-              :chat-messages-map="chatMessagesMap"
-              :current-user-id="currentUserId"
-              :chat-joining-map="chatJoiningMap"
-              :ws-connected="wsConnected"
-              :joined-chat-channels="joinedChatChannels"
-              @pane-drop="onPaneDrop"
-              @set-active-pane="setActivePane($event)"
-              @activate-tab="activatePaneTab"
-              @close-tab="closePaneTab"
-              @tab-drag-start="onTabDragStart"
-              @tab-drop="onTabDrop"
-              @rename-terminal="renameSelectedTerminal"
-              @send-chat="(channelId, text) => sendChat(channelId, text)"
-            />
-          </SplitterPanel>
-        </Splitter>
-
-        <Splitter v-else-if="paneLayout === 'three-horizontal-wide'" class="workspace-splitter" layout="vertical">
-          <SplitterPanel class="splitter-panel">
-            <WorkspacePaneShell
-              :pane="panes[0]"
-              :pane-index="0"
-              :active-pane-index="activePaneIndex"
-              :active-pane="activePane"
-              :active-channel-name="activeChannelName"
-              :chat-users="chatUsers"
-              :selected-terminal-id="selectedTerminalId"
-              :selected-file-id="selectedFileId"
-              :chat-messages-map="chatMessagesMap"
-              :current-user-id="currentUserId"
-              :chat-joining-map="chatJoiningMap"
-              :ws-connected="wsConnected"
-              :joined-chat-channels="joinedChatChannels"
-              @pane-drop="onPaneDrop"
-              @set-active-pane="setActivePane($event)"
-              @activate-tab="activatePaneTab"
-              @close-tab="closePaneTab"
-              @tab-drag-start="onTabDragStart"
-              @tab-drop="onTabDrop"
-              @rename-terminal="renameSelectedTerminal"
-              @send-chat="(channelId, text) => sendChat(channelId, text)"
-            />
-          </SplitterPanel>
-          <SplitterPanel class="splitter-panel splitter-panel-inner">
-            <Splitter class="workspace-splitter splitter-nested" layout="horizontal">
-              <SplitterPanel class="splitter-panel">
+            <Splitter
+              v-else
+              :layout="layoutConfig.inner"
+              class="workspace-splitter splitter-nested"
+            >
+              <SplitterPanel
+                v-for="paneIdx in row"
+                :key="paneIdx"
+                class="splitter-panel"
+              >
                 <WorkspacePaneShell
-                  :pane="panes[1]"
-                  :pane-index="1"
+                  :pane="panes[paneIdx]"
+                  :pane-index="paneIdx"
                   :active-pane-index="activePaneIndex"
-                  :active-pane="activePane"
-                  :active-channel-name="activeChannelName"
-                  :chat-users="chatUsers"
-                  :selected-terminal-id="selectedTerminalId"
-                  :selected-file-id="selectedFileId"
-                  :chat-messages-map="chatMessagesMap"
-                  :current-user-id="currentUserId"
-                  :chat-joining-map="chatJoiningMap"
-                  :ws-connected="wsConnected"
-                  :joined-chat-channels="joinedChatChannels"
                   @pane-drop="onPaneDrop"
-              @set-active-pane="setActivePane($event)"
+                  @set-active-pane="setActivePane($event)"
                   @activate-tab="activatePaneTab"
                   @close-tab="closePaneTab"
-              @tab-drag-start="onTabDragStart"
-              @tab-drop="onTabDrop"
-              @rename-terminal="renameSelectedTerminal"
-                  @send-chat="(channelId, text) => sendChat(channelId, text)"
-                />
-              </SplitterPanel>
-              <SplitterPanel class="splitter-panel">
-                <WorkspacePaneShell
-                  :pane="panes[2]"
-                  :pane-index="2"
-                  :active-pane-index="activePaneIndex"
-                  :active-pane="activePane"
-                  :active-channel-name="activeChannelName"
-                  :chat-users="chatUsers"
-                  :selected-terminal-id="selectedTerminalId"
-                  :selected-file-id="selectedFileId"
-                  :chat-messages-map="chatMessagesMap"
-                  :current-user-id="currentUserId"
-                  :chat-joining-map="chatJoiningMap"
-                  :ws-connected="wsConnected"
-                  :joined-chat-channels="joinedChatChannels"
-                  @pane-drop="onPaneDrop"
-              @set-active-pane="setActivePane($event)"
-                  @activate-tab="activatePaneTab"
-                  @close-tab="closePaneTab"
-              @tab-drag-start="onTabDragStart"
-              @tab-drop="onTabDrop"
-              @rename-terminal="renameSelectedTerminal"
-                  @send-chat="(channelId, text) => sendChat(channelId, text)"
-                />
-              </SplitterPanel>
-            </Splitter>
-          </SplitterPanel>
-        </Splitter>
-
-        <Splitter v-else-if="paneLayout === 'three-vertical-tall'" class="workspace-splitter" layout="horizontal">
-          <SplitterPanel class="splitter-panel">
-            <WorkspacePaneShell
-              :pane="panes[0]"
-              :pane-index="0"
-              :active-pane-index="activePaneIndex"
-              :active-pane="activePane"
-              :active-channel-name="activeChannelName"
-              :chat-users="chatUsers"
-              :selected-terminal-id="selectedTerminalId"
-              :selected-file-id="selectedFileId"
-              :chat-messages-map="chatMessagesMap"
-              :current-user-id="currentUserId"
-              :chat-joining-map="chatJoiningMap"
-              :ws-connected="wsConnected"
-              :joined-chat-channels="joinedChatChannels"
-              @pane-drop="onPaneDrop"
-              @set-active-pane="setActivePane($event)"
-              @activate-tab="activatePaneTab"
-              @close-tab="closePaneTab"
-              @tab-drag-start="onTabDragStart"
-              @tab-drop="onTabDrop"
-              @rename-terminal="renameSelectedTerminal"
-              @send-chat="(channelId, text) => sendChat(channelId, text)"
-            />
-          </SplitterPanel>
-          <SplitterPanel class="splitter-panel splitter-panel-inner">
-            <Splitter class="workspace-splitter splitter-nested" layout="vertical">
-              <SplitterPanel class="splitter-panel">
-                <WorkspacePaneShell
-                  :pane="panes[1]"
-                  :pane-index="1"
-                  :active-pane-index="activePaneIndex"
-                  :active-pane="activePane"
-                  :active-channel-name="activeChannelName"
-                  :chat-users="chatUsers"
-                  :selected-terminal-id="selectedTerminalId"
-                  :selected-file-id="selectedFileId"
-                  :chat-messages-map="chatMessagesMap"
-                  :current-user-id="currentUserId"
-                  :chat-joining-map="chatJoiningMap"
-                  :ws-connected="wsConnected"
-                  :joined-chat-channels="joinedChatChannels"
-                  @pane-drop="onPaneDrop"
-              @set-active-pane="setActivePane($event)"
-                  @activate-tab="activatePaneTab"
-                  @close-tab="closePaneTab"
-              @tab-drag-start="onTabDragStart"
-              @tab-drop="onTabDrop"
-              @rename-terminal="renameSelectedTerminal"
-                  @send-chat="(channelId, text) => sendChat(channelId, text)"
-                />
-              </SplitterPanel>
-              <SplitterPanel class="splitter-panel">
-                <WorkspacePaneShell
-                  :pane="panes[2]"
-                  :pane-index="2"
-                  :active-pane-index="activePaneIndex"
-                  :active-pane="activePane"
-                  :active-channel-name="activeChannelName"
-                  :chat-users="chatUsers"
-                  :selected-terminal-id="selectedTerminalId"
-                  :selected-file-id="selectedFileId"
-                  :chat-messages-map="chatMessagesMap"
-                  :current-user-id="currentUserId"
-                  :chat-joining-map="chatJoiningMap"
-                  :ws-connected="wsConnected"
-                  :joined-chat-channels="joinedChatChannels"
-                  @pane-drop="onPaneDrop"
-              @set-active-pane="setActivePane($event)"
-                  @activate-tab="activatePaneTab"
-                  @close-tab="closePaneTab"
-              @tab-drag-start="onTabDragStart"
-              @tab-drop="onTabDrop"
-              @rename-terminal="renameSelectedTerminal"
-                  @send-chat="(channelId, text) => sendChat(channelId, text)"
-                />
-              </SplitterPanel>
-            </Splitter>
-          </SplitterPanel>
-        </Splitter>
-
-        <Splitter v-else class="workspace-splitter" layout="vertical">
-          <SplitterPanel class="splitter-panel splitter-panel-inner">
-            <Splitter class="workspace-splitter splitter-nested" layout="horizontal">
-              <SplitterPanel class="splitter-panel">
-                <WorkspacePaneShell
-                  :pane="panes[0]"
-                  :pane-index="0"
-                  :active-pane-index="activePaneIndex"
-                  :active-pane="activePane"
-                  :active-channel-name="activeChannelName"
-                  :chat-users="chatUsers"
-                  :selected-terminal-id="selectedTerminalId"
-                  :selected-file-id="selectedFileId"
-                  :chat-messages-map="chatMessagesMap"
-                  :current-user-id="currentUserId"
-                  :chat-joining-map="chatJoiningMap"
-                  :ws-connected="wsConnected"
-                  :joined-chat-channels="joinedChatChannels"
-                  @pane-drop="onPaneDrop"
-              @set-active-pane="setActivePane($event)"
-                  @activate-tab="activatePaneTab"
-                  @close-tab="closePaneTab"
-              @tab-drag-start="onTabDragStart"
-              @tab-drop="onTabDrop"
-              @rename-terminal="renameSelectedTerminal"
-                  @send-chat="(channelId, text) => sendChat(channelId, text)"
-                />
-              </SplitterPanel>
-              <SplitterPanel class="splitter-panel">
-                <WorkspacePaneShell
-                  :pane="panes[1]"
-                  :pane-index="1"
-                  :active-pane-index="activePaneIndex"
-                  :active-pane="activePane"
-                  :active-channel-name="activeChannelName"
-                  :chat-users="chatUsers"
-                  :selected-terminal-id="selectedTerminalId"
-                  :selected-file-id="selectedFileId"
-                  :chat-messages-map="chatMessagesMap"
-                  :current-user-id="currentUserId"
-                  :chat-joining-map="chatJoiningMap"
-                  :ws-connected="wsConnected"
-                  :joined-chat-channels="joinedChatChannels"
-                  @pane-drop="onPaneDrop"
-              @set-active-pane="setActivePane($event)"
-                  @activate-tab="activatePaneTab"
-                  @close-tab="closePaneTab"
-              @tab-drag-start="onTabDragStart"
-              @tab-drop="onTabDrop"
-              @rename-terminal="renameSelectedTerminal"
-                  @send-chat="(channelId, text) => sendChat(channelId, text)"
-                />
-              </SplitterPanel>
-            </Splitter>
-          </SplitterPanel>
-          <SplitterPanel class="splitter-panel splitter-panel-inner">
-            <Splitter class="workspace-splitter splitter-nested" layout="horizontal">
-              <SplitterPanel class="splitter-panel">
-                <WorkspacePaneShell
-                  :pane="panes[2]"
-                  :pane-index="2"
-                  :active-pane-index="activePaneIndex"
-                  :active-pane="activePane"
-                  :active-channel-name="activeChannelName"
-                  :chat-users="chatUsers"
-                  :selected-terminal-id="selectedTerminalId"
-                  :selected-file-id="selectedFileId"
-                  :chat-messages-map="chatMessagesMap"
-                  :current-user-id="currentUserId"
-                  :chat-joining-map="chatJoiningMap"
-                  :ws-connected="wsConnected"
-                  :joined-chat-channels="joinedChatChannels"
-                  @pane-drop="onPaneDrop"
-              @set-active-pane="setActivePane($event)"
-                  @activate-tab="activatePaneTab"
-                  @close-tab="closePaneTab"
-              @tab-drag-start="onTabDragStart"
-              @tab-drop="onTabDrop"
-              @rename-terminal="renameSelectedTerminal"
-                  @send-chat="(channelId, text) => sendChat(channelId, text)"
-                />
-              </SplitterPanel>
-              <SplitterPanel class="splitter-panel">
-                <WorkspacePaneShell
-                  :pane="panes[3]"
-                  :pane-index="3"
-                  :active-pane-index="activePaneIndex"
-                  :active-pane="activePane"
-                  :active-channel-name="activeChannelName"
-                  :chat-users="chatUsers"
-                  :selected-terminal-id="selectedTerminalId"
-                  :selected-file-id="selectedFileId"
-                  :chat-messages-map="chatMessagesMap"
-                  :current-user-id="currentUserId"
-                  :chat-joining-map="chatJoiningMap"
-                  :ws-connected="wsConnected"
-                  :joined-chat-channels="joinedChatChannels"
-                  @pane-drop="onPaneDrop"
-              @set-active-pane="setActivePane($event)"
-                  @activate-tab="activatePaneTab"
-                  @close-tab="closePaneTab"
-              @tab-drag-start="onTabDragStart"
-              @tab-drop="onTabDrop"
-              @rename-terminal="renameSelectedTerminal"
+                  @tab-drag-start="onTabDragStart"
+                  @tab-drop="onTabDrop"
+                  @rename-terminal="renameSelectedTerminal"
                   @send-chat="(channelId, text) => sendChat(channelId, text)"
                 />
               </SplitterPanel>
@@ -504,7 +143,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, nextTick, computed, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import '@xterm/xterm/css/xterm.css'
 import Tree from 'primevue/tree'
@@ -518,18 +157,37 @@ import WorkspacePaneShell from '../components/workspace/WorkspacePaneShell.vue'
 import workerSocket from '../services/workerSocket'
 import { logInfo } from '../services/log'
 import { listProjects, getWsToken } from '../services/projectService'
+import { storeToRefs } from 'pinia'
 import { usePanes, PANE_COUNTS } from '../composables/usePanes'
 import { useTerminals } from '../composables/useTerminals'
 import { useChat } from '../composables/useChat'
+import { useWorkspaceStore } from '../stores/workspaceStore'
+
+// ── Layout configuration ──────────────────────────────────────────────────────
+// Each entry describes the outer Splitter direction, inner Splitter direction,
+// and which pane indices belong in each "row" of the outer Splitter.
+// Rows with a single index render a plain pane; rows with multiple indices get
+// a nested inner Splitter.
+const LAYOUT_CONFIGS = {
+  'one':                    { outer: 'horizontal', inner: 'horizontal', rows: [[0]] },
+  'two-horizontal':         { outer: 'horizontal', inner: 'horizontal', rows: [[0], [1]] },
+  'two-vertical':           { outer: 'vertical',   inner: 'horizontal', rows: [[0], [1]] },
+  'three-horizontal-wide':  { outer: 'vertical',   inner: 'horizontal', rows: [[0], [1, 2]] },
+  'three-vertical-tall':    { outer: 'horizontal', inner: 'vertical',   rows: [[0], [1, 2]] },
+  'quad':                   { outer: 'vertical',   inner: 'horizontal', rows: [[0, 1], [2, 3]] },
+}
 
 // ── Shared state ──────────────────────────────────────────────────────────────
 const route       = useRoute()
 const projectId   = Number(route.params.id)
 const project     = ref(null)
 const error       = ref('')
-const wsConnected = ref(false)
 const activePane  = ref('terminal')
+const pendingNavigation = ref(null)
 const offHandlers = []
+
+const workspaceStore = useWorkspaceStore()
+const { wsConnected, joinedChatChannels: storeJoinedChatChannels } = storeToRefs(workspaceStore)
 
 // ── Composables ───────────────────────────────────────────────────────────────
 // usePanes receives forward references to the page-level select* wrappers below
@@ -541,25 +199,22 @@ const {
   onTabDragStart, onTabDrop, onPaneDrop,
 } = usePanes({
   activePane,
-  selectTerminalNode: (tid, opts)     => selectTerminalNode(tid, opts),
-  selectChannelNode:  (cid, opts)     => selectChannelNode(cid, opts),
-  selectFileNode:     (fid, opts)     => selectFileNode(fid, opts),
+  pendingNavigation,
 })
 
 const terminals = useTerminals({ error, bindTabToActivePane, activePane })
 const {
-  terminalEl, terminalActive, terminalLoading, terminalList, selectedTerminalId,
+  terminalLoading, terminalList, selectedTerminalId,
   showCreateTerminalDialog, terminalCreateName, terminalCreateOptions,
-  fitTerminalSoon, openCreateTerminalDialog, confirmCreateTerminal,
+  openCreateTerminalDialog, confirmCreateTerminal,
   openTerminal, renameTerminalById, renameSelectedTerminal, terminalModeNoop,
-  registerHandlers: registerTerminalHandlers, mountXterm, cleanup: cleanupTerminals,
-  getXterm,
+  registerHandlers: registerTerminalHandlers, cleanup: cleanupTerminals,
 } = terminals
 
 const chat = useChat(projectId, { wsConnected, error, bindTabToActivePane, activePane })
 const {
-  chatEl, chatChannels, selectedChatChannelId, chatMessagesMap, chatUsers,
-  chatJoiningMap, joinedChatChannels, currentUserId, activeChannelName,
+  chatEl, chatChannels, selectedChatChannelId, chatUsers,
+  activeChannelName,
   isJoinedChannel, setJoinedChannel, createChannelByName, sendChat, scrollChat,
   joinChannelFromContext, leaveChannelFromContext,
   registerHandlers: registerChatHandlers, init: initChat, cleanup: cleanupChat,
@@ -669,6 +324,8 @@ const showCreateChannelDialog = ref(false)
 const channelCreateName       = ref('')
 
 // ── Menus ─────────────────────────────────────────────────────────────────────
+const layoutConfig = computed(() => LAYOUT_CONFIGS[paneLayout.value] ?? LAYOUT_CONFIGS['one'])
+
 const menuItems = computed(() => ([
   {
     label: 'Create',
@@ -720,6 +377,16 @@ function selectFileNode(fileId, options = {}) {
   }
   activePane.value = 'file'
 }
+
+// ── Pending navigation from usePanes (decouples usePanes from page functions) ──
+watch(pendingNavigation, async (pending) => {
+  if (!pending) return
+  pendingNavigation.value = null
+  const { kind, id, opts = {} } = pending
+  if (kind === 'terminal')      await selectTerminalNode(id, opts)
+  else if (kind === 'channel')  await selectChannelNode(id, opts)
+  else if (kind === 'file')     selectFileNode(id, opts)
+})
 
 // ── Explorer helpers ──────────────────────────────────────────────────────────
 function markFileOpen(fileId) {
@@ -954,7 +621,6 @@ function focusAnyFile() {
 }
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
-const onWindowResize = () => fitTerminalSoon()
 
 onMounted(async () => {
   try {
@@ -968,7 +634,7 @@ onMounted(async () => {
     offHandlers.push(
       workerSocket.on('system', 'connected', () => {
         wsConnected.value = true
-        joinedChatChannels.value = new Set()
+        storeJoinedChatChannels.value = new Set()
       })
     )
 
@@ -982,22 +648,7 @@ onMounted(async () => {
   }
 })
 
-watch(terminalActive, (active) => {
-  if (active) nextTick(() => { fitTerminalSoon(); getXterm()?.focus() })
-})
-
-function onDocumentKeydown() {
-  if (!terminalActive.value || !getXterm() || activePane.value !== 'terminal') return
-  const tag = document.activeElement?.tagName
-  if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return
-  getXterm().focus()
-}
-
-onMounted(() => { document.addEventListener('keydown', onDocumentKeydown) })
-
 onBeforeUnmount(() => {
-  document.removeEventListener('keydown', onDocumentKeydown)
-  window.removeEventListener('resize', onWindowResize)
   offHandlers.forEach(off => off())
   cleanupChat()
   cleanupTerminals()
