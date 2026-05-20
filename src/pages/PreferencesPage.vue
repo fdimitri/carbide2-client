@@ -54,12 +54,37 @@
         <!-- ── Locale & Presentation ────────────────────────────────────── -->
         <section class="rounded-xl border border-line bg-bg-1/60 p-7 space-y-5">
           <h2 class="text-text font-semibold text-sm uppercase tracking-widest text-muted mb-1">Locale &amp; Presentation</h2>
-          <div class="flex flex-col gap-1.5">
+          <div class="flex flex-col gap-1.5 relative" ref="tzContainer">
             <label class="text-muted text-label font-semibold uppercase tracking-widest">Timezone</label>
-            <input v-model="form.timezone" placeholder="America/New_York"
-              class="px-3 py-2 rounded-lg bg-bg-input border border-line text-text text-sm
-                     placeholder:text-dim focus:outline-none focus:border-accent transition-all" />
-            <p class="text-dim text-xs font-mono">IANA timezone name — e.g. <span class="text-muted">Europe/London</span>, <span class="text-muted">Asia/Tokyo</span></p>
+            <input
+              v-model="tzQuery"
+              @input="onTzInput"
+              @focus="onTzInput"
+              @blur="scheduleCloseTz"
+              @keydown.down.prevent="moveTz(1)"
+              @keydown.up.prevent="moveTz(-1)"
+              @keydown.enter.prevent="selectTz(tzFiltered[tzCursor])"
+              @keydown.escape="showTzDrop = false"
+              placeholder="America/New_York"
+              autocomplete="off"
+              :class="[
+                'px-3 py-2 rounded-lg bg-bg-input border text-text text-sm placeholder:text-dim focus:outline-none transition-all',
+                tzInvalid ? 'border-warn' : 'border-line focus:border-accent'
+              ]"
+            />
+            <p v-if="tzInvalid" class="text-warn text-xs font-mono">Not a valid IANA timezone name.</p>
+            <p v-else class="text-dim text-xs font-mono">IANA timezone name — e.g. <span class="text-muted">Europe/London</span>, <span class="text-muted">Asia/Tokyo</span></p>
+            <!-- Dropdown -->
+            <ul v-if="showTzDrop && tzFiltered.length"
+              class="absolute top-full mt-1 left-0 right-0 z-50 max-h-52 overflow-y-auto
+                     rounded-lg border border-line bg-bg-1 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
+              <li v-for="(tz, i) in tzFiltered" :key="tz"
+                @mousedown.prevent="selectTz(tz)"
+                class="px-3 py-1.5 text-sm font-mono cursor-pointer transition-colors"
+                :class="i === tzCursor ? 'bg-accent/20 text-accent-fg' : 'text-text hover:bg-bg-2'">
+                {{ tz }}
+              </li>
+            </ul>
           </div>
           <div class="flex flex-col gap-1.5">
             <label class="text-muted text-label font-semibold uppercase tracking-widest">Date Format</label>
@@ -133,7 +158,7 @@
 
         <!-- ── Actions ──────────────────────────────────────────────────── -->
         <div class="flex items-center gap-4">
-          <button @click="save" :disabled="saving"
+          <button @click="save" :disabled="saving || tzInvalid"
             class="px-6 py-2.5 rounded-lg bg-accent text-accent-text text-sm font-bold border-0 cursor-pointer
                    hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed
                    shadow-[0_4px_20px_rgba(46,196,182,0.3)]">
@@ -151,7 +176,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getPreferences, updatePreferences } from '../services/preferencesService'
 
@@ -169,6 +194,45 @@ const DATE_FORMATS = [
 const THEMES = [
   { value: 'carbide_default', label: 'CARB/IDE Dev Default' },
 ]
+
+// ── Timezone autocomplete ──────────────────────────────────────────────────
+const ALL_TIMEZONES = Intl.supportedValuesOf('timeZone')
+const tzQuery      = ref('')
+const showTzDrop   = ref(false)
+const tzCursor     = ref(0)
+let tzBlurTimer    = null
+
+const tzFiltered = computed(() => {
+  const q = tzQuery.value.trim().toLowerCase()
+  if (!q) return ALL_TIMEZONES.slice(0, 40)
+  return ALL_TIMEZONES.filter(tz => tz.toLowerCase().includes(q)).slice(0, 40)
+})
+
+// true only when the user has typed something that isn't in the canonical list
+const tzInvalid = computed(() =>
+  tzQuery.value.trim() !== '' && !ALL_TIMEZONES.includes(tzQuery.value.trim())
+)
+
+function onTzInput() {
+  tzCursor.value  = 0
+  showTzDrop.value = true
+}
+
+function selectTz(tz) {
+  if (!tz) return
+  tzQuery.value      = tz
+  form.timezone      = tz
+  showTzDrop.value   = false
+}
+
+function scheduleCloseTz() {
+  tzBlurTimer = setTimeout(() => { showTzDrop.value = false }, 150)
+}
+
+function moveTz(dir) {
+  tzCursor.value = Math.max(0, Math.min(tzFiltered.value.length - 1, tzCursor.value + dir))
+}
+// ──────────────────────────────────────────────────────────────────────────
 
 const form = reactive({
   first_name:            '',
@@ -196,6 +260,7 @@ onMounted(async () => {
       tab_width:             prefs.tab_width             ?? null,
       notifications_enabled: prefs.notifications_enabled ?? true,
     })
+    tzQuery.value = form.timezone
   } finally {
     loading.value = false
   }
@@ -206,13 +271,14 @@ async function save() {
   saved.value     = false
   saveError.value = ''
   try {
-    // Send null for blank strings so server stores null (use default)
+    // Sync tzQuery back to form in case user typed without selecting
+    form.timezone = tzQuery.value.trim() || null
     const payload = {
       ...form,
-      first_name:       form.first_name.trim()  || null,
-      last_name:        form.last_name.trim()   || null,
-      username:         form.username.trim()    || null,
-      timezone:         form.timezone.trim()    || null,
+      first_name:  form.first_name.trim()  || null,
+      last_name:   form.last_name.trim()   || null,
+      username:    form.username.trim()    || null,
+      timezone:    form.timezone           || null,
     }
     await updatePreferences(payload)
     saved.value = true
