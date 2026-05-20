@@ -23,22 +23,26 @@ class WorkerSocket {
     this._ready      = false
     this._queue      = []
     this._generation = 0    // incremented on each connect() to ignore stale close events
-    this._token      = null
+    this._tokenFetcher = null // async () => token string
     this._reconnectAttempt = 0
     this._reconnectTimer   = null
     this._stopped    = false // true after explicit disconnect()
   }
 
-  connect(token) {
-    this._token   = token
+  // tokenFetcher: async () => string — called fresh on every (re)connect so the
+  // name claim stays current and expired tokens are never reused.
+  // Also accepts a plain string for backwards-compat.
+  connect(tokenFetcher) {
+    this._tokenFetcher = typeof tokenFetcher === 'function'
+      ? tokenFetcher
+      : () => Promise.resolve(tokenFetcher)
     this._stopped = false
     this._reconnectAttempt = 0
     this._clearReconnectTimer()
     this._open()
   }
 
-  _open() {
-    // Close old socket without letting its onclose trigger reconnect for the new one
+  async _open() {
     if (this._ws) {
       const old = this._ws
       old.onclose = null
@@ -46,8 +50,17 @@ class WorkerSocket {
       old.close()
     }
 
+    let token
+    try {
+      token = await this._tokenFetcher()
+    } catch (e) {
+      logWarn('WorkerSocket', 'failed to fetch token:', e)
+      if (!this._stopped) this._scheduleReconnect()
+      return
+    }
+
     const gen = ++this._generation
-    const url = `${getWorkerUrl()}/?token=${encodeURIComponent(this._token)}`
+    const url = `${getWorkerUrl()}/?token=${encodeURIComponent(token)}`
     logInfo('WorkerSocket', 'connecting to', url)
     this._ws = new WebSocket(url)
 

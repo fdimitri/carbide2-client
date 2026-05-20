@@ -317,8 +317,6 @@ onMounted(async () => {
 
     await initChat()
 
-    const token = await getWsToken(projectId)
-
     offHandlers.push(
       workerSocket.on('system', 'connected', () => {
         wsConnected.value = true
@@ -329,7 +327,7 @@ onMounted(async () => {
     registerTerminalHandlers(offHandlers, (tid) => selectTerminalNode(tid))
     registerChatHandlers(offHandlers)
 
-    workerSocket.connect(token)
+    workerSocket.connect(() => getWsToken(projectId))
     selectFileNode('README.md')
   } catch (e) {
     error.value = e.message || 'Failed to connect'
