@@ -176,7 +176,7 @@ const {
 
 const chat = useChat(projectId, { wsConnected, error, bindTabToActivePane, activePane })
 const {
-  chatEl, chatChannels, selectedChatChannelId, chatUsers,
+  chatEl, chatChannels, selectedChatChannelId,
   activeChannelName,
   isJoinedChannel, setJoinedChannel, createChannelByName, sendChat, scrollChat,
   joinChannelFromContext, leaveChannelFromContext,

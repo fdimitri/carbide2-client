@@ -33,6 +33,9 @@
         :joining="paneJoining"
         :connected="store.wsConnected"
         :can-send="paneCanSend"
+        :users="paneUsers"
+        :typing-map="paneTypingMap"
+        :channel-id="activeChatChannelId"
         @send="(text) => emit('send-chat', activeChatChannelId, text)"
       />
     </div>
@@ -123,6 +126,16 @@ const paneCanSend = computed(() => {
   if (!cid || !store.wsConnected) return false
   if (paneJoining.value) return false
   return store.joinedChatChannels?.has?.(cid) ?? false
+})
+
+const paneUsers = computed(() => {
+  const cid = activeChatChannelId.value
+  return cid ? (store.chatUsersMap[cid] ?? []) : []
+})
+
+const paneTypingMap = computed(() => {
+  const cid = activeChatChannelId.value
+  return cid ? (store.chatTypingMap[cid] ?? {}) : {}
 })
 
 const activeChatLabel = computed(() => {

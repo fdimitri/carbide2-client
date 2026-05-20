@@ -7,11 +7,13 @@ import { useWorkspaceStore } from '../stores/workspaceStore'
 
 export function useChat(projectId, { wsConnected, error, bindTabToActivePane, activePane }) {
   const store = useWorkspaceStore()
-  const { chatMessagesMap, chatJoiningMap, joinedChatChannels, chatChannels, selectedChatChannelId } = storeToRefs(store)
+  const {
+    chatMessagesMap, chatJoiningMap, joinedChatChannels, chatChannels,
+    selectedChatChannelId, chatUsersMap, chatTypingMap,
+  } = storeToRefs(store)
 
   const chatEl     = ref(null)
-  const chatUsers  = ref([])
-  let joinTimeoutHandle        = null
+  let joinTimeoutHandle = null
 
   const currentUserId     = computed(() => store.currentUserId)
   const activeChannelName = computed(() => {
@@ -135,24 +137,23 @@ export function useChat(projectId, { wsConnected, error, bindTabToActivePane, ac
       }),
       workerSocket.on('chat', 'user_join', (p) => {
         const cid = Number(p.channel_id ?? p.chat_channel_id)
-        if (cid === Number(selectedChatChannelId.value)) {
-          if (!chatUsers.value.find(u => u.user_id === p.user_id))
-            chatUsers.value.push({ user_id: p.user_id, name: p.name })
+        const users = chatUsersMap.value[cid] || []
+        if (!users.find(u => u.user_id === p.user_id)) {
+          chatUsersMap.value = { ...chatUsersMap.value, [cid]: [...users, { user_id: p.user_id, name: p.name }] }
         }
         const arr = chatMessagesMap.value[cid]
         if (arr) arr.push({ system: true, text: `${p.name} joined`, timestamp: new Date().toISOString() })
       }),
       workerSocket.on('chat', 'user_leave', (p) => {
         const cid = Number(p.channel_id ?? p.chat_channel_id)
-        if (cid === Number(selectedChatChannelId.value))
-          chatUsers.value = chatUsers.value.filter(u => u.user_id !== p.user_id)
+        const users = chatUsersMap.value[cid] || []
+        chatUsersMap.value = { ...chatUsersMap.value, [cid]: users.filter(u => u.user_id !== p.user_id) }
         const arr = chatMessagesMap.value[cid]
         if (arr) arr.push({ system: true, text: `${p.name} left`, timestamp: new Date().toISOString() })
       }),
       workerSocket.on('chat', 'user_list', (p) => {
         const cid = Number(p.channel_id ?? p.chat_channel_id)
-        if (cid === Number(selectedChatChannelId.value))
-          chatUsers.value = p.users || []
+        chatUsersMap.value = { ...chatUsersMap.value, [cid]: p.users || [] }
       }),
       workerSocket.on('chat', 'joined', (p) => {
         const cid = Number(p.channel_id)
@@ -168,6 +169,13 @@ export function useChat(projectId, { wsConnected, error, bindTabToActivePane, ac
           setJoinedChannel(cid, false)
           chatJoiningMap.value = { ...chatJoiningMap.value, [cid]: false }
         }
+      }),
+      workerSocket.on('chat', 'typing', (p) => {
+        const cid  = Number(p.channel_id ?? p.chat_channel_id)
+        const uid  = p.user_id
+        const until = Date.now() + 700
+        const byChannel = chatTypingMap.value[cid] || {}
+        chatTypingMap.value = { ...chatTypingMap.value, [cid]: { ...byChannel, [uid]: until } }
       })
     )
   }
@@ -193,7 +201,6 @@ export function useChat(projectId, { wsConnected, error, bindTabToActivePane, ac
     chatEl,
     chatChannels,
     selectedChatChannelId,
-    chatUsers,
     activeChannelName,
     isJoinedChannel,
     setJoinedChannel,

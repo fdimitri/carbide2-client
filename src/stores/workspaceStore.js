@@ -19,6 +19,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const chatMessagesMap        = ref({})   // { [channelId]: Message[] }
   const chatJoiningMap         = ref({})   // { [channelId]: boolean }
   const joinedChatChannels     = ref(new Set())
+  const chatUsersMap           = ref({})   // { [channelId]: [{user_id, name}] }
+  const chatTypingMap          = ref({})   // { [channelId]: { [userId]: until_ms } }
 
   return {
     wsConnected,
@@ -30,5 +32,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     chatMessagesMap,
     chatJoiningMap,
     joinedChatChannels,
+    chatUsersMap,
+    chatTypingMap,
   }
 })
