@@ -7,11 +7,19 @@
           <p class="text-muted text-xs font-mono uppercase tracking-[0.15em] mb-2">Workspace</p>
           <h1 class="text-text text-2xl font-bold tracking-tight">Your Projects</h1>
         </div>
-        <button @click="showNewProject = !showNewProject"
-          class="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-accent text-accent-text text-sm font-bold
-                 border-0 cursor-pointer hover:brightness-110 active:scale-[0.98] transition-all
-                 shadow-[0_4px_20px_rgba(46,196,182,0.3)]"  
-        ><span class="text-base leading-none font-bold">+</span> New Project</button>
+        <div class="flex items-center gap-3">
+          <button @click="router.push('/preferences')"
+            title="User Preferences"
+            class="px-4 py-2.5 rounded-lg bg-transparent border border-line text-muted text-sm
+                   cursor-pointer hover:border-accent hover:text-text transition-all">
+            ⚙ Preferences
+          </button>
+          <button @click="showNewProject = !showNewProject"
+            class="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-accent text-accent-text text-sm font-bold
+                   border-0 cursor-pointer hover:brightness-110 active:scale-[0.98] transition-all
+                   shadow-[0_4px_20px_rgba(46,196,182,0.3)]"  
+          ><span class="text-base leading-none font-bold">+</span> New Project</button>
+        </div>
       </div>
     </div>
 

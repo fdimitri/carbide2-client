@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import LoginPage from '../pages/LoginPage.vue'
 import DashboardPage from '../pages/DashboardPage.vue'
 import ProjectPage from '../pages/ProjectPage.vue'
+import PreferencesPage from '../pages/PreferencesPage.vue'
 import authService from '../services/authService'
 
 const routes = [
@@ -20,6 +21,12 @@ const routes = [
     path: '/projects/:id',
     name: 'Project',
     component: ProjectPage,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/preferences',
+    name: 'Preferences',
+    component: PreferencesPage,
     meta: { requiresAuth: true },
   },
   {
