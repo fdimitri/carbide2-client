@@ -9,6 +9,7 @@
 
     <div class="grid flex-1 min-h-0 overflow-hidden [grid-template-columns:300px_minmax(0,1fr)] max-[980px]:[grid-template-columns:1fr] max-[980px]:[grid-template-rows:42vh_minmax(0,1fr)]">
       <ExplorerPane
+        ref="explorerPane"
         :terminal-list="terminalList"
         :chat-channels="chatChannels"
         :pane-layout="paneLayout"
@@ -151,7 +152,7 @@ const error       = ref('')
 const activePane  = ref('terminal')
 const pendingNavigation = ref(null)
 const offHandlers = []
-
+const explorerPane = ref(null)
 const workspaceStore = useWorkspaceStore()
 const { wsConnected, joinedChatChannels: storeJoinedChatChannels } = storeToRefs(workspaceStore)
 
@@ -193,6 +194,9 @@ const menuItems = computed(() => ([
   {
     label: 'Create',
     items: [
+      { label: 'New File...',   icon: 'pi pi-file-plus', command: () => explorerPane.value?.openCreateFileDialog('/') },
+      { label: 'New Folder...', icon: 'pi pi-folder',    command: () => explorerPane.value?.openCreateFolderDialog('/') },
+      { separator: true },
       { label: 'New Terminal', icon: 'pi pi-terminal', command: () => openCreateTerminalDialog() },
       { label: 'New Channel',  icon: 'pi pi-comments', command: () => openCreateChannelDialog() },
     ]

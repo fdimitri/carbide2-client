@@ -40,6 +40,32 @@
       </Tree>
     </div>
     <ContextMenu ref="treeContextMenu" :model="contextMenuItems" class="tree-context-overlay" />
+
+    <!-- Create File Dialog -->
+    <Dialog v-model:visible="showCreateFileDialog" modal header="New File" :style="{ width: '22rem' }">
+      <div class="flex flex-col gap-[0.35rem] mb-[0.7rem]">
+        <label class="text-muted text-[0.78rem] font-semibold">File Name</label>
+        <InputText v-model="createFileName" class="w-full" @keydown.enter="confirmCreateFile" autofocus />
+        <span class="text-muted text-[0.75rem]">in {{ createDialogParentPath }}</span>
+      </div>
+      <template #footer>
+        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-[#587296] text-[#c5d4ea] text-[0.85rem] rounded-[0.35rem] cursor-pointer hover:border-[#7ce9de] hover:text-[#dffffa]" @click="showCreateFileDialog = false">Cancel</button>
+        <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-[#123549] border border-accent text-[#9efdf3] rounded-[0.35rem] cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" :disabled="!createFileName.trim()" @click="confirmCreateFile">Create</button>
+      </template>
+    </Dialog>
+
+    <!-- Create Folder Dialog -->
+    <Dialog v-model:visible="showCreateFolderDialog" modal header="New Folder" :style="{ width: '22rem' }">
+      <div class="flex flex-col gap-[0.35rem] mb-[0.7rem]">
+        <label class="text-muted text-[0.78rem] font-semibold">Folder Name</label>
+        <InputText v-model="createFolderName" class="w-full" @keydown.enter="confirmCreateFolder" autofocus />
+        <span class="text-muted text-[0.75rem]">in {{ createDialogParentPath }}</span>
+      </div>
+      <template #footer>
+        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-[#587296] text-[#c5d4ea] text-[0.85rem] rounded-[0.35rem] cursor-pointer hover:border-[#7ce9de] hover:text-[#dffffa]" @click="showCreateFolderDialog = false">Cancel</button>
+        <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-[#123549] border border-accent text-[#9efdf3] rounded-[0.35rem] cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" :disabled="!createFolderName.trim()" @click="confirmCreateFolder">Create</button>
+      </template>
+    </Dialog>
   </aside>
 </template>
 
@@ -47,6 +73,8 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import Tree from 'primevue/tree'
 import ContextMenu from 'primevue/contextmenu'
+import Dialog from 'primevue/dialog'
+import InputText from 'primevue/inputtext'
 import { logInfo } from '../../services/log'
 import { PANE_COUNTS } from '../../composables/usePanes'
 import workerSocket from '../../services/workerSocket'
@@ -76,8 +104,13 @@ const explorerSearch        = ref('')
 const selectedFileId        = ref('README.md')
 const openedFileIds         = ref(new Set(['README.md']))
 const openedTerminalIds     = ref(new Set())
-const treeContextMenu       = ref(null)
-const contextMenuItems      = ref([])
+const treeContextMenu           = ref(null)
+const contextMenuItems          = ref([])
+const showCreateFileDialog      = ref(false)
+const showCreateFolderDialog    = ref(false)
+const createDialogParentPath    = ref('/')
+const createFileName            = ref('')
+const createFolderName          = ref('')
 const selectionKeys         = ref({ [selectedFileId.value]: true })
 const expandedExplorerKeys  = ref({
   'group:files':     true,
@@ -101,6 +134,9 @@ function requestFileTree() {
 
 const _offFsTree      = ref(null)
 const _offWsConnected = ref(null)
+const _offFsCreated   = ref(null)
+const _offFsRenamed   = ref(null)
+const _offFsDeleted   = ref(null)
 
 onMounted(() => {
   _offFsTree.value = workerSocket.on('fs', 'tree', (payload) => {
@@ -109,12 +145,18 @@ onMounted(() => {
     fileTree.value = (root.children || []).map(serverNodeToInternal)
   })
   _offWsConnected.value = workerSocket.on('system', 'connected', () => requestFileTree())
+  _offFsCreated.value   = workerSocket.on('fs', 'created', () => requestFileTree())
+  _offFsRenamed.value   = workerSocket.on('fs', 'renamed', () => requestFileTree())
+  _offFsDeleted.value   = workerSocket.on('fs', 'deleted', () => requestFileTree())
   requestFileTree()
 })
 
 onBeforeUnmount(() => {
   _offFsTree.value?.()
   _offWsConnected.value?.()
+  _offFsCreated.value?.()
+  _offFsRenamed.value?.()
+  _offFsDeleted.value?.()
 })
 
 // ── Computed tree nodes ───────────────────────────────────────────────────────
@@ -243,6 +285,21 @@ function buildContextMenuItems(node) {
   const kind = node?.data?.kind
   if (kind === 'group-terminals') return [{ label: 'New Terminal...', command: () => emit('create-terminal') }]
   if (kind === 'group-channels')  return [{ label: 'New Channel...',  command: () => emit('create-channel') }]
+  if (kind === 'group-files') {
+    return [
+      { label: 'New File...',   icon: 'pi pi-file-plus', command: () => openCreateFileDialog('/') },
+      { label: 'New Folder...', icon: 'pi pi-folder',    command: () => openCreateFolderDialog('/') },
+    ]
+  }
+  if (kind === 'dir') {
+    const dirPath = '/' + node.key.replace(/^\//, '')
+    return [
+      { label: 'New File...',   icon: 'pi pi-file-plus', command: () => openCreateFileDialog(dirPath) },
+      { label: 'New Folder...', icon: 'pi pi-folder',    command: () => openCreateFolderDialog(dirPath) },
+      { separator: true },
+      { label: 'Delete', icon: 'pi pi-trash', command: () => deletePath(node.key) },
+    ]
+  }
   if (kind === 'channel') {
     const cid = node.data.id
     const joined = props.isJoinedChannel(cid)
@@ -265,10 +322,8 @@ function buildContextMenuItems(node) {
     return [
       ...buildOpenItems(node),
       { separator: true },
-      { label: 'Rename', command: () => renameFileById(node.key) },
-      { label: 'Copy',   command: () => {} },
-      { label: 'Cut',    command: () => {} },
-      { label: 'Delete', command: () => {} },
+      { label: 'Rename', icon: 'pi pi-pencil', command: () => renameFileById(node.key) },
+      { label: 'Delete', icon: 'pi pi-trash',  command: () => deletePath(node.key) },
     ]
   }
   return []
@@ -301,19 +356,49 @@ function onExplorerNodeDragStart(event, node) {
 function renameFileById(fileId) {
   const parts = String(fileId).split('/')
   const current = parts[parts.length - 1] || String(fileId)
-  const next = window.prompt('File name:', current)
+  const next = window.prompt('Rename to:', current)
   if (!next || !next.trim()) return
-  const nextName = next.trim()
-  const updateNodes = (nodes) => nodes.map((node) => {
-    if (node.id === fileId) return { ...node, name: nextName }
-    if (node.children?.length) return { ...node, children: updateNodes(node.children) }
-    return node
-  })
-  fileTree.value = updateNodes(fileTree.value)
+  workerSocket.send('fs', 'rename', { path: fileId, new_name: next.trim() })
 }
 
-// ── Exposed for parent to mark items open (after terminal/channel create) ─────
-defineExpose({ markTerminalOpen, markFileOpen })
+function deletePath(path) {
+  const name = String(path).split('/').pop() || path
+  if (!window.confirm(`Delete "${name}"? This cannot be undone.`)) return
+  workerSocket.send('fs', 'delete', { path })
+}
+
+function openCreateFileDialog(parentPath) {
+  createDialogParentPath.value = parentPath || '/'
+  createFileName.value = ''
+  showCreateFileDialog.value = true
+}
+
+function openCreateFolderDialog(parentPath) {
+  createDialogParentPath.value = parentPath || '/'
+  createFolderName.value = ''
+  showCreateFolderDialog.value = true
+}
+
+function confirmCreateFile() {
+  const name = createFileName.value.trim()
+  if (!name) return
+  const parent = createDialogParentPath.value.replace(/\/$/, '')
+  const path = `${parent}/${name}`
+  workerSocket.send('fs', 'create_file', { path, content: '' })
+  showCreateFileDialog.value = false
+}
+
+function confirmCreateFolder() {
+  const name = createFolderName.value.trim()
+  if (!name) return
+  const parent = createDialogParentPath.value.replace(/\/$/, '')
+  const path = `${parent}/${name}`
+  workerSocket.send('fs', 'create_dir', { path })
+  showCreateFolderDialog.value = false
+}
+
+// ── Exposed for parent to mark items open / trigger create dialogs ──────────
+defineExpose({ markTerminalOpen, markFileOpen, openCreateFileDialog, openCreateFolderDialog })
 </script>
 
 
