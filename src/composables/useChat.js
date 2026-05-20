@@ -173,7 +173,7 @@ export function useChat(projectId, { wsConnected, error, bindTabToActivePane, ac
       workerSocket.on('chat', 'typing', (p) => {
         const cid  = Number(p.channel_id ?? p.chat_channel_id)
         const uid  = p.user_id
-        const until = Date.now() + 700
+        const until = Date.now() + 250
         const byChannel = chatTypingMap.value[cid] || {}
         chatTypingMap.value = { ...chatTypingMap.value, [cid]: { ...byChannel, [uid]: until } }
       })
