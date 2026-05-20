@@ -16,3 +16,4 @@ dist-ssr
 .env
 .env.local
 .env.*.local
+test-results/*
