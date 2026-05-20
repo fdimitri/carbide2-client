@@ -36,8 +36,8 @@ export async function loginAndCaptureLogs(page) {
  * Returns after system:connected is logged (i.e. WS is live).
  */
 export async function openFirstProject(page) {
-  // Wait for at least one project card to appear
-  const card = page.locator('.project-card').first()
+  // Wait for at least one project card (div with cursor-pointer inside the grid)
+  const card = page.locator('div.cursor-pointer h3').first()
   await expect(card).toBeVisible({ timeout: 10000 })
 
   // Capture WS frames

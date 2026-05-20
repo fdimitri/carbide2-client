@@ -26,8 +26,11 @@ const props = defineProps({
   },
 })
 
-const containerEl = ref(null)
-const editor      = shallowRef(null)
+const emit = defineEmits(['change'])
+
+const containerEl    = ref(null)
+const editor         = shallowRef(null)
+let   applyingRemote = false
 
 // The CSS variables Monaco injects are scoped to .monaco-editor, not :root.
 // Promote the ones we need to :root so other components (e.g. ChatPane) can
@@ -70,7 +73,10 @@ onMounted(async () => {
     scrollBeyondLastLine: false,
     renderWhitespace: 'selection',
     wordWrap:          'off',
-    readOnly:          true,        // read-only for now — editing comes later
+  })
+  editor.value.onDidChangeModelContent((e) => {
+    if (applyingRemote) return
+    emit('change', e.changes)
   })
   // Promote theme vars after editor paints (one rAF is enough)
   requestAnimationFrame(propagateThemeVars)
@@ -83,8 +89,13 @@ watch(() => props.content, (next) => {
   if (!editor.value) return
   const model = editor.value.getModel()
   if (model) {
-    model.setValue(next)
-    editor.value.setScrollPosition({ scrollTop: 0 })
+    applyingRemote = true
+    try {
+      model.setValue(next)
+      editor.value.setScrollPosition({ scrollTop: 0 })
+    } finally {
+      applyingRemote = false
+    }
   }
 })
 
@@ -98,6 +109,36 @@ watch(() => props.language, (lang) => {
 onBeforeUnmount(() => {
   editor.value?.dispose()
 })
+
+// Apply a change received from another client without re-emitting it.
+function applyRemoteChange(changeType, changeDataStr) {
+  if (!editor.value) return
+  const model = editor.value.getModel()
+  if (!model) return
+  applyingRemote = true
+  try {
+    if (changeType === 'setContents') {
+      model.setValue(String(changeDataStr ?? ''))
+      return
+    }
+    let data
+    try { data = JSON.parse(changeDataStr) } catch { return }
+    const startLineNumber = (data.startLine ?? 0) + 1
+    const startColumn     = (data.startChar ?? 0) + 1
+    if (changeType === 'insertDataSingleLine' || changeType === 'insertDataMultiLine') {
+      const text = Array.isArray(data.data) ? data.data.join('\n') : String(data.data ?? '')
+      editor.value.executeEdits('remote', [{ range: { startLineNumber, startColumn, endLineNumber: startLineNumber, endColumn: startColumn }, text, forceMoveMarkers: true }])
+    } else if (changeType === 'deleteDataSingleLine' || changeType === 'deleteDataMultiLine') {
+      const endLineNumber = (data.endLine ?? data.startLine ?? 0) + 1
+      const endColumn     = (data.endChar ?? data.startChar ?? 0) + 1
+      editor.value.executeEdits('remote', [{ range: { startLineNumber, startColumn, endLineNumber, endColumn }, text: '', forceMoveMarkers: true }])
+    }
+  } finally {
+    applyingRemote = false
+  }
+}
+
+defineExpose({ applyRemoteChange })
 </script>
 
 

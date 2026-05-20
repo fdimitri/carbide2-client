@@ -10,10 +10,12 @@
         <span v-if="loadError" class="text-[#f38ba8]">{{ loadError }}</span>
       </div>
       <MonacoEditor
+        ref="editorRef"
         class="flex-1 min-h-0"
         :content="content"
         :language="language"
         :path="fileId"
+        @change="onEditorChange"
       />
     </template>
   </div>
@@ -35,6 +37,7 @@ const props = defineProps({
 const content   = ref('')
 const loading   = ref(false)
 const loadError = ref('')
+const editorRef = ref(null)
 
 const filename = computed(() => (props.fileId || '').split('/').pop() || props.fileId)
 const language = computed(() => extensionToLanguage(filename.value))
@@ -49,6 +52,46 @@ function requestFile(path) {
 
 function normPath(p) { return (p || '').replace(/^\//, '') }
 
+// ── Send local edits to server ────────────────────────────────────────────────
+function monacoChangesToWsPayload(changes) {
+  const out = []
+  for (const ch of changes) {
+    const { range, text, rangeLength } = ch
+    const startLine = range.startLineNumber - 1
+    const startChar = range.startColumn - 1
+    const endLine   = range.endLineNumber - 1
+    const endChar   = range.endColumn - 1
+    if (rangeLength > 0) {
+      const changeType = startLine === endLine ? 'deleteDataSingleLine' : 'deleteDataMultiLine'
+      out.push({ change_type: changeType, change_data: JSON.stringify({ startLine, startChar, endLine, endChar }), start_line: startLine, start_char: startChar, end_line: endLine, end_char: endChar })
+    }
+    if (text) {
+      const changeType = text.includes('\n') ? 'insertDataMultiLine' : 'insertDataSingleLine'
+      out.push({ change_type: changeType, change_data: JSON.stringify({ startLine, startChar, data: text }), start_line: startLine, start_char: startChar })
+    }
+  }
+  return out
+}
+
+function onEditorChange(monacoChanges) {
+  if (!props.fileId) return
+  const changes = monacoChangesToWsPayload(monacoChanges)
+  if (changes.length) workerSocket.send('fs', 'write', { path: props.fileId, changes })
+}
+
+// ── Receive remote edits from peers ──────────────────────────────────────────
+function onFsChange(payload) {
+  if (normPath(payload.path) !== normPath(props.fileId)) return
+  editorRef.value?.applyRemoteChange(payload.change_type, payload.change_data)
+}
+
+function onFsSetContents(payload) {
+  if (normPath(payload.path) !== normPath(props.fileId)) return
+  editorRef.value?.applyRemoteChange('setContents', payload.content)
+}
+
+// ── WS response handlers ──────────────────────────────────────────────────────
+
 function onFsContent(payload) {
   if (normPath(payload.path) !== normPath(props.fileId)) return
   loading.value = false
@@ -61,8 +104,10 @@ function onFsError(payload) {
   loadError.value = payload.error || 'unknown error'
 }
 
-const offContent = workerSocket.on('fs', 'content', onFsContent)
-const offError   = workerSocket.on('fs', 'error',   onFsError)
+const offContent    = workerSocket.on('fs', 'content',     onFsContent)
+const offError      = workerSocket.on('fs', 'error',       onFsError)
+const offChange     = workerSocket.on('fs', 'change',      onFsChange)
+const offSetContents = workerSocket.on('fs', 'set_contents', onFsSetContents)
 
 onMounted(() => requestFile(props.fileId))
 
@@ -71,6 +116,8 @@ watch(() => props.fileId, (next) => requestFile(next))
 onBeforeUnmount(() => {
   offContent()
   offError()
+  offChange()
+  offSetContents()
 })
 </script>
 
