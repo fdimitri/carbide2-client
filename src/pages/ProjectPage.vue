@@ -87,6 +87,13 @@
 
     <div v-if="error" class="px-3 py-2 bg-[#4d1b27] text-[#ffb9c8] border-t border-[#7f3243] text-[0.84rem]">{{ error }}</div>
 
+    <ProjectSettingsDialog
+      v-model="showSettingsDialog"
+      :project-id="projectId"
+      :project="project"
+      @saved="onSettingsSaved"
+    />
+
     <Dialog v-model:visible="showCreateTerminalDialog" modal header="Create Terminal" :style="{ width: '28rem' }">
       <div class="flex flex-col gap-[0.35rem] mb-[0.7rem]">
         <label class="text-muted text-[0.78rem] font-semibold" for="terminal-name">Name</label>
@@ -126,6 +133,7 @@ import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import WorkspacePaneShell from '../components/workspace/WorkspacePaneShell.vue'
 import ExplorerPane from '../components/workspace/ExplorerPane.vue'
+import ProjectSettingsDialog from '../components/workspace/ProjectSettingsDialog.vue'
 import workerSocket from '../services/workerSocket'
 import { listProjects, getWsToken } from '../services/projectService'
 import { storeToRefs } from 'pinia'
@@ -149,6 +157,7 @@ const route       = useRoute()
 const projectId   = Number(route.params.id)
 const project     = ref(null)
 const error       = ref('')
+const showSettingsDialog = ref(false)
 const activePane  = ref('terminal')
 const pendingNavigation = ref(null)
 const offHandlers = []
@@ -204,7 +213,13 @@ const menuItems = computed(() => ([
   {
     label: 'Layout',
     items: menuLayoutItems.value,
-  }
+  },
+  {
+    label: 'Project',
+    items: [
+      { label: 'Settings…', icon: 'pi pi-cog', command: () => { showSettingsDialog.value = true } },
+    ]
+  },
 ]))
 
 const dockItems = computed(() => ([
@@ -301,6 +316,15 @@ function focusAnyChannel() {
 
 function focusAnyFile() {
   selectFileNode('README.md')
+}
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+async function onSettingsSaved() {
+  // Refresh project so root_path shown in next settings open is current
+  try {
+    const projects = await listProjects()
+    project.value = projects.find(p => p.id === projectId)
+  } catch (_) {}
 }
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────

@@ -45,3 +45,21 @@ export async function createChatMessage(projectId, channelId, text) {
   )
   return res.data
 }
+
+export async function getProjectSettings(projectId) {
+  const res = await authService.api.get(`projects/${projectId}/settings`)
+  return res.data
+}
+
+export async function updateProjectSettings(projectId, settings) {
+  const res = await authService.api.patch(`projects/${projectId}/settings`, settings)
+  return res.data
+}
+
+export async function setProjectRoot(projectId, rootPath, cleanVfs = false) {
+  const res = await authService.api.patch(`projects/${projectId}/set_root`, {
+    root_path: rootPath,
+    clean_vfs: cleanVfs,
+  })
+  return res.data
+}
