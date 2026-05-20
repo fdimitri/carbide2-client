@@ -26,11 +26,13 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['change'])
+const emit = defineEmits(['change', 'cursor-change'])
 
 const containerEl    = ref(null)
 const editor         = shallowRef(null)
 let   applyingRemote = false
+let   monacoNs       = null   // monaco namespace for Range constructor
+const peerDecorations = {}    // user_id => decoration id array
 
 // The CSS variables Monaco injects are scoped to .monaco-editor, not :root.
 // Promote the ones we need to :root so other components (e.g. ChatPane) can
@@ -59,8 +61,20 @@ function propagateThemeVars() {
   })
 }
 
+// Inject peer cursor CSS once per page load
+if (!document.getElementById('carbide-peer-cursors')) {
+  const s = document.createElement('style')
+  s.id = 'carbide-peer-cursors'
+  s.textContent = [
+    '#e06c75','#98c379','#61afef','#d19a66',
+    '#c678dd','#56b6c2','#e5c07b','#abb2bf',
+  ].map((c, i) => `.peer-cursor-${i}{border-left:2px solid ${c};margin-left:-1px}`).join('')
+  document.head.appendChild(s)
+}
+
 onMounted(async () => {
   const m = await loader.init()
+  monacoNs = m
   editor.value = m.editor.create(containerEl.value, {
     value:             props.content,
     language:          props.language,
@@ -77,6 +91,10 @@ onMounted(async () => {
   editor.value.onDidChangeModelContent((e) => {
     if (applyingRemote) return
     emit('change', e.changes)
+  })
+  editor.value.onDidChangeCursorPosition((e) => {
+    if (applyingRemote) return
+    emit('cursor-change', { line: e.position.lineNumber - 1, char: e.position.column - 1 })
   })
   // Promote theme vars after editor paints (one rAF is enough)
   requestAnimationFrame(propagateThemeVars)
@@ -138,7 +156,30 @@ function applyRemoteChange(changeType, changeDataStr) {
   }
 }
 
-defineExpose({ applyRemoteChange })
+function setPeerCursor(userId, name, line, char) {
+  if (!editor.value || !monacoNs) return
+  const colorIndex = Math.abs(userId) % 8
+  const lineNumber = (line ?? 0) + 1
+  const column     = (char ?? 0) + 1
+  const oldIds = peerDecorations[userId] || []
+  const newIds = editor.value.deltaDecorations(oldIds, [{
+    range: new monacoNs.Range(lineNumber, column, lineNumber, column + 1),
+    options: {
+      className:    `peer-cursor-${colorIndex}`,
+      hoverMessage: { value: `**${name}**` },
+    },
+  }])
+  peerDecorations[userId] = newIds
+}
+
+function removePeerCursor(userId) {
+  if (!editor.value) return
+  const oldIds = peerDecorations[userId] || []
+  editor.value.deltaDecorations(oldIds, [])
+  delete peerDecorations[userId]
+}
+
+defineExpose({ applyRemoteChange, setPeerCursor, removePeerCursor })
 </script>
 
 
