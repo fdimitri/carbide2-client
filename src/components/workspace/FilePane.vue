@@ -16,6 +16,7 @@
         :language="language"
         :path="fileId"
         @change="onEditorChange"
+        @cursor-change="onCursorChange"
       />
     </template>
   </div>
@@ -79,6 +80,16 @@ function onEditorChange(monacoChanges) {
   if (changes.length) workerSocket.send('fs', 'write', { path: props.fileId, changes })
 }
 
+// ── Cursor tracking ───────────────────────────────────────────────────────────
+let cursorTimer = null
+function onCursorChange({ line, char }) {
+  if (!props.fileId) return
+  clearTimeout(cursorTimer)
+  cursorTimer = setTimeout(() => {
+    workerSocket.send('fs', 'cursor', { path: props.fileId, line, char })
+  }, 50)
+}
+
 // ── Receive remote edits from peers ──────────────────────────────────────────
 function onFsChange(payload) {
   if (normPath(payload.path) !== normPath(props.fileId)) return
@@ -88,6 +99,18 @@ function onFsChange(payload) {
 function onFsSetContents(payload) {
   if (normPath(payload.path) !== normPath(props.fileId)) return
   editorRef.value?.applyRemoteChange('setContents', payload.content)
+}
+
+function onFsCursor(payload) {
+  if (normPath(payload.path) !== normPath(props.fileId)) return
+  editorRef.value?.setPeerCursor(payload.user_id, payload.name, payload.line, payload.char)
+}
+
+function onFsOpened(payload) {
+  if (normPath(payload.path) !== normPath(props.fileId)) return
+  for (const v of (payload.viewers || [])) {
+    if (v.cursor) editorRef.value?.setPeerCursor(v.user_id, v.name, v.cursor.line, v.cursor.char)
+  }
 }
 
 // ── WS response handlers ──────────────────────────────────────────────────────
@@ -108,16 +131,27 @@ const offContent    = workerSocket.on('fs', 'content',     onFsContent)
 const offError      = workerSocket.on('fs', 'error',       onFsError)
 const offChange     = workerSocket.on('fs', 'change',      onFsChange)
 const offSetContents = workerSocket.on('fs', 'set_contents', onFsSetContents)
+const offCursor      = workerSocket.on('fs', 'cursor',       onFsCursor)
+const offOpened      = workerSocket.on('fs', 'opened',       onFsOpened)
+onMounted(() => {
+  if (props.fileId) {
+    workerSocket.send('fs', 'open', { path: props.fileId })
+    requestFile(props.fileId)
+  }
+})
 
-onMounted(() => requestFile(props.fileId))
-
-watch(() => props.fileId, (next) => requestFile(next))
+watch(() => props.fileId, (next, prev) => {
+  if (prev) workerSocket.send('fs', 'close', { path: prev })
+  if (next) {
+    workerSocket.send('fs', 'open', { path: next })
+    requestFile(next)
+  }
+})
 
 onBeforeUnmount(() => {
-  offContent()
-  offError()
-  offChange()
-  offSetContents()
+  clearTimeout(cursorTimer)
+  if (props.fileId) workerSocket.send('fs', 'close', { path: props.fileId })
+  offContent(); offError(); offChange(); offSetContents(); offCursor(); offOpened()
 })
 </script>
 
