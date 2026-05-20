@@ -45,6 +45,14 @@
       />
     </div>
 
+    <div class="flex flex-col flex-1 overflow-hidden" v-show="activeTabKind === 'settings'">
+      <ProjectSettingsPane
+        v-if="activeSettingsProjectId"
+        :key="`settings-${activeSettingsProjectId}`"
+        :project-id="activeSettingsProjectId"
+      />
+    </div>
+
     <div v-if="pane.tabs.length === 0" class="flex flex-col flex-1 items-center justify-center text-muted">
       <div>No content. Select or create an item from the explorer.</div>
     </div>
@@ -57,6 +65,7 @@ import { useWorkspaceStore } from '../../stores/workspaceStore'
 import TerminalPane from './TerminalPane.vue'
 import ChatPane from './ChatPane.vue'
 import FilePane from './FilePane.vue'
+import ProjectSettingsPane from './ProjectSettingsPane.vue'
 
 const store = useWorkspaceStore()
 
@@ -87,6 +96,11 @@ const activeTerminalId = computed(() => {
 const activeFileId = computed(() => {
   if (activeTabKind.value !== 'file') return ''
   return (effectiveActiveKey.value || '').split(':').slice(1).join(':')
+})
+
+const activeSettingsProjectId = computed(() => {
+  if (activeTabKind.value !== 'settings') return null
+  return Number((effectiveActiveKey.value || '').split(':')[1]) || null
 })
 
 const activeChatChannelId = computed(() => {
