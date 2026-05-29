@@ -28,6 +28,13 @@ app.use(router)
 app.use(PrimeVue, {
 	theme: {
 		preset: Aura,
+		options: {
+			// Lock the design tokens to dark mode. The default ('system') follows
+			// prefers-color-scheme, which leaks white --p-content-background into
+			// components like Tree on hosts/browsers that don't report dark mode.
+			// The .app-dark class is set permanently on <html> in index.html.
+			darkModeSelector: '.app-dark',
+		},
 	},
 })
 app.mount('#app')
