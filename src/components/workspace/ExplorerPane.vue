@@ -97,6 +97,8 @@ const emit = defineEmits([
   'rename-terminal',
   'join-channel',
   'leave-channel',
+  'open-upload',
+  'open-debug',
 ])
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -116,6 +118,7 @@ const expandedExplorerKeys  = ref({
   'group:files':     true,
   'group:terminals': true,
   'group:channels':  true,
+  'group:debug':     true,
 })
 
 const fileTree = ref([])
@@ -195,6 +198,7 @@ const explorerNodes = computed(() => {
     { key: 'group:files',     label: 'Files',     selectable: false, draggable: false, droppable: false, data: { kind: 'group-files' },     children: primeFileNodes.value },
     { key: 'group:terminals', label: 'Terminals', selectable: false, draggable: false, droppable: false, data: { kind: 'group-terminals' }, children: termNodes },
     { key: 'group:channels',  label: 'Channels',  selectable: false, draggable: false, droppable: false, data: { kind: 'group-channels' },  children: channelNodes },
+    { key: 'group:debug',     label: 'Debug',     selectable: false, draggable: false, droppable: false, data: { kind: 'group-debug' },     children: [] },
   ]
 })
 
@@ -204,6 +208,7 @@ function treeIconClass(data) {
     case 'group-files':     return 'pi-folder-open'
     case 'group-terminals': return 'pi-desktop'
     case 'group-channels':  return 'pi-comments'
+    case 'group-debug':     return 'pi-bug'
     case 'dir':             return 'pi-folder'
     case 'file':            return 'pi-file'
     case 'terminal':        return 'pi-terminal'
@@ -245,6 +250,9 @@ function onExplorerNodeSelect(event) {
     selectionKeys.value = { [`channel:${node.data.id}`]: true }
     emit('open-channel', node.data.id)
   }
+  if (node.data.kind === 'group-debug') {
+    emit('open-debug')
+  }
 }
 
 function onExplorerNodeDblClick(node) {
@@ -285,17 +293,24 @@ function buildContextMenuItems(node) {
   const kind = node?.data?.kind
   if (kind === 'group-terminals') return [{ label: 'New Terminal...', command: () => emit('create-terminal') }]
   if (kind === 'group-channels')  return [{ label: 'New Channel...',  command: () => emit('create-channel') }]
+  if (kind === 'group-debug')     return [{ label: 'Open Debug Channel', icon: 'pi pi-bug', command: () => emit('open-debug') }]
   if (kind === 'group-files') {
     return [
-      { label: 'New File...',   icon: 'pi pi-file-plus', command: () => openCreateFileDialog('/') },
-      { label: 'New Folder...', icon: 'pi pi-folder',    command: () => openCreateFolderDialog('/') },
+      { label: 'New File...',                   icon: 'pi pi-file-plus', command: () => openCreateFileDialog('/') },
+      { label: 'New Folder...',                 icon: 'pi pi-folder',    command: () => openCreateFolderDialog('/') },
+      { separator: true },
+      { label: 'Upload File Here…',             icon: 'pi pi-upload',    command: () => emit('open-upload', { dest: '/', mode: 'file' }) },
+      { label: 'Upload & Extract Archive Here…',icon: 'pi pi-box',       command: () => emit('open-upload', { dest: '/', mode: 'archive' }) },
     ]
   }
   if (kind === 'dir') {
     const dirPath = '/' + node.key.replace(/^\//, '')
     return [
-      { label: 'New File...',   icon: 'pi pi-file-plus', command: () => openCreateFileDialog(dirPath) },
-      { label: 'New Folder...', icon: 'pi pi-folder',    command: () => openCreateFolderDialog(dirPath) },
+      { label: 'New File...',                   icon: 'pi pi-file-plus', command: () => openCreateFileDialog(dirPath) },
+      { label: 'New Folder...',                 icon: 'pi pi-folder',    command: () => openCreateFolderDialog(dirPath) },
+      { separator: true },
+      { label: 'Upload File Here…',             icon: 'pi pi-upload',    command: () => emit('open-upload', { dest: dirPath, mode: 'file' }) },
+      { label: 'Upload & Extract Archive Here…',icon: 'pi pi-box',       command: () => emit('open-upload', { dest: dirPath, mode: 'archive' }) },
       { separator: true },
       { label: 'Delete', icon: 'pi pi-trash', command: () => deletePath(node.key) },
     ]

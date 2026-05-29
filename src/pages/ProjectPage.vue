@@ -24,6 +24,8 @@
         @rename-terminal="renameTerminalById"
         @join-channel="joinChannelFromContext"
         @leave-channel="leaveChannelFromContext"
+        @open-upload="onExplorerOpenUpload"
+        @open-debug="openDebugPane"
       />
 
       <section class="flex flex-col flex-1 w-full h-full min-w-0 min-h-0 gap-0 px-[0.4rem] pt-[0.4rem]">
@@ -113,7 +115,7 @@
       </template>
     </Dialog>
 
-    <Dialog v-model:visible="showUploadDialog" modal header="Upload File / Archive" :style="{ width: '28rem' }">
+    <Dialog v-model:visible="showUploadDialog" modal :header="uploadMode === 'archive' ? 'Upload & Extract Archive' : 'Upload File / Archive'" :style="{ width: '28rem' }">
       <div class="flex flex-col gap-[0.6rem] mb-[0.7rem]">
         <label class="text-muted text-[0.78rem] font-semibold" for="upload-file">File (any file, .zip, .tar, .tar.gz)</label>
         <input id="upload-file" type="file" @change="uploadFile = $event.target.files?.[0] || null"
@@ -148,6 +150,7 @@ import { usePanes, PANE_COUNTS } from '../composables/usePanes'
 import { useTerminals } from '../composables/useTerminals'
 import { useChat } from '../composables/useChat'
 import { useWorkspaceStore } from '../stores/workspaceStore'
+import { useDebugLogStore } from '../stores/debugLogStore'
 
 // ── Layout configuration ──────────────────────────────────────────────────────
 const LAYOUT_CONFIGS = {
@@ -170,6 +173,7 @@ const offHandlers = []
 const explorerPane = ref(null)
 const workspaceStore = useWorkspaceStore()
 const { wsConnected, joinedChatChannels: storeJoinedChatChannels } = storeToRefs(workspaceStore)
+const debugLog = useDebugLogStore()
 
 // ── Composables ───────────────────────────────────────────────────────────────
 const {
@@ -206,27 +210,46 @@ const channelCreateName       = ref('')
 const showUploadDialog = ref(false)
 const uploadFile       = ref(null)
 const uploadDest       = ref('/')
+const uploadMode       = ref('file') // 'file' or 'archive' — UX hint only
 const uploading        = ref(false)
 const uploadResult     = ref('')
 
-function openUploadDialog() {
+function openUploadDialog(dest = '/', mode = 'file') {
   uploadFile.value = null
-  uploadDest.value = '/'
+  uploadDest.value = dest || '/'
+  uploadMode.value = mode === 'archive' ? 'archive' : 'file'
   uploadResult.value = ''
   showUploadDialog.value = true
+}
+
+function onExplorerOpenUpload(payload) {
+  openUploadDialog(payload?.dest || '/', payload?.mode || 'file')
+}
+
+function openDebugPane() {
+  bindTabToActivePane('debug', 0, 'Debug')
 }
 
 async function confirmUpload() {
   if (!uploadFile.value) return
   uploading.value = true
   uploadResult.value = ''
+  const fname = uploadFile.value.name
+  const dest  = uploadDest.value || '/'
   try {
-    const r = await uploadProjectFile(projectId, uploadFile.value, uploadDest.value || '/')
+    const r = await uploadProjectFile(projectId, uploadFile.value, dest)
     uploadResult.value = `OK — files: ${r.files}, dirs: ${r.dirs}, skipped: ${r.skipped}` +
       (r.errors?.length ? `\nerrors:\n${r.errors.slice(0, 5).join('\n')}` : '')
+    debugLog.push({
+      severity: 'ok', source: 'upload', action: 'uploaded',
+      detail: `${fname} → ${dest}  files=${r.files} dirs=${r.dirs} skipped=${r.skipped}` +
+        (r.errors?.length ? `  errors=${r.errors.length}` : ''),
+    })
     explorerPane.value?.refreshTree?.()
   } catch (e) {
-    uploadResult.value = `Error: ${e.response?.data?.error || e.message}`
+    const msg = e.response?.data?.error || e.message
+    uploadResult.value = `Error: ${msg}`
+    debugLog.push({ severity: 'error', source: 'upload', action: 'failed', detail: `${fname} → ${dest}: ${msg}` })
   } finally {
     uploading.value = false
   }
@@ -235,12 +258,28 @@ async function confirmUpload() {
 async function triggerImportFromDisk() {
   try {
     const r = await importProjectFromDisk(projectId)
-    error.value = `Imported from ${r.root_path}: ${r.files} files, ${r.dirs} dirs, ${r.existing} kept, ${r.skipped} skipped`
+    const msg = `Imported from ${r.root_path}: ${r.files} files, ${r.dirs} dirs, ${r.existing} kept, ${r.skipped} skipped`
+    error.value = msg
+    debugLog.push({ severity: 'ok', source: 'import', action: 'import-from-disk', detail: msg })
     explorerPane.value?.refreshTree?.()
   } catch (e) {
-    error.value = `Import failed: ${e.response?.data?.error || e.message}`
+    const msg = e.response?.data?.error || e.message
+    error.value = `Import failed: ${msg}`
+    debugLog.push({ severity: 'error', source: 'import', action: 'failed', detail: msg })
   }
 }
+
+function refreshTreeFromServer() {
+  explorerPane.value?.refreshTree?.()
+  debugLog.push({ severity: 'info', source: 'fs', action: 'refresh-tree', detail: 'requested file tree from server (DB)' })
+}
+
+// Mirror any status / error banner text into the Debug Channel for history.
+watch(error, (msg) => {
+  if (!msg) return
+  const severity = /fail|error/i.test(msg) ? 'error' : 'info'
+  debugLog.push({ severity, source: 'status', action: 'banner', detail: msg })
+})
 
 // ── Menus ─────────────────────────────────────────────────────────────────────
 const layoutConfig = computed(() => LAYOUT_CONFIGS[paneLayout.value] ?? LAYOUT_CONFIGS['one'])
@@ -269,10 +308,17 @@ const menuItems = computed(() => ([
   {
     label: 'Files',
     items: [
-      { label: 'Upload File / Archive…', icon: 'pi pi-upload',   command: () => openUploadDialog() },
-      { label: 'Import From Disk',        icon: 'pi pi-download', command: () => triggerImportFromDisk() },
+      { label: 'Upload File / Archive…',           icon: 'pi pi-upload',   command: () => openUploadDialog('/', 'file') },
+      { label: 'Import From Disk (rescan files)',  icon: 'pi pi-download', command: () => triggerImportFromDisk() },
       { separator: true },
-      { label: 'Refresh Tree',            icon: 'pi pi-refresh',  command: () => explorerPane.value?.refreshTree?.() },
+      { label: 'Refresh Tree (reload from server)',icon: 'pi pi-refresh',  command: () => refreshTreeFromServer() },
+    ]
+  },
+  {
+    label: 'Debug',
+    items: [
+      { label: 'Open Debug Channel', icon: 'pi pi-bug',   command: () => openDebugPane() },
+      { label: 'Clear Debug Log',    icon: 'pi pi-trash', command: () => debugLog.clear() },
     ]
   },
 ]))
