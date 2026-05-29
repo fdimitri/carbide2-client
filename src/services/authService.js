@@ -1,10 +1,13 @@
 import axios from 'axios'
 
-// Auto-detect API URL based on host (supports localhost and WSL bridged networks)
+// API URL is relative to the page origin and the deployed base path
+// (import.meta.env.BASE_URL is set by Vite from VITE_BASE — '/' in plain
+// local dev, '/w/<projectId>/' when this client is mounted behind the
+// workspace ingress). This lets the same build work both as a standalone
+// SPA on :5173 and as the in-pod client served under /w/<id>/.
 const getApiUrl = () => {
-  const host = window.location.hostname
-  const port = '3000'
-  return `http://${host}:${port}/api`
+  const base = import.meta.env.BASE_URL || '/'
+  return `${window.location.origin}${base}api`
 }
 
 const API_URL = getApiUrl()

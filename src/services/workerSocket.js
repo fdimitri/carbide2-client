@@ -6,10 +6,14 @@
 //        workerSocket.send('chat', 'message', { text: 'hello' })
 import { logWs, logInfo, logWarn } from './log'
 
+// Worker WebSocket URL. Behind the workspace ingress the worker is reached
+// at <base>/ws (Traefik routes /w/<id>/ws to the worker container's port).
+// VITE_WORKER_URL still wins for standalone-dev pointing at a remote worker.
 const getWorkerUrl = () => {
   if (import.meta.env.VITE_WORKER_URL) return import.meta.env.VITE_WORKER_URL
-  const host = window.location.hostname
-  return `ws://${host}:8080`
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '')
+  return `${proto}//${window.location.host}${base}/ws`
 }
 
 const RECONNECT_BASE_MS  = 1000
