@@ -49,6 +49,9 @@
               @tab-drop="onTabDrop"
               @rename-terminal="renameSelectedTerminal"
               @send-chat="(channelId, text) => sendChat(channelId, text)"
+              @agent-send="agents.send"
+              @agent-reset="agents.resetConversation"
+              @agent-pick="agents.selectAgent"
             />
             <Splitter
               v-else
@@ -72,6 +75,9 @@
                   @tab-drop="onTabDrop"
                   @rename-terminal="renameSelectedTerminal"
                   @send-chat="(channelId, text) => sendChat(channelId, text)"
+                  @agent-send="agents.send"
+                  @agent-reset="agents.resetConversation"
+                  @agent-pick="agents.selectAgent"
                 />
               </SplitterPanel>
             </Splitter>
@@ -150,6 +156,7 @@ import { storeToRefs } from 'pinia'
 import { usePanes, PANE_COUNTS } from '../composables/usePanes'
 import { useTerminals } from '../composables/useTerminals'
 import { useChat } from '../composables/useChat'
+import { useAgents } from '../composables/useAgents'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import { useDebugLogStore } from '../stores/debugLogStore'
 
@@ -202,6 +209,9 @@ const {
   joinChannelFromContext, leaveChannelFromContext,
   registerHandlers: registerChatHandlers, init: initChat, cleanup: cleanupChat,
 } = chat
+
+const agents = useAgents({ error, bindTabToActivePane })
+const { registerHandlers: registerAgentHandlers } = agents
 
 // ── Channel dialog ────────────────────────────────────────────────────────────
 const showCreateChannelDialog = ref(false)
@@ -321,6 +331,13 @@ const menuItems = computed(() => ([
       { label: 'Clear Debug Log',    icon: 'pi pi-trash', command: () => debugLog.clear() },
     ]
   },
+  {
+    label: 'Agent',
+    items: [
+      { label: 'Open Agent Pane', icon: 'pi pi-sparkles', command: () => agents.openAgentPane() },
+      { label: 'New Conversation', icon: 'pi pi-refresh',  command: () => agents.resetConversation() },
+    ]
+  },
 ]))
 
 const dockItems = computed(() => ([
@@ -436,6 +453,7 @@ onMounted(async () => {
 
     registerTerminalHandlers(offHandlers, (tid) => selectTerminalNode(tid))
     registerChatHandlers(offHandlers)
+    registerAgentHandlers(offHandlers)
 
     workerSocket.connect(() => getWsToken(projectId))
     // Intentionally do not auto-open any file; explorer will populate from server.

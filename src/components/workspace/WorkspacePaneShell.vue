@@ -60,6 +60,15 @@
       <DebugPane />
     </div>
 
+    <div class="flex flex-col flex-1 overflow-hidden" v-show="activeTabKind === 'agent'">
+      <AgentPane
+        :connected="store.wsConnected"
+        @agent-send="(text) => emit('agent-send', text)"
+        @agent-reset="emit('agent-reset')"
+        @agent-pick="(slug) => emit('agent-pick', slug)"
+      />
+    </div>
+
     <div v-if="pane.tabs.length === 0" class="flex flex-col flex-1 items-center justify-center text-muted">
       <div>No content. Select or create an item from the explorer.</div>
     </div>
@@ -74,6 +83,7 @@ import ChatPane from './ChatPane.vue'
 import FilePane from './FilePane.vue'
 import ProjectSettingsPane from './ProjectSettingsPane.vue'
 import DebugPane from './DebugPane.vue'
+import AgentPane from './AgentPane.vue'
 
 const store = useWorkspaceStore()
 
@@ -158,6 +168,9 @@ const emit = defineEmits([
   'tab-drag-start',
   'tab-drop',
   'set-active-pane',
+  'agent-send',
+  'agent-reset',
+  'agent-pick',
 ])
 
 function onTabBarDrop(event) {

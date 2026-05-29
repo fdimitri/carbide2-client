@@ -22,6 +22,21 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const chatUsersMap           = ref({})   // { [channelId]: [{user_id, name}] }
   const chatTypingMap          = ref({})   // { [channelId]: { [userId]: until_ms } }
 
+  // ── Agents (LLM tool-call sessions) ────────────────────────────────────────
+  // Single conversation per project for now. AgentPane reads/writes these
+  // directly; useAgents composable owns the WS handlers.
+  const agentList            = ref([])     // [{ slug, name, role, model, tools, description }]
+  const agentSelectedSlug    = ref(null)   // which agent the user is talking to
+  const agentConversationId  = ref(null)   // assigned by worker via agent/started
+  const agentMessages        = ref([])     // unified timeline:
+  //   { kind: 'user',          text }
+  //   { kind: 'assistant',     text }
+  //   { kind: 'tool_call',     id, name, args }
+  //   { kind: 'tool_result',   id, name, result }
+  //   { kind: 'system',        text }
+  //   { kind: 'error',         text }
+  const agentStatus          = ref('idle') // 'idle' | 'thinking' | 'error'
+
   return {
     wsConnected,
     currentUserId,
@@ -34,5 +49,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     joinedChatChannels,
     chatUsersMap,
     chatTypingMap,
+    agentList,
+    agentSelectedSlug,
+    agentConversationId,
+    agentMessages,
+    agentStatus,
   }
 })
