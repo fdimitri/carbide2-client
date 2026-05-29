@@ -306,7 +306,7 @@ function focusAnyChannel() {
 }
 
 function focusAnyFile() {
-  selectFileNode('README.md')
+  // No default file. User picks something from the explorer.
 }
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
@@ -328,7 +328,7 @@ onMounted(async () => {
     registerChatHandlers(offHandlers)
 
     workerSocket.connect(() => getWsToken(projectId))
-    selectFileNode('README.md')
+    // Intentionally do not auto-open any file; explorer will populate from server.
   } catch (e) {
     error.value = e.message || 'Failed to connect'
   }

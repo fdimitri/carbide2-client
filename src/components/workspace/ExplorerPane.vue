@@ -101,8 +101,8 @@ const emit = defineEmits([
 
 // ── State ─────────────────────────────────────────────────────────────────────
 const explorerSearch        = ref('')
-const selectedFileId        = ref('README.md')
-const openedFileIds         = ref(new Set(['README.md']))
+const selectedFileId        = ref(null)
+const openedFileIds         = ref(new Set())
 const openedTerminalIds     = ref(new Set())
 const treeContextMenu           = ref(null)
 const contextMenuItems          = ref([])
@@ -111,7 +111,7 @@ const showCreateFolderDialog    = ref(false)
 const createDialogParentPath    = ref('/')
 const createFileName            = ref('')
 const createFolderName          = ref('')
-const selectionKeys         = ref({ [selectedFileId.value]: true })
+const selectionKeys         = ref({})
 const expandedExplorerKeys  = ref({
   'group:files':     true,
   'group:terminals': true,
