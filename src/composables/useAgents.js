@@ -5,9 +5,9 @@
 //   send: {cs:'agent', cmd:'ask',     payload:{agent_slug, message, conversation_id?}}
 //   recv: {cs:'agent', cmd:'list',         payload:{agents:[…]}}
 //   recv: {cs:'agent', cmd:'started',      payload:{conversation_id, agent}}
-//   recv: {cs:'agent', cmd:'tool_call',    payload:{id, name, args, conversation_id, agent}}
-//   recv: {cs:'agent', cmd:'tool_result',  payload:{id, name, result, conversation_id, agent}}
-//   recv: {cs:'agent', cmd:'done',         payload:{message, conversation_id, agent}}
+//   recv: {cs:'agent', cmd:'tool_call',    payload:{tool, args, call_id, conversation_id, agent}}
+//   recv: {cs:'agent', cmd:'tool_result',  payload:{tool, call_id, result, conversation_id, agent}}
+//   recv: {cs:'agent', cmd:'done',         payload:{content, turn, conversation_id, agent}}
 //   recv: {cs:'agent', cmd:'error',        payload:{message, conversation_id?, agent?}}
 //
 // MVP: one conversation per project. To support multiple, key state by
@@ -74,22 +74,22 @@ export function useAgents({ error, bindTabToActivePane }) {
       workerSocket.on('agent', 'tool_call', (p) => {
         agentMessages.value.push({
           kind: 'tool_call',
-          id:   p?.id,
-          name: p?.name,
+          id:   p?.call_id,
+          name: p?.tool,
           args: p?.args,
         })
       }),
       workerSocket.on('agent', 'tool_result', (p) => {
         agentMessages.value.push({
           kind:   'tool_result',
-          id:     p?.id,
-          name:   p?.name,
+          id:     p?.call_id,
+          name:   p?.tool,
           result: p?.result,
         })
       }),
       workerSocket.on('agent', 'done', (p) => {
-        if (p?.message) {
-          agentMessages.value.push({ kind: 'assistant', text: String(p.message) })
+        if (p?.content) {
+          agentMessages.value.push({ kind: 'assistant', text: String(p.content) })
         }
         agentStatus.value = 'idle'
       }),
