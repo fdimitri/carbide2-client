@@ -27,6 +27,9 @@ import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import MonacoEditor from './MonacoEditor.vue'
 import workerSocket from '../../services/workerSocket'
 import { extensionToLanguage } from '../../utils/monacoLanguage'
+import { useDebugLogStore } from '../../stores/debugLogStore'
+
+const debugLog = useDebugLogStore()
 
 const props = defineProps({
   fileId: {
@@ -98,6 +101,13 @@ function onFsChange(payload) {
 
 function onFsSetContents(payload) {
   if (normPath(payload.path) !== normPath(props.fileId)) return
+  const bytes = (payload.content ?? '').length
+  debugLog.push({
+    severity: 'info',
+    source: 'fs',
+    action: 'set_contents',
+    detail: `${payload.path} (${bytes} chars) — inotify reload`,
+  })
   editorRef.value?.applyRemoteChange('setContents', payload.content)
 }
 
