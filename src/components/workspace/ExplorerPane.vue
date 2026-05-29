@@ -398,7 +398,7 @@ function confirmCreateFolder() {
 }
 
 // ── Exposed for parent to mark items open / trigger create dialogs ──────────
-defineExpose({ markTerminalOpen, markFileOpen, openCreateFileDialog, openCreateFolderDialog })
+defineExpose({ markTerminalOpen, markFileOpen, openCreateFileDialog, openCreateFolderDialog, refreshTree: requestFileTree })
 </script>
 
 

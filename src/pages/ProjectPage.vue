@@ -112,6 +112,21 @@
         <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-[#123549] border border-accent text-[#9efdf3] rounded-[0.35rem] cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" @click="confirmCreateChannel">Create</button>
       </template>
     </Dialog>
+
+    <Dialog v-model:visible="showUploadDialog" modal header="Upload File / Archive" :style="{ width: '28rem' }">
+      <div class="flex flex-col gap-[0.6rem] mb-[0.7rem]">
+        <label class="text-muted text-[0.78rem] font-semibold" for="upload-file">File (any file, .zip, .tar, .tar.gz)</label>
+        <input id="upload-file" type="file" @change="uploadFile = $event.target.files?.[0] || null"
+               class="text-[0.85rem] text-[#c5d4ea]" />
+        <label class="text-muted text-[0.78rem] font-semibold mt-[0.4rem]" for="upload-dest">Destination Path</label>
+        <InputText id="upload-dest" v-model="uploadDest" class="w-full" placeholder="/" />
+        <div v-if="uploadResult" class="text-muted text-[0.75rem] mt-[0.3rem] whitespace-pre-wrap">{{ uploadResult }}</div>
+      </div>
+      <template #footer>
+        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-[#587296] text-[#c5d4ea] text-[0.85rem] rounded-[0.35rem] cursor-pointer hover:border-[#7ce9de] hover:text-[#dffffa]" @click="showUploadDialog = false">Cancel</button>
+        <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-[#123549] border border-accent text-[#9efdf3] rounded-[0.35rem] cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" :disabled="!uploadFile || uploading" @click="confirmUpload">{{ uploading ? 'Uploading…' : 'Upload' }}</button>
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -127,7 +142,7 @@ import InputText from 'primevue/inputtext'
 import WorkspacePaneShell from '../components/workspace/WorkspacePaneShell.vue'
 import ExplorerPane from '../components/workspace/ExplorerPane.vue'
 import workerSocket from '../services/workerSocket'
-import { listProjects, getWsToken } from '../services/projectService'
+import { listProjects, getWsToken, uploadProjectFile, importProjectFromDisk } from '../services/projectService'
 import { storeToRefs } from 'pinia'
 import { usePanes, PANE_COUNTS } from '../composables/usePanes'
 import { useTerminals } from '../composables/useTerminals'
@@ -187,6 +202,46 @@ const {
 const showCreateChannelDialog = ref(false)
 const channelCreateName       = ref('')
 
+// ── Upload / Import (Files menu) ─────────────────────────────────────────────
+const showUploadDialog = ref(false)
+const uploadFile       = ref(null)
+const uploadDest       = ref('/')
+const uploading        = ref(false)
+const uploadResult     = ref('')
+
+function openUploadDialog() {
+  uploadFile.value = null
+  uploadDest.value = '/'
+  uploadResult.value = ''
+  showUploadDialog.value = true
+}
+
+async function confirmUpload() {
+  if (!uploadFile.value) return
+  uploading.value = true
+  uploadResult.value = ''
+  try {
+    const r = await uploadProjectFile(projectId, uploadFile.value, uploadDest.value || '/')
+    uploadResult.value = `OK — files: ${r.files}, dirs: ${r.dirs}, skipped: ${r.skipped}` +
+      (r.errors?.length ? `\nerrors:\n${r.errors.slice(0, 5).join('\n')}` : '')
+    explorerPane.value?.refreshTree?.()
+  } catch (e) {
+    uploadResult.value = `Error: ${e.response?.data?.error || e.message}`
+  } finally {
+    uploading.value = false
+  }
+}
+
+async function triggerImportFromDisk() {
+  try {
+    const r = await importProjectFromDisk(projectId)
+    error.value = `Imported from ${r.root_path}: ${r.files} files, ${r.dirs} dirs, ${r.existing} kept, ${r.skipped} skipped`
+    explorerPane.value?.refreshTree?.()
+  } catch (e) {
+    error.value = `Import failed: ${e.response?.data?.error || e.message}`
+  }
+}
+
 // ── Menus ─────────────────────────────────────────────────────────────────────
 const layoutConfig = computed(() => LAYOUT_CONFIGS[paneLayout.value] ?? LAYOUT_CONFIGS['one'])
 
@@ -209,6 +264,15 @@ const menuItems = computed(() => ([
     label: 'Project',
     items: [
       { label: 'Settings…', icon: 'pi pi-cog', command: () => bindTabToActivePane('settings', projectId, 'Settings') },
+    ]
+  },
+  {
+    label: 'Files',
+    items: [
+      { label: 'Upload File / Archive…', icon: 'pi pi-upload',   command: () => openUploadDialog() },
+      { label: 'Import From Disk',        icon: 'pi pi-download', command: () => triggerImportFromDisk() },
+      { separator: true },
+      { label: 'Refresh Tree',            icon: 'pi pi-refresh',  command: () => explorerPane.value?.refreshTree?.() },
     ]
   },
 ]))

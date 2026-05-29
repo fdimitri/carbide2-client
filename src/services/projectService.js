@@ -63,3 +63,26 @@ export async function setProjectRoot(projectId, rootPath, cleanVfs = false) {
   })
   return res.data
 }
+
+// Upload a single file or archive (zip/tar/tar.gz) to a project's file tree.
+// `file` is a browser File/Blob; `dest` defaults to the project root.
+export async function uploadProjectFile(projectId, file, dest = '/') {
+  const form = new FormData()
+  form.append('file', file, file.name)
+  form.append('dest', dest)
+  const res = await authService.api.post(
+    `projects/${projectId}/fs/upload`,
+    form,
+    { headers: { 'Content-Type': 'multipart/form-data' } }
+  )
+  return res.data
+}
+
+// Import the project's configured on-disk root_path into the DB tree.
+// Pass `path` to override (must exist server-side).
+export async function importProjectFromDisk(projectId, path = null) {
+  const body = path ? { path } : {}
+  const res = await authService.api.post(`projects/${projectId}/fs/import`, body)
+  return res.data
+}
+
