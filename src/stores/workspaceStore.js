@@ -36,6 +36,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   //   { kind: 'system',        text }
   //   { kind: 'error',         text }
   const agentStatus          = ref('idle') // 'idle' | 'thinking' | 'error'
+  // Recent project-visible conversations (plus owner's privates).
+  // Server-pushed via 'agent/recent' on pane open + after activity.
+  const agentRecent          = ref([])
+  // Visibility of the currently-loaded conversation: 'project' | 'private' | null
+  const agentVisibility      = ref(null)
+  const agentOwnerUserId     = ref(null)   // who started current convo
+  const agentOwnerIsSelf     = ref(true)   // can we edit visibility / post?
 
   return {
     wsConnected,
@@ -54,5 +61,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     agentConversationId,
     agentMessages,
     agentStatus,
+    agentRecent,
+    agentVisibility,
+    agentOwnerUserId,
+    agentOwnerIsSelf,
   }
 })

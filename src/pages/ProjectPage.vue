@@ -19,10 +19,11 @@
         @open-terminal="onExplorerOpenTerminal"
         @open-channel="onExplorerOpenChannel"
         @open-in-pane="onExplorerOpenInPane"
-        @create-terminal="openCreateTerminalDialog"
+        @create-terminal="openCreateTerminalDialogTracked"
         @create-channel="openCreateChannelDialog"
         @rename-terminal="renameTerminalById"
         @destroy-terminal="destroyTerminalById"
+        @set-terminal-agent-accessible="(e) => setAgentAccessible(e.id, e.enabled)"
         @join-channel="joinChannelFromContext"
         @leave-channel="leaveChannelFromContext"
         @open-upload="onExplorerOpenUpload"
@@ -52,6 +53,8 @@
               @agent-send="agents.send"
               @agent-reset="agents.resetConversation"
               @agent-pick="agents.selectAgent"
+              @agent-load="agents.loadConversation"
+              @agent-set-visibility="agents.setVisibility"
             />
             <Splitter
               v-else
@@ -78,6 +81,8 @@
                   @agent-send="agents.send"
                   @agent-reset="agents.resetConversation"
                   @agent-pick="agents.selectAgent"
+                  @agent-load="agents.loadConversation"
+                  @agent-set-visibility="agents.setVisibility"
                 />
               </SplitterPanel>
             </Splitter>
@@ -100,6 +105,24 @@
       <div class="flex flex-col gap-[0.35rem] mb-[0.7rem]">
         <label class="text-muted text-[0.78rem] font-semibold" for="terminal-name">Name</label>
         <InputText id="terminal-name" v-model="terminalCreateName" class="w-full" @keydown.enter="confirmCreateTerminal" />
+      </div>
+      <div class="flex items-start gap-[0.5rem] mb-[0.7rem]">
+        <input
+          id="terminal-agent-accessible"
+          type="checkbox"
+          v-model="terminalCreateAgentAccessible"
+          class="mt-[0.25rem]"
+          @change="onAgentAccessibleToggleFromUi"
+        />
+        <label for="terminal-agent-accessible" class="text-[0.82rem] text-text leading-[1.2]">
+          <span class="font-semibold text-[#9efdf3]">Agent-accessible</span>
+          <span class="block text-muted text-[0.74rem]">
+            Allow the LLM agent to drive this terminal via shell_exec.
+            The agent's commands will appear here live; while it is
+            running a command, your keystrokes are dropped until it
+            releases (auto-released by timeout).
+          </span>
+        </label>
       </div>
       <div class="flex flex-col gap-[0.35rem] mb-[0.7rem]">
         <label class="text-muted text-[0.78rem] font-semibold" for="terminal-options">Options (placeholder)</label>
@@ -196,10 +219,27 @@ const terminals = useTerminals({ error, bindTabToActivePane, activePane })
 const {
   terminalLoading, terminalList, selectedTerminalId,
   showCreateTerminalDialog, terminalCreateName, terminalCreateOptions,
+  terminalCreateAgentAccessible, suggestedTerminalName, onAgentAccessibleToggle,
   openCreateTerminalDialog, confirmCreateTerminal,
   openTerminal, renameTerminalById, renameSelectedTerminal, destroyTerminalById, terminalModeNoop,
+  setAgentAccessible,
   registerHandlers: registerTerminalHandlers, cleanup: cleanupTerminals,
 } = terminals
+
+// Track the name we last auto-suggested so toggling the agent-accessible
+// checkbox can overwrite it without trampling a name the user typed.
+let lastSuggestedTerminalName = ''
+function openCreateTerminalDialogTracked() {
+  openCreateTerminalDialog()
+  lastSuggestedTerminalName = terminalCreateName.value
+}
+function onAgentAccessibleToggleFromUi() {
+  onAgentAccessibleToggle(lastSuggestedTerminalName)
+  // Composable only overwrites the name when it matches what we last
+  // suggested (or is blank). Remember the new suggestion for the next
+  // toggle cycle so user edits stay sticky.
+  lastSuggestedTerminalName = suggestedTerminalName(terminalCreateAgentAccessible.value)
+}
 
 const chat = useChat(projectId, { wsConnected, error, bindTabToActivePane, activePane })
 const {
@@ -301,7 +341,7 @@ const menuItems = computed(() => ([
       { label: 'New File...',   icon: 'pi pi-file-plus', command: () => explorerPane.value?.openCreateFileDialog('/') },
       { label: 'New Folder...', icon: 'pi pi-folder',    command: () => explorerPane.value?.openCreateFolderDialog('/') },
       { separator: true },
-      { label: 'New Terminal', icon: 'pi pi-terminal', command: () => openCreateTerminalDialog() },
+      { label: 'New Terminal', icon: 'pi pi-terminal', command: () => openCreateTerminalDialogTracked() },
       { label: 'New Channel',  icon: 'pi pi-comments', command: () => openCreateChannelDialog() },
     ]
   },

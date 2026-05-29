@@ -17,20 +17,47 @@ export function useTerminals({ error, bindTabToActivePane, activePane }) {
   const showCreateTerminalDialog = ref(false)
   const terminalCreateName       = ref('')
   const terminalCreateOptions    = ref('')
+  const terminalCreateAgentAccessible = ref(false)
 
   let createTerminalTimeout = null
 
-  function openCreateTerminalDialog() {
+  // Suggest a sensible default name based on whether the terminal is being
+  // created agent-accessible. AgentShell-N is the convention the user picked
+  // so all agent-touchable terminals are visually grouped/searchable.
+  function suggestedTerminalName(agentAccessible) {
+    if (agentAccessible) {
+      const maxAgent = terminalList.value.reduce((max, t) => {
+        const m = /^AgentShell-(\d+)$/.exec(t.name || '')
+        return m ? Math.max(max, Number(m[1])) : max
+      }, 0)
+      return `AgentShell-${maxAgent + 1}`
+    }
     const maxId = terminalList.value.reduce((max, t) => Math.max(max, Number(t.id) || 0), 0)
-    terminalCreateName.value    = `Terminal#${maxId + 1}`
+    return `Terminal#${maxId + 1}`
+  }
+
+  function openCreateTerminalDialog() {
+    terminalCreateAgentAccessible.value = false
+    terminalCreateName.value    = suggestedTerminalName(false)
     terminalCreateOptions.value = ''
     showCreateTerminalDialog.value = true
   }
 
+  // Watcher hook: ProjectPage can call this when the user toggles the
+  // agent-accessible checkbox so the suggested name updates (but doesn't
+  // overwrite the user's manual edit).
+  function onAgentAccessibleToggle(prevSuggested) {
+    const current = terminalCreateName.value.trim()
+    if (current === '' || current === prevSuggested) {
+      terminalCreateName.value = suggestedTerminalName(terminalCreateAgentAccessible.value)
+    }
+  }
+
   async function confirmCreateTerminal() {
     const name = terminalCreateName.value.trim() || 'Terminal'
+    const agentAccessible = !!terminalCreateAgentAccessible.value
     showCreateTerminalDialog.value = false
-    await openTerminal({ name })
+    await openTerminal({ name, agent_accessible: agentAccessible })
   }
 
   async function openTerminal(options = {}) {
@@ -38,8 +65,11 @@ export function useTerminals({ error, bindTabToActivePane, activePane }) {
     terminalLoading.value = true
     error.value = ''
     try {
-      workerSocket.send('term', 'create', { name: options.name })
-      debugLog.push({ severity: 'info', source: 'term', action: 'create-requested', detail: `name=${options.name || '(default)'}` })
+      workerSocket.send('term', 'create', {
+        name: options.name,
+        agent_accessible: !!options.agent_accessible,
+      })
+      debugLog.push({ severity: 'info', source: 'term', action: 'create-requested', detail: `name=${options.name || '(default)'} agent=${!!options.agent_accessible}` })
       createTerminalTimeout = setTimeout(() => {
         terminalLoading.value = false
         error.value = 'Timed out creating terminal. Check worker logs and JWT secret.'
@@ -91,6 +121,22 @@ export function useTerminals({ error, bindTabToActivePane, activePane }) {
     error.value = `Terminal #${tid} incognito/exclusive mode is not implemented yet.`
   }
 
+  // Toggle the agent_accessible flag on an existing terminal. Worker may
+  // refuse (e.g. project mismatch); the term/list rebroadcast confirms or
+  // reverts our optimistic state.
+  function setAgentAccessible(tid, enabled) {
+    const target = Number(tid)
+    if (!target) return
+    workerSocket.send('term', 'set_agent_accessible', {
+      terminal_id: target,
+      enabled: !!enabled,
+    })
+    debugLog.push({
+      severity: 'info', source: 'term', action: 'set-agent-accessible',
+      detail: `id=${target} enabled=${!!enabled}`,
+    })
+  }
+
   function registerHandlers(offHandlers, onTerminalCreated) {
     offHandlers.push(
       workerSocket.on('system', 'error', (p) => {
@@ -104,6 +150,8 @@ export function useTerminals({ error, bindTabToActivePane, activePane }) {
       }),
       workerSocket.on('term', 'list', (p) => {
         logWs('recv', 'term', 'list', p)
+        // Worker now sends agent_accessible / agent_busy / agent_busy_until_ms
+        // per entry — pass them through unchanged so the UI can badge.
         terminalList.value = p.terminals || []
       }),
       workerSocket.on('term', 'created', (p) => {
@@ -117,7 +165,14 @@ export function useTerminals({ error, bindTabToActivePane, activePane }) {
         if (!terminalList.value.find(t => Number(t.id) === createdId)) {
           terminalList.value = [
             ...terminalList.value,
-            { id: createdId, name: p.name || `terminal-${createdId}`, status: 'active' },
+            {
+              id: createdId,
+              name: p.name || `terminal-${createdId}`,
+              status: 'active',
+              agent_accessible: !!p.agent_accessible,
+              agent_busy: false,
+              agent_busy_until_ms: null,
+            },
           ]
         }
         logInfo('useTerminals', 'terminal created, id=', createdId)
@@ -158,6 +213,9 @@ export function useTerminals({ error, bindTabToActivePane, activePane }) {
     showCreateTerminalDialog,
     terminalCreateName,
     terminalCreateOptions,
+    terminalCreateAgentAccessible,
+    suggestedTerminalName,
+    onAgentAccessibleToggle,
     openCreateTerminalDialog,
     confirmCreateTerminal,
     openTerminal,
@@ -166,6 +224,7 @@ export function useTerminals({ error, bindTabToActivePane, activePane }) {
     renameSelectedTerminal,
     destroyTerminalById,
     terminalModeNoop,
+    setAgentAccessible,
     registerHandlers,
     cleanup,
   }

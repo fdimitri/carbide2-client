@@ -15,12 +15,15 @@
 import { storeToRefs } from 'pinia'
 import workerSocket from '../services/workerSocket'
 import { useWorkspaceStore } from '../stores/workspaceStore'
+import { useDebugLogStore } from '../stores/debugLogStore'
 
 export function useAgents({ error, bindTabToActivePane }) {
-  const store = useWorkspaceStore()
+  const store    = useWorkspaceStore()
+  const debugLog = useDebugLogStore()
   const {
     agentList, agentSelectedSlug, agentConversationId,
     agentMessages, agentStatus,
+    agentRecent, agentVisibility, agentOwnerUserId, agentOwnerIsSelf,
   } = storeToRefs(store)
 
   function openAgentPane() {
@@ -28,6 +31,7 @@ export function useAgents({ error, bindTabToActivePane }) {
     // Refresh list each time the pane is opened (cheap, helps if admin
     // toggled an agent's enabled flag mid-session).
     workerSocket.send('agent', 'list', {})
+    workerSocket.send('agent', 'recent', { limit: 25 })
   }
 
   function selectAgent(slug) {
@@ -39,8 +43,24 @@ export function useAgents({ error, bindTabToActivePane }) {
 
   function resetConversation() {
     agentConversationId.value = null
-    agentMessages.value = []
-    agentStatus.value = 'idle'
+    agentMessages.value       = []
+    agentStatus.value         = 'idle'
+    agentVisibility.value     = null
+    agentOwnerUserId.value    = null
+    agentOwnerIsSelf.value    = true
+  }
+
+  function loadConversation(conversationId) {
+    if (!conversationId) return
+    workerSocket.send('agent', 'load', { conversation_id: conversationId })
+  }
+
+  function setVisibility(visibility) {
+    if (!agentConversationId.value) return
+    workerSocket.send('agent', 'set_visibility', {
+      conversation_id: agentConversationId.value,
+      visibility,
+    })
   }
 
   function send(text) {
@@ -56,6 +76,8 @@ export function useAgents({ error, bindTabToActivePane }) {
     const payload = { agent_slug: slug, message: trimmed }
     if (agentConversationId.value) payload.conversation_id = agentConversationId.value
     workerSocket.send('agent', 'ask', payload)
+    debugLog.push({ source: 'agent', action: 'ask',
+      detail: `slug=${slug} convo=${agentConversationId.value || '(new)'} chars=${trimmed.length}` })
   }
 
   function registerHandlers(offHandlers) {
@@ -70,6 +92,8 @@ export function useAgents({ error, bindTabToActivePane }) {
       }),
       workerSocket.on('agent', 'started', (p) => {
         if (p?.conversation_id) agentConversationId.value = p.conversation_id
+        debugLog.push({ source: 'agent', action: 'started',
+          detail: `convo=${p?.conversation_id || '?'} agent=${p?.agent || '?'}` })
       }),
       workerSocket.on('agent', 'tool_call', (p) => {
         agentMessages.value.push({
@@ -78,6 +102,11 @@ export function useAgents({ error, bindTabToActivePane }) {
           name: p?.tool,
           args: p?.args,
         })
+        let argSummary = ''
+        try { argSummary = JSON.stringify(p?.args || {}) } catch { argSummary = '?' }
+        if (argSummary.length > 120) argSummary = argSummary.slice(0, 117) + '…'
+        debugLog.push({ source: 'agent', action: 'tool_call',
+          detail: `${p?.tool || '?'}(${argSummary})` })
       }),
       workerSocket.on('agent', 'tool_result', (p) => {
         agentMessages.value.push({
@@ -86,24 +115,84 @@ export function useAgents({ error, bindTabToActivePane }) {
           name:   p?.tool,
           result: p?.result,
         })
+        const r = p?.result
+        let summary = ''
+        if (r && typeof r === 'object') {
+          if (r.error)            summary = `error=${String(r.error).slice(0,80)}`
+          else if ('exit_code' in r) summary = `exit=${r.exit_code} bytes=${(r.output||'').length}${r.truncated?' trunc':''}${r.timed_out?' timeout':''}`
+          else if (Array.isArray(r.entries)) summary = `entries=${r.entries.length}`
+          else if (typeof r.content === 'string') summary = `bytes=${r.content.length}${r.truncated?' trunc':''}`
+          else summary = Object.keys(r).slice(0,4).join(',')
+        } else if (typeof r === 'string') {
+          summary = `len=${r.length}`
+        }
+        debugLog.push({ source: 'agent',
+          severity: r && r.error ? 'error' : 'ok',
+          action: 'tool_result', detail: `${p?.tool || '?'} ${summary}` })
       }),
       workerSocket.on('agent', 'done', (p) => {
         if (p?.content) {
           agentMessages.value.push({ kind: 'assistant', text: String(p.content) })
+        } else {
+          // The model finished its turn without producing any reply text
+          // (common after a tool-only turn with some local models). Render
+          // a faint marker so the user knows the agent is no longer working
+          // rather than thinking the UI froze.
+          agentMessages.value.push({ kind: 'assistant', text: '(no reply)', muted: true })
         }
         agentStatus.value = 'idle'
+        debugLog.push({ source: 'agent',
+          severity: p?.content ? 'ok' : 'warn',
+          action: 'done',
+          detail: `turn=${p?.turn ?? '?'} chars=${(p?.content || '').length}` })
+        // Bump the recent list so this convo (or its updated timestamp)
+        // appears in the dropdown for everyone in the project.
+        workerSocket.send('agent', 'recent', { limit: 25 })
       }),
       workerSocket.on('agent', 'error', (p) => {
         const msg = p?.message || 'agent error'
         agentMessages.value.push({ kind: 'error', text: msg })
         agentStatus.value = 'error'
+        debugLog.push({ source: 'agent', severity: 'error', action: 'error', detail: msg })
+      }),
+      workerSocket.on('agent', 'recent', (p) => {
+        agentRecent.value = Array.isArray(p?.conversations) ? p.conversations : []
+      }),
+      workerSocket.on('agent', 'loaded', (p) => {
+        agentConversationId.value = p?.conversation_id || null
+        agentMessages.value       = Array.isArray(p?.messages) ? p.messages : []
+        agentStatus.value         = 'idle'
+        agentVisibility.value     = p?.visibility || 'project'
+        agentOwnerUserId.value    = p?.owner_user_id ?? null
+        agentOwnerIsSelf.value    = !!p?.owner_is_self
+        // Switch the agent picker to match the loaded conversation.
+        if (p?.agent && p.agent !== agentSelectedSlug.value) {
+          agentSelectedSlug.value = p.agent
+        }
+        debugLog.push({ source: 'agent', action: 'loaded',
+          detail: `convo=${p?.conversation_id} msgs=${(p?.messages || []).length} vis=${p?.visibility}` })
+      }),
+      workerSocket.on('agent', 'visibility_changed', (p) => {
+        // Update current convo if it matches; refresh recent dropdown.
+        if (p?.conversation_id === agentConversationId.value) {
+          agentVisibility.value = p.visibility
+        }
+        const row = agentRecent.value.find(c => c.conversation_id === p?.conversation_id)
+        if (row) row.visibility = p.visibility
+        // Re-pull recents in case a private->project flip newly exposes a row
+        // (or project->private hides one for non-owners).
+        workerSocket.send('agent', 'recent', { limit: 25 })
+        debugLog.push({ source: 'agent', action: 'visibility_changed',
+          detail: `convo=${p?.conversation_id} -> ${p?.visibility}` })
       }),
     )
   }
 
   return {
     agentList, agentSelectedSlug, agentConversationId, agentMessages, agentStatus,
+    agentRecent, agentVisibility, agentOwnerUserId, agentOwnerIsSelf,
     openAgentPane, selectAgent, resetConversation, send,
+    loadConversation, setVisibility,
     registerHandlers,
   }
 }

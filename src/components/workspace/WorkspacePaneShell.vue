@@ -45,6 +45,8 @@
         :key="`term-${paneIndex}-${activeTerminalId || 'none'}`"
         :terminal-id="activeTerminalId"
         :active="paneIndex === activePaneIndex"
+        :agent-busy="activeTerminalAgentState.busy"
+        :agent-busy-until-ms="activeTerminalAgentState.untilMs"
       />
     </div>
 
@@ -66,6 +68,8 @@
         @agent-send="(text) => emit('agent-send', text)"
         @agent-reset="emit('agent-reset')"
         @agent-pick="(slug) => emit('agent-pick', slug)"
+        @agent-load="(id) => emit('agent-load', id)"
+        @agent-set-visibility="(vis) => emit('agent-set-visibility', vis)"
       />
     </div>
 
@@ -109,6 +113,19 @@ const activeTabKind = computed(() => {
 const activeTerminalId = computed(() => {
   if (activeTabKind.value !== 'terminal') return null
   return Number((effectiveActiveKey.value || '').split(':')[1]) || null
+})
+
+// Pull the agent-lock state for whichever terminal this pane currently
+// shows so TerminalPane can render the busy overlay. Store-driven so it
+// reactively updates when the worker rebroadcasts term/list.
+const activeTerminalAgentState = computed(() => {
+  const tid = activeTerminalId.value
+  if (!tid) return { busy: false, untilMs: null }
+  const t = (store.terminalList || []).find((x) => Number(x.id) === Number(tid))
+  return {
+    busy:    !!t?.agent_busy,
+    untilMs: Number(t?.agent_busy_until_ms) || null,
+  }
 })
 
 const activeFileId = computed(() => {
@@ -171,6 +188,8 @@ const emit = defineEmits([
   'agent-send',
   'agent-reset',
   'agent-pick',
+  'agent-load',
+  'agent-set-visibility',
 ])
 
 function onTabBarDrop(event) {

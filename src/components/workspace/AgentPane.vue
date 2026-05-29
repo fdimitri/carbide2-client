@@ -33,6 +33,34 @@
       </span>
     </div>
 
+    <!-- Conversation picker + visibility -->
+    <div class="flex items-center gap-2 px-3 py-[0.35rem] border-b monaco-panel-border text-[0.75rem]">
+      <label class="opacity-70">Conversation:</label>
+      <select
+        :value="store.agentConversationId || ''"
+        @change="onPickConversation($event.target.value)"
+        class="flex-1 min-w-0 px-[0.4rem] py-[0.15rem] rounded-[0.25rem] border monaco-input-bg monaco-input-fg monaco-input-border outline-none"
+      >
+        <option value="">— current (new) —</option>
+        <option v-for="c in store.agentRecent" :key="c.conversation_id" :value="c.conversation_id">
+          {{ conversationLabel(c) }}
+        </option>
+      </select>
+      <button
+        v-if="store.agentConversationId && store.agentOwnerIsSelf"
+        class="px-[0.5rem] py-[0.15rem] text-[0.7rem] rounded-[0.25rem] border monaco-panel-border opacity-80 hover:opacity-100"
+        @click="onToggleVisibility"
+        :title="store.agentVisibility === 'project' ? 'Click to make private' : 'Click to share with project'"
+      >
+        {{ store.agentVisibility === 'project' ? '🌐 shared' : '🔒 private' }}
+      </button>
+      <span
+        v-else-if="store.agentConversationId && !store.agentOwnerIsSelf"
+        class="text-[0.7rem] opacity-60 italic"
+        :title="'Owned by another user — read-only view'"
+      >watching</span>
+    </div>
+
     <!-- Timeline -->
     <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-2 min-h-0" ref="scrollEl">
       <div v-if="!messages.length && !store.agentSelectedSlug" class="flex-1 grid place-items-center monaco-line-fg p-4 text-[0.85rem]">
@@ -52,7 +80,10 @@
         <!-- Assistant -->
         <div v-else-if="m.kind === 'assistant'" class="flex flex-col gap-[0.1rem] max-w-[80ch]">
           <span class="text-[0.72rem] opacity-60">{{ activeAgentName }}</span>
-          <span class="text-[0.86rem] leading-[1.35] break-words whitespace-pre-wrap">{{ m.text }}</span>
+          <span
+            class="text-[0.86rem] leading-[1.35] break-words whitespace-pre-wrap"
+            :class="m.muted ? 'opacity-50 italic' : ''"
+          >{{ m.text }}</span>
         </div>
 
         <!-- Tool call/result pair — render as collapsible -->
@@ -107,7 +138,7 @@ import { useWorkspaceStore } from '../../stores/workspaceStore'
 const props = defineProps({
   connected: { type: Boolean, default: false },
 })
-const emit = defineEmits(['agent-send', 'agent-reset', 'agent-pick'])
+const emit = defineEmits(['agent-send', 'agent-reset', 'agent-pick', 'agent-load', 'agent-set-visibility'])
 
 const store    = useWorkspaceStore()
 const draft    = ref('')
@@ -147,6 +178,37 @@ function onSend() {
 
 function onReset()  { emit('agent-reset') }
 function onPickAgent(slug) { emit('agent-pick', slug) }
+
+function onPickConversation(id) {
+  if (!id) { emit('agent-reset'); return }
+  if (id === store.agentConversationId) return
+  emit('agent-load', id)
+}
+
+function onToggleVisibility() {
+  const next = store.agentVisibility === 'project' ? 'private' : 'project'
+  emit('agent-set-visibility', next)
+}
+
+function conversationLabel(c) {
+  const who    = c.owner_is_self ? 'you' : (c.owner_name || `user ${c.owner_user_id}`)
+  const lock   = c.visibility === 'private' ? '\uD83D\uDD12 ' : ''
+  const when   = relativeTime(c.last_activity_at)
+  const title  = c.title || '(untitled)'
+  const tail   = `· ${c.agent_name} · ${who} · ${when}`
+  return `${lock}${title} ${tail}`
+}
+
+function relativeTime(iso) {
+  if (!iso) return ''
+  const d = new Date(iso).getTime()
+  if (!d) return ''
+  const s = Math.round((Date.now() - d) / 1000)
+  if (s < 60)        return `${s}s ago`
+  if (s < 3600)      return `${Math.round(s/60)}m ago`
+  if (s < 86400)     return `${Math.round(s/3600)}h ago`
+  return `${Math.round(s/86400)}d ago`
+}
 
 function shortArgs(args) {
   if (!args || typeof args !== 'object') return ''

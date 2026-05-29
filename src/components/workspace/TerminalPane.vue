@@ -4,6 +4,23 @@
     <div v-if="!terminalId" class="absolute inset-0 grid place-items-center text-center text-muted p-4 pointer-events-none">
       Select or create a terminal from the tree.
     </div>
+    <!-- Agent-busy overlay. Shown when the bound terminal is currently
+         locked by the agent for a shell_exec call. Pointer events pass
+         through to the xterm beneath so the user can still scroll and
+         copy, but the visible banner makes it obvious why their
+         keystrokes are being silently dropped. Auto-clears when the
+         agent releases (or the worker auto-releases on timeout). -->
+    <div
+      v-if="terminalId && agentBusy"
+      class="absolute top-[0.35rem] right-[0.6rem] flex items-center gap-[0.35rem] px-[0.55rem] py-[0.25rem] text-[0.74rem] font-semibold bg-[#4a1f2c] border border-[#ff7da0] text-[#ffd5e0] rounded-[0.35rem] pointer-events-none"
+      :title="agentBusyUntilMs ? `Agent lock auto-releases in ${Math.max(0, Math.round((agentBusyUntilMs - nowMs) / 1000))}s` : 'Agent is running a command'"
+    >
+      <i class="pi pi-lock" aria-hidden="true"></i>
+      <span>AGENT RUNNING — input locked</span>
+      <span v-if="agentBusyUntilMs" class="opacity-80">
+        ({{ Math.max(0, Math.round((agentBusyUntilMs - nowMs) / 1000)) }}s)
+      </span>
+    </div>
   </div>
 </template>
 
@@ -23,7 +40,21 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  // Agent-lock state for this terminal. Sourced from the workspace's
+  // terminalList so the overlay reacts to worker term/list broadcasts
+  // without TerminalPane having to subscribe directly.
+  agentBusy: {
+    type: Boolean,
+    default: false,
+  },
+  agentBusyUntilMs: {
+    type: Number,
+    default: null,
+  },
 })
+
+const nowMs = ref(Date.now())
+let nowTimer = null
 
 const terminalContainer = ref(null)
 let xterm = null
@@ -155,6 +186,9 @@ onMounted(async () => {
   if (props.terminalId) {
     await bindTerminal(props.terminalId)
   }
+  // 1Hz tick is enough for a countdown badge; we throw it away when
+  // the component unmounts to avoid leaking a timer per pane.
+  nowTimer = setInterval(() => { nowMs.value = Date.now() }, 1000)
 })
 
 onBeforeUnmount(() => {
@@ -163,6 +197,7 @@ onBeforeUnmount(() => {
   terminalResizeObserver = null
   offHandlers.forEach((off) => off())
   xterm?.dispose()
+  if (nowTimer) { clearInterval(nowTimer); nowTimer = null }
 })
 </script>
 

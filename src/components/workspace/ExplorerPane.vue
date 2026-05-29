@@ -29,6 +29,20 @@
           >
             <i class="pi" :class="treeIconClass(slotProps.node.data)" aria-hidden="true"></i>
             <span>{{ slotProps.node.label }}</span>
+            <!-- Agent-accessible badge. AGENT pill = the user has marked
+                 this terminal as something the LLM agent may drive via
+                 shell_exec. The lock icon appears while the agent is
+                 actively holding the busy lock; user input is dropped
+                 until release (auto-released after
+                 project_settings.agent_shell_busy_timeout_s). -->
+            <span
+              v-if="slotProps.node.data?.kind === 'terminal' && slotProps.node.data?.agentAccessible"
+              class="ml-1 px-[0.35rem] py-[0.05rem] text-[0.6rem] font-bold tracking-wide rounded border"
+              :class="slotProps.node.data?.agentBusy
+                ? 'bg-[#4a1f2c] border-[#ff7da0] text-[#ffd5e0]'
+                : 'bg-[#163040] border-[#7ce9de] text-[#9efdf3]'"
+              :title="slotProps.node.data?.agentBusy ? 'Agent is running a command (user input locked)' : 'Agent may drive this terminal'"
+            >{{ slotProps.node.data?.agentBusy ? 'AGENT ●' : 'AGENT' }}</span>
             <i
               v-if="slotProps.node.data?.isOpen"
               class="pi pi-circle-fill ml-auto text-[#7ce9de] text-[0.52rem] opacity-90"
@@ -96,6 +110,7 @@ const emit = defineEmits([
   'create-channel',
   'rename-terminal',
   'destroy-terminal',
+  'set-terminal-agent-accessible',
   'join-channel',
   'leave-channel',
   'open-upload',
@@ -187,7 +202,13 @@ const explorerNodes = computed(() => {
     key: `term:${t.id}`,
     label: t.name || `terminal #${t.id}`,
     selectable: true, draggable: false, droppable: false,
-    data: { kind: 'terminal', id: t.id, isOpen: openedTerminalIds.value.has(Number(t.id)) },
+    data: {
+      kind: 'terminal',
+      id: t.id,
+      isOpen: openedTerminalIds.value.has(Number(t.id)),
+      agentAccessible: !!t.agent_accessible,
+      agentBusy: !!t.agent_busy,
+    },
   }))
   const channelNodes = props.chatChannels.map((c) => ({
     key: `channel:${c.id}`,
@@ -328,10 +349,16 @@ function buildContextMenuItems(node) {
   }
   if (kind === 'terminal') {
     const tid = node.data.id
+    const isAgent = !!node.data.agentAccessible
     return [
       ...buildOpenItems(node),
       { separator: true },
       { label: 'Rename',  icon: 'pi pi-pencil', command: () => emit('rename-terminal', tid) },
+      isAgent
+        ? { label: 'Revoke agent access', icon: 'pi pi-lock',
+            command: () => emit('set-terminal-agent-accessible', { id: tid, enabled: false }) }
+        : { label: 'Make agent-accessible', icon: 'pi pi-bolt',
+            command: () => emit('set-terminal-agent-accessible', { id: tid, enabled: true }) },
       { label: 'Destroy', icon: 'pi pi-trash',  command: () => emit('destroy-terminal', tid) },
     ]
   }
