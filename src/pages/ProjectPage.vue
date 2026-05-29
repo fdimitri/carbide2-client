@@ -22,6 +22,7 @@
         @create-terminal="openCreateTerminalDialog"
         @create-channel="openCreateChannelDialog"
         @rename-terminal="renameTerminalById"
+        @destroy-terminal="destroyTerminalById"
         @join-channel="joinChannelFromContext"
         @leave-channel="leaveChannelFromContext"
         @open-upload="onExplorerOpenUpload"
@@ -189,7 +190,7 @@ const {
   terminalLoading, terminalList, selectedTerminalId,
   showCreateTerminalDialog, terminalCreateName, terminalCreateOptions,
   openCreateTerminalDialog, confirmCreateTerminal,
-  openTerminal, renameTerminalById, renameSelectedTerminal, terminalModeNoop,
+  openTerminal, renameTerminalById, renameSelectedTerminal, destroyTerminalById, terminalModeNoop,
   registerHandlers: registerTerminalHandlers, cleanup: cleanupTerminals,
 } = terminals
 
@@ -259,7 +260,6 @@ async function triggerImportFromDisk() {
   try {
     const r = await importProjectFromDisk(projectId)
     const msg = `Imported from ${r.root_path}: ${r.files} files, ${r.dirs} dirs, ${r.existing} kept, ${r.skipped} skipped`
-    error.value = msg
     debugLog.push({ severity: 'ok', source: 'import', action: 'import-from-disk', detail: msg })
     explorerPane.value?.refreshTree?.()
   } catch (e) {

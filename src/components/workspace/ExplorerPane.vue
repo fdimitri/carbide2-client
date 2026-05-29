@@ -95,6 +95,7 @@ const emit = defineEmits([
   'create-terminal',
   'create-channel',
   'rename-terminal',
+  'destroy-terminal',
   'join-channel',
   'leave-channel',
   'open-upload',
@@ -330,7 +331,8 @@ function buildContextMenuItems(node) {
     return [
       ...buildOpenItems(node),
       { separator: true },
-      { label: 'Rename', command: () => emit('rename-terminal', tid) },
+      { label: 'Rename',  icon: 'pi pi-pencil', command: () => emit('rename-terminal', tid) },
+      { label: 'Destroy', icon: 'pi pi-trash',  command: () => emit('destroy-terminal', tid) },
     ]
   }
   if (kind === 'file') {

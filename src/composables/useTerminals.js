@@ -6,10 +6,12 @@ import { storeToRefs } from 'pinia'
 import workerSocket from '../services/workerSocket'
 import { logInfo, logWs } from '../services/log'
 import { useWorkspaceStore } from '../stores/workspaceStore'
+import { useDebugLogStore } from '../stores/debugLogStore'
 
 export function useTerminals({ error, bindTabToActivePane, activePane }) {
   const store = useWorkspaceStore()
   const { terminalList, selectedTerminalId } = storeToRefs(store)
+  const debugLog = useDebugLogStore()
 
   const terminalLoading          = ref(false)
   const showCreateTerminalDialog = ref(false)
@@ -37,9 +39,11 @@ export function useTerminals({ error, bindTabToActivePane, activePane }) {
     error.value = ''
     try {
       workerSocket.send('term', 'create', { name: options.name })
+      debugLog.push({ severity: 'info', source: 'term', action: 'create-requested', detail: `name=${options.name || '(default)'}` })
       createTerminalTimeout = setTimeout(() => {
         terminalLoading.value = false
         error.value = 'Timed out creating terminal. Check worker logs and JWT secret.'
+        debugLog.push({ severity: 'error', source: 'term', action: 'create-timeout', detail: `name=${options.name || '(default)'}` })
         createTerminalTimeout = null
       }, 5000)
     } catch (e) {
@@ -48,6 +52,7 @@ export function useTerminals({ error, bindTabToActivePane, activePane }) {
         createTerminalTimeout = null
       }
       error.value = e.message || 'Failed to create terminal'
+      debugLog.push({ severity: 'error', source: 'term', action: 'create-failed', detail: e.message || 'unknown' })
       terminalLoading.value = false
     }
   }
@@ -74,6 +79,14 @@ export function useTerminals({ error, bindTabToActivePane, activePane }) {
     renameTerminalById(target)
   }
 
+  function destroyTerminalById(tid) {
+    const target = Number(tid)
+    if (!target) return
+    if (!window.confirm(`Destroy terminal #${target}? The shell process will be killed.`)) return
+    workerSocket.send('term', 'destroy', { terminal_id: target })
+    debugLog.push({ severity: 'warn', source: 'term', action: 'destroy-requested', detail: `id=${target}` })
+  }
+
   function terminalModeNoop(tid) {
     error.value = `Terminal #${tid} incognito/exclusive mode is not implemented yet.`
   }
@@ -87,6 +100,7 @@ export function useTerminals({ error, bindTabToActivePane, activePane }) {
         }
         terminalLoading.value = false
         error.value = p?.message || 'Worker error'
+        debugLog.push({ severity: 'error', source: 'worker', action: 'system-error', detail: p?.message || 'unknown' })
       }),
       workerSocket.on('term', 'list', (p) => {
         logWs('recv', 'term', 'list', p)
@@ -107,6 +121,7 @@ export function useTerminals({ error, bindTabToActivePane, activePane }) {
           ]
         }
         logInfo('useTerminals', 'terminal created, id=', createdId)
+        debugLog.push({ severity: 'ok', source: 'term', action: 'created', detail: `id=${createdId} name=${p.name || ''}` })
         selectedTerminalId.value = createdId
         ;(onTerminalCreated || selectTerminalNode)(createdId)
       }),
@@ -116,7 +131,15 @@ export function useTerminals({ error, bindTabToActivePane, activePane }) {
         terminalList.value = terminalList.value.map(t =>
           Number(t.id) === tid ? { ...t, name: p.name } : t
         )
+        debugLog.push({ severity: 'info', source: 'term', action: 'renamed', detail: `id=${tid} name=${p.name}` })
         error.value = ''
+      }),
+      workerSocket.on('term', 'exit', (p) => {
+        logWs('recv', 'term', 'exit', p)
+        const tid = Number(p.terminal_id)
+        terminalList.value = terminalList.value.filter(t => Number(t.id) !== tid)
+        if (Number(selectedTerminalId.value) === tid) selectedTerminalId.value = null
+        debugLog.push({ severity: 'info', source: 'term', action: 'exited', detail: `id=${tid} code=${p.code ?? ''}` })
       })
     )
   }
@@ -141,6 +164,7 @@ export function useTerminals({ error, bindTabToActivePane, activePane }) {
     selectTerminalNode,
     renameTerminalById,
     renameSelectedTerminal,
+    destroyTerminalById,
     terminalModeNoop,
     registerHandlers,
     cleanup,
