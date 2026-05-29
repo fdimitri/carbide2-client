@@ -31,6 +31,7 @@ let fitAddon = null
 let terminalResizeObserver = null
 let boundTerminalId = null
 let applyingRemoteResize = false
+const deadTerminalIds = new Set()  // ids whose shell has exited; don't try to re-join
 
 const onWindowResize = () => fitTerminalSoon()
 
@@ -73,10 +74,23 @@ function ensureXterm() {
 async function bindTerminal(terminalId) {
   const nextId = Number(terminalId)
   if (!nextId) return
+  const sameAsBound = nextId === Number(boundTerminalId)
   boundTerminalId = nextId
   await nextTick()
   if (!ensureXterm()) return
-  xterm.reset()
+  // If this terminal has already exited, keep whatever's in the buffer
+  // (so the user can scroll back through what happened) and don't bother
+  // the worker with a join the server will only refuse.
+  if (deadTerminalIds.has(nextId)) {
+    if (props.active) {
+      await nextTick()
+      xterm.focus()
+    }
+    return
+  }
+  // Only reset on a fresh bind — re-activating the same tab shouldn't
+  // wipe scrollback.
+  if (!sameAsBound) xterm.reset()
   workerSocket.send('term', 'join', { terminal_id: boundTerminalId })
   if (props.active) {
     await nextTick()
@@ -107,7 +121,9 @@ const offHandlers = [
     applyingRemoteResize = false
   }),
   workerSocket.on('term', 'exit', (payload) => {
-    if (!xterm || Number(payload.terminal_id) !== Number(boundTerminalId)) return
+    const tid = Number(payload.terminal_id)
+    if (tid) deadTerminalIds.add(tid)
+    if (!xterm || tid !== Number(boundTerminalId)) return
     xterm.writeln('\r\n[session ended]')
   }),
 ]
