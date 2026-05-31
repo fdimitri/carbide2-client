@@ -121,6 +121,25 @@ export function useTerminals({ error, bindTabToActivePane, activePane }) {
     error.value = `Terminal #${tid} incognito/exclusive mode is not implemented yet.`
   }
 
+  // ─── Recording ─────────────────────────────────────────────────────────
+  // Tell the worker to start/stop an asciinema cast recording of a terminal.
+  // The worker reply ('term', 'recording_started' | 'recording_stopped')
+  // rebroadcasts the terminal list so the red-dot badge updates everywhere.
+
+  function startRecording(tid) {
+    const target = Number(tid)
+    if (!target) return
+    workerSocket.send('term', 'record_start', { terminal_id: target })
+    debugLog.push({ severity: 'info', source: 'term', action: 'record-start-requested', detail: `id=${target}` })
+  }
+
+  function stopRecording(tid) {
+    const target = Number(tid)
+    if (!target) return
+    workerSocket.send('term', 'record_stop', { terminal_id: target })
+    debugLog.push({ severity: 'info', source: 'term', action: 'record-stop-requested', detail: `id=${target}` })
+  }
+
   // Toggle the agent_accessible flag on an existing terminal. Worker may
   // refuse (e.g. project mismatch); the term/list rebroadcast confirms or
   // reverts our optimistic state.
@@ -195,6 +214,20 @@ export function useTerminals({ error, bindTabToActivePane, activePane }) {
         terminalList.value = terminalList.value.filter(t => Number(t.id) !== tid)
         if (Number(selectedTerminalId.value) === tid) selectedTerminalId.value = null
         debugLog.push({ severity: 'info', source: 'term', action: 'exited', detail: `id=${tid} code=${p.code ?? ''}` })
+      }),
+      workerSocket.on('term', 'recording_started', (p) => {
+        logWs('recv', 'term', 'recording_started', p)
+        debugLog.push({
+          severity: 'ok', source: 'term', action: 'recording-started',
+          detail: `id=${p.terminal_id} recording=${p.recording_id}`,
+        })
+      }),
+      workerSocket.on('term', 'recording_stopped', (p) => {
+        logWs('recv', 'term', 'recording_stopped', p)
+        debugLog.push({
+          severity: 'info', source: 'term', action: 'recording-stopped',
+          detail: `id=${p.terminal_id} recording=${p.recording_id ?? '(none)'}${p.reason ? ' reason=' + p.reason : ''}`,
+        })
       })
     )
   }
@@ -225,6 +258,8 @@ export function useTerminals({ error, bindTabToActivePane, activePane }) {
     destroyTerminalById,
     terminalModeNoop,
     setAgentAccessible,
+    startRecording,
+    stopRecording,
     registerHandlers,
     cleanup,
   }
