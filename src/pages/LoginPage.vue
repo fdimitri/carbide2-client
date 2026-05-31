@@ -49,6 +49,9 @@
           <p class="text-dim text-label font-mono tracking-wide">
             demo · dev@example.com · password
           </p>
+          <p v-if="acronym" class="mt-4 text-dim/60 text-[0.7rem] italic leading-snug">
+            CARBIDE is&hellip; {{ acronym }}
+          </p>
         </div>
       </div>
     </div>
@@ -56,7 +59,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import authService from '../services/authService'
 
@@ -65,6 +68,14 @@ const password = ref('password')
 const loading = ref(false)
 const error = ref('')
 const router = useRouter()
+const acronym = ref('')
+
+onMounted(async () => {
+  try {
+    const res = await fetch('/about')
+    if (res.ok) acronym.value = (await res.json()).acronym
+  } catch (_) { /* non-fatal */ }
+})
 
 const handleLogin = async () => {
   loading.value = true

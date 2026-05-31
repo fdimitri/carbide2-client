@@ -8,6 +8,11 @@
           <h1 class="text-text text-2xl font-bold tracking-tight">Your Projects</h1>
         </div>
         <div class="flex items-center gap-3">
+          <a href="/about" target="_blank"
+            class="px-4 py-2.5 rounded-lg bg-transparent border border-line text-muted text-sm
+                   cursor-pointer hover:border-accent hover:text-text transition-all no-underline">
+            ◈ About
+          </a>
           <button @click="router.push('/preferences')"
             title="User Preferences"
             class="px-4 py-2.5 rounded-lg bg-transparent border border-line text-muted text-sm

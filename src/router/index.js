@@ -3,6 +3,7 @@ import LoginPage from '../pages/LoginPage.vue'
 import DashboardPage from '../pages/DashboardPage.vue'
 import ProjectPage from '../pages/ProjectPage.vue'
 import PreferencesPage from '../pages/PreferencesPage.vue'
+import AboutPage from '../pages/AboutPage.vue'
 import authService from '../services/authService'
 
 const routes = [
@@ -28,6 +29,11 @@ const routes = [
     name: 'Preferences',
     component: PreferencesPage,
     meta: { requiresAuth: true },
+  },
+  {
+    path: '/about',
+    name: 'About',
+    component: AboutPage,
   },
   {
     path: '/',
