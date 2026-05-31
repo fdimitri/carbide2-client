@@ -70,10 +70,16 @@ export async function uploadProjectFile(projectId, file, dest = '/') {
   const form = new FormData()
   form.append('file', file, file.name)
   form.append('dest', dest)
+  // DO NOT set Content-Type manually here. axios + the browser auto-set
+  // `multipart/form-data; boundary=…<random>` when the body is a FormData.
+  // Setting `Content-Type: multipart/form-data` ourselves overrides that
+  // header and drops the boundary, so Rails' Rack multipart parser can't
+  // find the part separators and `params[:file]` arrives empty — which
+  // created zero-byte DirectoryEntries with no FileChange. See #1 in
+  // .github/May30-Questions.md.
   const res = await authService.api.post(
     `projects/${projectId}/fs/upload`,
     form,
-    { headers: { 'Content-Type': 'multipart/form-data' } }
   )
   return res.data
 }
@@ -84,5 +90,26 @@ export async function importProjectFromDisk(projectId, path = null) {
   const body = path ? { path } : {}
   const res = await authService.api.post(`projects/${projectId}/fs/import`, body)
   return res.data
+}
+
+// Fetch lightweight entry metadata (size, revisions, posix mode/owner, mtime…)
+// for the explorer Properties panel. See #5 in May30-Questions.md.
+export async function statProjectEntry(projectId, path) {
+  const res = await authService.api.get(`projects/${projectId}/fs/stat`, {
+    params: { path },
+  })
+  return res.data
+}
+
+// Fetch a binary blob (image, archive, etc.) from the on-disk VFS and return
+// an object URL the caller can drop into <img src> or an <a download>. The
+// caller is responsible for calling URL.revokeObjectURL when done.
+// See #13 — binary entries live on disk, not in DB.
+export async function fetchProjectBlob(projectId, path) {
+  const res = await authService.api.get(`projects/${projectId}/fs/blob`, {
+    params: { path },
+    responseType: 'blob',
+  })
+  return URL.createObjectURL(res.data)
 }
 

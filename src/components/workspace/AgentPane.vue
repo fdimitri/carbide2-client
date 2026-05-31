@@ -72,18 +72,48 @@
 
       <template v-for="(m, i) in messages" :key="i">
         <!-- User -->
-        <div v-if="m.kind === 'user'" class="flex flex-col gap-[0.1rem] max-w-[80ch] self-end">
+        <div v-if="m.kind === 'user'" class="flex flex-col gap-[0.15rem] max-w-[80ch] self-end">
           <span class="text-[0.72rem] opacity-60 self-end">you</span>
-          <span class="text-[0.86rem] leading-[1.35] break-words whitespace-pre-wrap px-[0.6rem] py-[0.35rem] rounded-[0.35rem] border monaco-panel-border monaco-input-bg">{{ m.text }}</span>
+          <div
+            v-if="m.images && m.images.length"
+            class="flex flex-wrap gap-1 self-end max-w-full"
+          >
+            <img
+              v-for="(img, ii) in m.images"
+              :key="ii"
+              :src="`data:${img.mime};base64,${img.base64}`"
+              class="max-h-40 max-w-[16rem] rounded-[0.25rem] border monaco-panel-border"
+              :alt="`attachment ${ii + 1}`"
+            />
+          </div>
+          <span
+            v-if="m.text"
+            class="text-[0.86rem] leading-[1.35] break-words whitespace-pre-wrap px-[0.6rem] py-[0.35rem] rounded-[0.35rem] border monaco-panel-border monaco-input-bg"
+          >{{ m.text }}</span>
         </div>
 
         <!-- Assistant -->
-        <div v-else-if="m.kind === 'assistant'" class="flex flex-col gap-[0.1rem] max-w-[80ch]">
-          <span class="text-[0.72rem] opacity-60">{{ activeAgentName }}</span>
-          <span
-            class="text-[0.86rem] leading-[1.35] break-words whitespace-pre-wrap"
-            :class="m.muted ? 'opacity-50 italic' : ''"
-          >{{ m.text }}</span>
+        <div v-else-if="m.kind === 'assistant'" class="flex flex-col gap-[0.15rem] max-w-[80ch]">
+          <span class="text-[0.72rem] opacity-60 flex items-center gap-2">
+            {{ activeAgentName }}
+            <span
+              v-if="m.truncated"
+              class="text-[0.65rem] uppercase tracking-wider px-[0.35rem] py-[0.05rem] rounded-[0.2rem] border border-amber-600/60 text-amber-400 font-semibold"
+              title="Model hit its max_tokens / context limit before finishing. Increase the model's context window or max_tokens in your provider."
+            >truncated</span>
+          </span>
+          <details
+            v-if="m.reasoning"
+            class="text-[0.78rem] border monaco-panel-border rounded-[0.3rem] px-[0.5rem] py-[0.25rem] opacity-80"
+          >
+            <summary class="cursor-pointer select-none opacity-70">reasoning ({{ m.reasoning.length }} chars)</summary>
+            <div class="markdown-body text-[0.8rem] mt-1 opacity-90" v-html="renderMarkdown(m.reasoning)"></div>
+          </details>
+          <div
+            class="markdown-body text-[0.86rem] leading-[1.4] break-words"
+            :class="m.muted ? 'opacity-60 italic' : ''"
+            v-html="renderMarkdown(m.text)"
+          ></div>
         </div>
 
         <!-- Tool call/result pair — render as collapsible -->
@@ -113,20 +143,63 @@
     </div>
 
     <!-- Composer -->
-    <div class="flex gap-2 p-[0.55rem] border-t monaco-panel-border monaco-tabs-bg">
-      <textarea
-        v-model="draft"
-        @keydown.enter.exact.prevent="onSend"
-        :placeholder="placeholder"
-        :disabled="!canSend"
-        rows="1"
-        class="flex-1 px-[0.65rem] py-[0.45rem] text-[0.85rem] rounded-[0.3rem] outline-none font-[inherit] border monaco-input-bg monaco-input-fg monaco-input-border focus:monaco-focus-border placeholder:monaco-line-fg resize-none"
-      ></textarea>
-      <button
-        class="px-[0.9rem] py-[0.45rem] text-[0.85rem] text-white rounded-[0.3rem] cursor-pointer font-[inherit] border-0 monaco-focus-bg hover:brightness-115 disabled:opacity-40 disabled:cursor-default"
-        @click="onSend"
-        :disabled="!canSend || !draft.trim()"
-      >Send</button>
+    <div
+      class="flex flex-col gap-[0.4rem] p-[0.55rem] border-t monaco-panel-border monaco-tabs-bg"
+      :class="dragOver ? 'ring-2 ring-blue-500/60 ring-inset' : ''"
+      @dragover.prevent="dragOver = true"
+      @dragleave.prevent="dragOver = false"
+      @drop.prevent="onDrop"
+    >
+      <div v-if="pendingImages.length" class="flex flex-wrap gap-[0.4rem]">
+        <div
+          v-for="(img, idx) in pendingImages"
+          :key="idx"
+          class="relative group"
+          :title="`${img.mime} · ${formatBytes(img.bytes)}`"
+        >
+          <img
+            :src="`data:${img.mime};base64,${img.base64}`"
+            class="h-16 w-16 object-cover rounded-[0.25rem] border monaco-panel-border"
+            :alt="`pending ${idx + 1}`"
+          />
+          <button
+            class="absolute -top-1 -right-1 w-4 h-4 leading-[0.85rem] text-[0.7rem] rounded-full bg-black/80 text-white opacity-80 hover:opacity-100"
+            @click="removePending(idx)"
+            title="Remove"
+          >×</button>
+        </div>
+      </div>
+
+      <div class="flex gap-2">
+        <button
+          class="px-[0.6rem] py-[0.45rem] text-[0.85rem] rounded-[0.3rem] border monaco-panel-border opacity-80 hover:opacity-100 disabled:opacity-30 disabled:cursor-default"
+          @click="fileInputEl?.click()"
+          :disabled="!canSend"
+          title="Attach image(s) (or paste / drag-drop)"
+        >📎</button>
+        <input
+          ref="fileInputEl"
+          type="file"
+          accept="image/*"
+          multiple
+          class="hidden"
+          @change="onFileInput"
+        />
+        <textarea
+          v-model="draft"
+          @keydown.enter.exact.prevent="onSend"
+          @paste="onPaste"
+          :placeholder="placeholder"
+          :disabled="!canSend"
+          rows="1"
+          class="flex-1 px-[0.65rem] py-[0.45rem] text-[0.85rem] rounded-[0.3rem] outline-none font-[inherit] border monaco-input-bg monaco-input-fg monaco-input-border focus:monaco-focus-border placeholder:monaco-line-fg resize-none"
+        ></textarea>
+        <button
+          class="px-[0.9rem] py-[0.45rem] text-[0.85rem] text-white rounded-[0.3rem] cursor-pointer font-[inherit] border-0 monaco-focus-bg hover:brightness-115 disabled:opacity-40 disabled:cursor-default"
+          @click="onSend"
+          :disabled="!canSend || (!draft.trim() && !pendingImages.length)"
+        >Send</button>
+      </div>
     </div>
   </div>
 </template>
@@ -134,6 +207,7 @@
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
+import { renderMarkdown } from '../../utils/markdown'
 
 const props = defineProps({
   connected: { type: Boolean, default: false },
@@ -143,6 +217,79 @@ const emit = defineEmits(['agent-send', 'agent-reset', 'agent-pick', 'agent-load
 const store    = useWorkspaceStore()
 const draft    = ref('')
 const scrollEl = ref(null)
+
+// ── Image attachments ─────────────────────────────────────────────
+// Queued for the next send; cleared after onSend fires.
+const MAX_IMAGES        = 6
+const MAX_BYTES_PER_IMG = 8 * 1024 * 1024   // 8 MB raw
+const pendingImages     = ref([])
+const fileInputEl       = ref(null)
+const dragOver          = ref(false)
+
+function formatBytes(n) {
+  if (n == null) return ''
+  if (n < 1024)        return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader()
+    r.onerror = () => reject(r.error || new Error('read failed'))
+    r.onload  = () => {
+      const s = String(r.result || '')
+      const comma = s.indexOf(',')
+      resolve(comma >= 0 ? s.slice(comma + 1) : s)
+    }
+    r.readAsDataURL(file)
+  })
+}
+
+async function addFiles(files) {
+  for (const file of files) {
+    if (!file || !file.type || !file.type.startsWith('image/')) continue
+    if (pendingImages.value.length >= MAX_IMAGES) break
+    if (file.size > MAX_BYTES_PER_IMG) {
+      console.warn(`[AgentPane] image too large, skipped: ${file.name} (${file.size} bytes)`)
+      continue
+    }
+    try {
+      const base64 = await fileToBase64(file)
+      pendingImages.value.push({ mime: file.type, base64, bytes: file.size })
+    } catch (e) {
+      console.warn('[AgentPane] failed to read image', e)
+    }
+  }
+}
+
+function removePending(idx) {
+  pendingImages.value.splice(idx, 1)
+}
+
+function onFileInput(ev) {
+  const files = Array.from(ev.target.files || [])
+  addFiles(files)
+  ev.target.value = ''   // allow re-selecting same file
+}
+
+function onPaste(ev) {
+  const items = Array.from(ev.clipboardData?.items || [])
+  const files = items
+    .filter(it => it.kind === 'file' && it.type.startsWith('image/'))
+    .map(it => it.getAsFile())
+    .filter(Boolean)
+  if (files.length) {
+    ev.preventDefault()
+    addFiles(files)
+  }
+}
+
+function onDrop(ev) {
+  dragOver.value = false
+  const files = Array.from(ev.dataTransfer?.files || [])
+  if (files.length) addFiles(files)
+}
 
 const agents   = computed(() => store.agentList || [])
 const messages = computed(() => store.agentMessages || [])
@@ -170,10 +317,13 @@ const placeholder = computed(() => {
 })
 
 function onSend() {
-  const text = draft.value.trim()
-  if (!text || !canSend.value) return
-  emit('agent-send', text)
+  const text   = draft.value.trim()
+  const images = pendingImages.value.slice()
+  if (!canSend.value) return
+  if (!text && !images.length) return
+  emit('agent-send', text, images.length ? images : null)
   draft.value = ''
+  pendingImages.value = []
 }
 
 function onReset()  { emit('agent-reset') }
@@ -245,3 +395,58 @@ watch(() => messages.value.length, async () => {
   if (scrollEl.value) scrollEl.value.scrollTop = scrollEl.value.scrollHeight
 })
 </script>
+
+<!-- Minimal markdown styling — Tailwind utilities don't reach the v-html
+     output (no class hooks on generated tags), so a tiny scoped sheet
+     keeps code blocks, lists, and links legible inside the assistant
+     bubble without pulling in @tailwindcss/typography. -->
+<style scoped>
+.markdown-body :deep(p) { margin: 0.25rem 0; }
+.markdown-body :deep(p:first-child) { margin-top: 0; }
+.markdown-body :deep(p:last-child)  { margin-bottom: 0; }
+.markdown-body :deep(ul),
+.markdown-body :deep(ol) { margin: 0.25rem 0 0.25rem 1.2rem; }
+.markdown-body :deep(li) { margin: 0.1rem 0; }
+.markdown-body :deep(code) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  padding: 0.05em 0.3em;
+  border-radius: 0.2em;
+  background: rgba(127,127,127,0.18);
+}
+.markdown-body :deep(pre) {
+  margin: 0.4rem 0;
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.3rem;
+  overflow-x: auto;
+  background: rgba(127,127,127,0.12);
+  border: 1px solid rgba(127,127,127,0.25);
+}
+.markdown-body :deep(pre) code {
+  padding: 0;
+  background: transparent;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+.markdown-body :deep(a) { text-decoration: underline; }
+.markdown-body :deep(a:hover) { opacity: 0.85; }
+.markdown-body :deep(blockquote) {
+  margin: 0.3rem 0;
+  padding: 0.1rem 0.7rem;
+  border-left: 3px solid rgba(127,127,127,0.4);
+  opacity: 0.85;
+}
+.markdown-body :deep(h1),
+.markdown-body :deep(h2),
+.markdown-body :deep(h3),
+.markdown-body :deep(h4) { font-weight: 600; margin: 0.5rem 0 0.25rem; }
+.markdown-body :deep(h1) { font-size: 1.15em; }
+.markdown-body :deep(h2) { font-size: 1.08em; }
+.markdown-body :deep(h3) { font-size: 1.02em; }
+.markdown-body :deep(table) { border-collapse: collapse; margin: 0.4rem 0; }
+.markdown-body :deep(th),
+.markdown-body :deep(td) {
+  border: 1px solid rgba(127,127,127,0.3);
+  padding: 0.2rem 0.5rem;
+}
+</style>

@@ -24,6 +24,9 @@
         @rename-terminal="renameTerminalById"
         @destroy-terminal="destroyTerminalById"
         @set-terminal-agent-accessible="(e) => setAgentAccessible(e.id, e.enabled)"
+        @start-recording-terminal="startRecording"
+        @stop-recording-terminal="stopRecording"
+        @open-recordings="openRecordingsDialog"
         @join-channel="joinChannelFromContext"
         @leave-channel="leaveChannelFromContext"
         @open-upload="onExplorerOpenUpload"
@@ -159,6 +162,11 @@
         <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-[#123549] border border-accent text-[#9efdf3] rounded-[0.35rem] cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" :disabled="!uploadFile || uploading" @click="confirmUpload">{{ uploading ? 'Uploading…' : 'Upload' }}</button>
       </template>
     </Dialog>
+
+    <RecordingsDialog
+      v-model:visible="showRecordingsDialog"
+      :project-id="route.params.id"
+    />
   </div>
 </template>
 
@@ -173,6 +181,7 @@ import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import WorkspacePaneShell from '../components/workspace/WorkspacePaneShell.vue'
 import ExplorerPane from '../components/workspace/ExplorerPane.vue'
+import RecordingsDialog from '../components/workspace/RecordingsDialog.vue'
 import workerSocket from '../services/workerSocket'
 import { listProjects, getWsToken, uploadProjectFile, importProjectFromDisk } from '../services/projectService'
 import { storeToRefs } from 'pinia'
@@ -223,6 +232,7 @@ const {
   openCreateTerminalDialog, confirmCreateTerminal,
   openTerminal, renameTerminalById, renameSelectedTerminal, destroyTerminalById, terminalModeNoop,
   setAgentAccessible,
+  startRecording, stopRecording,
   registerHandlers: registerTerminalHandlers, cleanup: cleanupTerminals,
 } = terminals
 
@@ -264,6 +274,10 @@ const uploadDest       = ref('/')
 const uploadMode       = ref('file') // 'file' or 'archive' — UX hint only
 const uploading        = ref(false)
 const uploadResult     = ref('')
+
+// ── Recordings dialog ────────────────────────────────────────────────────────
+const showRecordingsDialog = ref(false)
+function openRecordingsDialog() { showRecordingsDialog.value = true }
 
 function openUploadDialog(dest = '/', mode = 'file') {
   uploadFile.value = null
@@ -488,6 +502,25 @@ onMounted(async () => {
       workerSocket.on('system', 'connected', () => {
         wsConnected.value = true
         storeJoinedChatChannels.value = new Set()
+        // Subscribe to the server-side debug stream so flusher / watcher /
+        // agent / fs activity shows up in the Debug pane in real time.
+        // See #3 in May30-Questions.md.
+        workerSocket.send('debug', 'subscribe', {})
+      })
+    )
+
+    // Server-side debug events → debugLogStore
+    offHandlers.push(
+      workerSocket.on('debug', 'event', (payload) => {
+        const sev = payload?.level === 'error' ? 'error'
+                  : payload?.level === 'warn'  ? 'warn'
+                  : 'info'
+        debugLog.push({
+          severity: sev,
+          source:   `srv:${payload?.category || '?'}`,
+          action:   payload?.message || '',
+          detail:   payload?.meta ? JSON.stringify(payload.meta) : '',
+        })
       })
     )
 

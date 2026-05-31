@@ -80,6 +80,23 @@
         <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-[#123549] border border-accent text-[#9efdf3] rounded-[0.35rem] cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" :disabled="!createFolderName.trim()" @click="confirmCreateFolder">Create</button>
       </template>
     </Dialog>
+
+    <!-- Properties Dialog (#5 stat-style file info) -->
+    <Dialog v-model:visible="showPropertiesDialog" modal header="Properties" :style="{ width: '28rem' }">
+      <div v-if="propertiesLoading" class="text-muted text-[0.82rem]">Loading…</div>
+      <div v-else-if="propertiesError" class="text-[#f38ba8] text-[0.82rem]">{{ propertiesError }}</div>
+      <table v-else-if="propertiesData" class="w-full text-[0.82rem]">
+        <tbody>
+          <tr v-for="row in propertiesRows" :key="row.label" class="align-top">
+            <td class="py-[0.18rem] pr-2 text-muted whitespace-nowrap w-[10rem]">{{ row.label }}</td>
+            <td class="py-[0.18rem] text-text break-all">{{ row.value }}</td>
+          </tr>
+        </tbody>
+      </table>
+      <template #footer>
+        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-[#587296] text-[#c5d4ea] text-[0.85rem] rounded-[0.35rem] cursor-pointer hover:border-[#7ce9de] hover:text-[#dffffa]" @click="showPropertiesDialog = false">Close</button>
+      </template>
+    </Dialog>
   </aside>
 </template>
 
@@ -111,6 +128,9 @@ const emit = defineEmits([
   'rename-terminal',
   'destroy-terminal',
   'set-terminal-agent-accessible',
+  'start-recording-terminal',
+  'stop-recording-terminal',
+  'open-recordings',
   'join-channel',
   'leave-channel',
   'open-upload',
@@ -137,6 +157,13 @@ const expandedExplorerKeys  = ref({
   'group:debug':     true,
 })
 
+// Properties dialog state (#5)
+const showPropertiesDialog = ref(false)
+const propertiesPath       = ref('')
+const propertiesData       = ref(null)
+const propertiesLoading    = ref(false)
+const propertiesError      = ref('')
+
 const fileTree = ref([])
 
 // ── File tree from WebSocket ─────────────────────────────────────────────────
@@ -156,6 +183,8 @@ const _offWsConnected = ref(null)
 const _offFsCreated   = ref(null)
 const _offFsRenamed   = ref(null)
 const _offFsDeleted   = ref(null)
+const _offFsStat      = ref(null)
+const _offFsStatErr   = ref(null)
 
 onMounted(() => {
   _offFsTree.value = workerSocket.on('fs', 'tree', (payload) => {
@@ -167,6 +196,20 @@ onMounted(() => {
   _offFsCreated.value   = workerSocket.on('fs', 'created', () => requestFileTree())
   _offFsRenamed.value   = workerSocket.on('fs', 'renamed', () => requestFileTree())
   _offFsDeleted.value   = workerSocket.on('fs', 'deleted', () => requestFileTree())
+  _offFsStat.value      = workerSocket.on('fs', 'stat', (payload) => {
+    // Only consume the response if it matches the path we asked about; this
+    // lets other panes also do fs/stat without us snatching their replies.
+    if (!showPropertiesDialog.value) return
+    if (payload?.path && payload.path !== propertiesPath.value) return
+    propertiesData.value    = payload
+    propertiesLoading.value = false
+  })
+  _offFsStatErr.value   = workerSocket.on('fs', 'error', (payload) => {
+    if (!propertiesLoading.value) return
+    if (payload?.path && payload.path !== propertiesPath.value) return
+    propertiesError.value   = payload?.error || payload?.message || 'stat failed'
+    propertiesLoading.value = false
+  })
   requestFileTree()
 })
 
@@ -176,6 +219,8 @@ onBeforeUnmount(() => {
   _offFsCreated.value?.()
   _offFsRenamed.value?.()
   _offFsDeleted.value?.()
+  _offFsStat.value?.()
+  _offFsStatErr.value?.()
 })
 
 // ── Computed tree nodes ───────────────────────────────────────────────────────
@@ -208,6 +253,7 @@ const explorerNodes = computed(() => {
       isOpen: openedTerminalIds.value.has(Number(t.id)),
       agentAccessible: !!t.agent_accessible,
       agentBusy: !!t.agent_busy,
+      recording: !!t.recording,
     },
   }))
   const channelNodes = props.chatChannels.map((c) => ({
@@ -334,6 +380,7 @@ function buildContextMenuItems(node) {
       { label: 'Upload File Here…',             icon: 'pi pi-upload',    command: () => emit('open-upload', { dest: dirPath, mode: 'file' }) },
       { label: 'Upload & Extract Archive Here…',icon: 'pi pi-box',       command: () => emit('open-upload', { dest: dirPath, mode: 'archive' }) },
       { separator: true },
+      { label: 'Properties...', icon: 'pi pi-info-circle', command: () => openPropertiesDialog(dirPath) },
       { label: 'Delete', icon: 'pi pi-trash', command: () => deletePath(node.key) },
     ]
   }
@@ -350,6 +397,7 @@ function buildContextMenuItems(node) {
   if (kind === 'terminal') {
     const tid = node.data.id
     const isAgent = !!node.data.agentAccessible
+    const isRecording = !!node.data.recording
     return [
       ...buildOpenItems(node),
       { separator: true },
@@ -359,13 +407,19 @@ function buildContextMenuItems(node) {
             command: () => emit('set-terminal-agent-accessible', { id: tid, enabled: false }) }
         : { label: 'Make agent-accessible', icon: 'pi pi-bolt',
             command: () => emit('set-terminal-agent-accessible', { id: tid, enabled: true }) },
+      isRecording
+        ? { label: 'Stop Recording',  icon: 'pi pi-stop-circle',  command: () => emit('stop-recording-terminal',  tid) }
+        : { label: 'Start Recording', icon: 'pi pi-circle-fill',  command: () => emit('start-recording-terminal', tid) },
+      { label: 'Recordings...', icon: 'pi pi-list', command: () => emit('open-recordings') },
       { label: 'Destroy', icon: 'pi pi-trash',  command: () => emit('destroy-terminal', tid) },
     ]
   }
   if (kind === 'file') {
+    const filePath = '/' + node.key.replace(/^\//, '')
     return [
       ...buildOpenItems(node),
       { separator: true },
+      { label: 'Properties...', icon: 'pi pi-info-circle', command: () => openPropertiesDialog(filePath) },
       { label: 'Rename', icon: 'pi pi-pencil', command: () => renameFileById(node.key) },
       { label: 'Delete', icon: 'pi pi-trash',  command: () => deletePath(node.key) },
     ]
@@ -440,6 +494,62 @@ function confirmCreateFolder() {
   workerSocket.send('fs', 'create_dir', { path })
   showCreateFolderDialog.value = false
 }
+
+// ── Properties dialog (#5) ───────────────────────────────────────────────────
+function openPropertiesDialog(path) {
+  propertiesPath.value    = path
+  propertiesData.value    = null
+  propertiesError.value   = ''
+  propertiesLoading.value = true
+  showPropertiesDialog.value = true
+  workerSocket.send('fs', 'stat', { path })
+}
+
+function formatBytes(n) {
+  if (n == null) return '—'
+  if (n < 1024)            return `${n} B`
+  if (n < 1024 * 1024)     return `${(n / 1024).toFixed(1)} KB`
+  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(2)} MB`
+  return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`
+}
+function formatMode(m) {
+  if (m == null) return '—'
+  // Render as octal + symbolic, e.g. '0644 (rw-r--r--)'
+  const oct = (m & 0o7777).toString(8).padStart(4, '0')
+  const sym = ['', '', ''].map((_, i) => {
+    const shift = (2 - i) * 3
+    const bits  = (m >> shift) & 0o7
+    return (bits & 4 ? 'r' : '-') + (bits & 2 ? 'w' : '-') + (bits & 1 ? 'x' : '-')
+  }).join('')
+  return `0${oct} (${sym})`
+}
+function formatTs(ts) {
+  if (!ts) return '—'
+  try { return new Date(ts).toLocaleString() } catch { return String(ts) }
+}
+
+const propertiesRows = computed(() => {
+  const d = propertiesData.value
+  if (!d) return []
+  const rows = [
+    { label: 'Path',         value: d.path },
+    { label: 'Type',         value: d.type + (d.binary ? ' (binary)' : '') },
+    { label: 'Size',         value: formatBytes(d.size) },
+  ]
+  if (d.type === 'file') {
+    rows.push({ label: 'Revisions',    value: String(d.revisions ?? 0) })
+    rows.push({ label: 'On-disk size', value: d.last_size != null ? formatBytes(d.last_size) : '—' })
+  }
+  rows.push(
+    { label: 'POSIX mode',  value: formatMode(d.posix_mode) },
+    { label: 'POSIX owner', value: d.posix_owner || '—' },
+    { label: 'POSIX group', value: d.posix_group || '—' },
+    { label: 'Modified',    value: formatTs(d.mtime) },
+    { label: 'Created',     value: formatTs(d.created_at) },
+    { label: 'Updated',     value: formatTs(d.updated_at) },
+  )
+  return rows
+})
 
 // ── Exposed for parent to mark items open / trigger create dialogs ──────────
 defineExpose({ markTerminalOpen, markFileOpen, openCreateFileDialog, openCreateFolderDialog, refreshTree: requestFileTree })

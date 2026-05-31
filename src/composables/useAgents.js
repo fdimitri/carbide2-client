@@ -63,21 +63,23 @@ export function useAgents({ error, bindTabToActivePane }) {
     })
   }
 
-  function send(text) {
+  function send(text, images = null) {
     const trimmed = (text || '').trim()
-    if (!trimmed) return
+    const hasImages = Array.isArray(images) && images.length > 0
+    if (!trimmed && !hasImages) return
     const slug = agentSelectedSlug.value
     if (!slug) {
       error.value = 'Pick an agent first.'
       return
     }
-    agentMessages.value.push({ kind: 'user', text: trimmed })
+    agentMessages.value.push({ kind: 'user', text: trimmed, images: hasImages ? images : null })
     agentStatus.value = 'thinking'
     const payload = { agent_slug: slug, message: trimmed }
     if (agentConversationId.value) payload.conversation_id = agentConversationId.value
+    if (hasImages) payload.images = images   // [{mime, base64}, ...]
     workerSocket.send('agent', 'ask', payload)
     debugLog.push({ source: 'agent', action: 'ask',
-      detail: `slug=${slug} convo=${agentConversationId.value || '(new)'} chars=${trimmed.length}` })
+      detail: `slug=${slug} convo=${agentConversationId.value || '(new)'} chars=${trimmed.length}${hasImages ? ` images=${images.length}` : ''}` })
   }
 
   function registerHandlers(offHandlers) {
@@ -131,20 +133,39 @@ export function useAgents({ error, bindTabToActivePane }) {
           action: 'tool_result', detail: `${p?.tool || '?'} ${summary}` })
       }),
       workerSocket.on('agent', 'done', (p) => {
+        const finish    = p?.finish_reason || null
+        const reasoning = p?.reasoning || null
+        const truncated = finish === 'length'
         if (p?.content) {
-          agentMessages.value.push({ kind: 'assistant', text: String(p.content) })
+          agentMessages.value.push({
+            kind: 'assistant', text: String(p.content),
+            finish_reason: finish, reasoning, truncated,
+          })
+        } else if (truncated) {
+          // Model was cut off before it could emit any visible text. This is
+          // the case that used to render as a misleading "(no reply)" —
+          // typically caused by too-small context window in LM Studio /
+          // llama.cpp. The reasoning_content may still be useful so we
+          // attach it.
+          agentMessages.value.push({
+            kind: 'assistant',
+            text: '(response truncated — increase model context window)',
+            finish_reason: finish, reasoning, truncated: true, muted: true,
+          })
         } else {
           // The model finished its turn without producing any reply text
-          // (common after a tool-only turn with some local models). Render
-          // a faint marker so the user knows the agent is no longer working
-          // rather than thinking the UI froze.
-          agentMessages.value.push({ kind: 'assistant', text: '(no reply)', muted: true })
+          // (e.g. tool-only turn with finish_reason='stop'). Render a faint
+          // marker so the user knows the agent is no longer working.
+          agentMessages.value.push({
+            kind: 'assistant', text: '(no reply)',
+            finish_reason: finish, reasoning, muted: true,
+          })
         }
         agentStatus.value = 'idle'
         debugLog.push({ source: 'agent',
-          severity: p?.content ? 'ok' : 'warn',
+          severity: truncated ? 'warn' : (p?.content ? 'ok' : 'warn'),
           action: 'done',
-          detail: `turn=${p?.turn ?? '?'} chars=${(p?.content || '').length}` })
+          detail: `turn=${p?.turn ?? '?'} finish=${finish || '?'} chars=${(p?.content || '').length}${reasoning ? ` reasoning=${reasoning.length}` : ''}` })
         // Bump the recent list so this convo (or its updated timestamp)
         // appears in the dropdown for everyone in the project.
         workerSocket.send('agent', 'recent', { limit: 25 })

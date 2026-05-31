@@ -65,7 +65,7 @@
     <div class="flex flex-col flex-1 overflow-hidden" v-show="activeTabKind === 'agent'">
       <AgentPane
         :connected="store.wsConnected"
-        @agent-send="(text) => emit('agent-send', text)"
+        @agent-send="(text, images) => emit('agent-send', text, images)"
         @agent-reset="emit('agent-reset')"
         @agent-pick="(slug) => emit('agent-pick', slug)"
         @agent-load="(id) => emit('agent-load', id)"

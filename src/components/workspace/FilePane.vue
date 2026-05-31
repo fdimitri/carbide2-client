@@ -8,8 +8,23 @@
         <span class="text-[#cdd6f4] font-medium">{{ filename }}</span>
         <span v-if="loading" class="text-[#6c7086] italic">Loading…</span>
         <span v-if="loadError" class="text-[#f38ba8]">{{ loadError }}</span>
+        <span v-if="isBinary" class="text-[#a6adc8] italic">(binary)</span>
+      </div>
+      <!-- Binary preview — image inline if it looks like one, else a placeholder + download link. See #13. -->
+      <div v-if="isBinary" class="flex-1 min-h-0 overflow-auto bg-[#181a20] p-4 grid place-items-center text-center">
+        <div v-if="blobLoading" class="text-muted text-[0.85rem]">Fetching…</div>
+        <div v-else-if="blobError" class="text-[#f38ba8] text-[0.85rem]">{{ blobError }}</div>
+        <img v-else-if="blobUrl && isImage" :src="blobUrl" :alt="filename"
+             class="max-w-full max-h-full object-contain rounded border border-[#333]" />
+        <div v-else-if="blobUrl" class="flex flex-col items-center gap-3">
+          <i class="pi pi-file text-4xl text-[#6c7086]"></i>
+          <span class="text-[#cdd6f4] text-[0.9rem]">{{ filename }}</span>
+          <a :href="blobUrl" :download="filename"
+             class="px-3 py-[0.34rem] bg-transparent border border-[#587296] text-[#c5d4ea] text-[0.85rem] rounded-[0.35rem] hover:border-[#7ce9de] hover:text-[#dffffa]">Download</a>
+        </div>
       </div>
       <MonacoEditor
+        v-else
         ref="editorRef"
         class="flex-1 min-h-0"
         :content="content"
@@ -24,12 +39,16 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { useRoute } from 'vue-router'
 import MonacoEditor from './MonacoEditor.vue'
 import workerSocket from '../../services/workerSocket'
 import { extensionToLanguage } from '../../utils/monacoLanguage'
 import { useDebugLogStore } from '../../stores/debugLogStore'
+import { fetchProjectBlob } from '../../services/projectService'
 
 const debugLog = useDebugLogStore()
+const route    = useRoute()
+const projectId = Number(route.params.id)
 
 const props = defineProps({
   fileId: {
@@ -38,16 +57,40 @@ const props = defineProps({
   },
 })
 
-const content   = ref('')
-const loading   = ref(false)
-const loadError = ref('')
-const editorRef = ref(null)
+const content    = ref('')
+const loading    = ref(false)
+const loadError  = ref('')
+const editorRef  = ref(null)
+const isBinary   = ref(false)
+const blobUrl    = ref('')
+const blobLoading = ref(false)
+const blobError   = ref('')
 
 const filename = computed(() => (props.fileId || '').split('/').pop() || props.fileId)
 const language = computed(() => extensionToLanguage(filename.value))
+const isImage  = computed(() => /\.(png|jpe?g|gif|webp|bmp|svg|ico|avif)$/i.test(filename.value))
+
+function releaseBlob() {
+  if (blobUrl.value) { try { URL.revokeObjectURL(blobUrl.value) } catch {} ; blobUrl.value = '' }
+}
+
+async function loadBinaryPreview(path) {
+  releaseBlob()
+  blobError.value   = ''
+  blobLoading.value = true
+  try {
+    blobUrl.value = await fetchProjectBlob(projectId, path)
+  } catch (e) {
+    blobError.value = e?.response?.data?.error || e.message || 'fetch failed'
+  } finally {
+    blobLoading.value = false
+  }
+}
 
 function requestFile(path) {
   if (!path) return
+  releaseBlob()
+  isBinary.value  = false
   loading.value   = true
   loadError.value = ''
   content.value   = ''
@@ -133,7 +176,16 @@ function onFsContent(payload) {
 
 function onFsError(payload) {
   if (normPath(payload.path) !== normPath(props.fileId)) return
-  loading.value   = false
+  loading.value = false
+  // The worker returns this exact error string when a binary entry is read
+  // via the text path. Promote into the binary-preview branch and fetch the
+  // bytes via HTTP. See #13 in May30-Questions.md.
+  if (typeof payload.error === 'string' && payload.error.includes('binary')) {
+    isBinary.value = true
+    loadError.value = ''
+    loadBinaryPreview(props.fileId)
+    return
+  }
   loadError.value = payload.error || 'unknown error'
 }
 
@@ -161,6 +213,7 @@ watch(() => props.fileId, (next, prev) => {
 onBeforeUnmount(() => {
   clearTimeout(cursorTimer)
   if (props.fileId) workerSocket.send('fs', 'close', { path: props.fileId })
+  releaseBlob()
   offContent(); offError(); offChange(); offSetContents(); offCursor(); offOpened()
 })
 </script>
