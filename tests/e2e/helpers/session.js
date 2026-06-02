@@ -1,9 +1,14 @@
 // helpers/session.js — shared login + project-open helpers for all e2e scripts.
 import { expect } from '@playwright/test'
 
-const BASE = 'http://localhost:5173'
-const EMAIL = 'dev@example.com'
-const PASSWORD = 'password'
+// When running against the k3d cluster set:
+//   CARBIDE_WS_URL=http://localhost:8080/w/2
+//   CARBIDE_E2E_EMAIL=e2e@example.com
+//   CARBIDE_E2E_PASSWORD=password123
+// Default to the local Vite dev server.
+const BASE = process.env.CARBIDE_WS_URL || 'http://localhost:5173'
+const EMAIL = process.env.CARBIDE_E2E_EMAIL || 'dev@example.com'
+const PASSWORD = process.env.CARBIDE_E2E_PASSWORD || 'password'
 
 /**
  * Log in and navigate to the dashboard.

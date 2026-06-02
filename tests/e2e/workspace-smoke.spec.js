@@ -11,13 +11,12 @@ test.describe('Workspace substrate', () => {
     expect(body).toContain('background-color: green');
   });
 
-  test('GET / returns Vue SPA shell', async ({ request }) => {
+  test('GET / returns the workspace landing page', async ({ request }) => {
     const resp = await request.get(`${BASE_URL}/`);
     expect(resp.status()).toBe(200);
     const body = await resp.text();
-    expect(body).toContain('Carbide2 IDE');
-    expect(body).toMatch(/<div id="app">/);
+    // Landing page served by carbide2-server Rails.
+    expect(body).toContain('Carbide2');
+    expect(body).toContain('Sign in');
   });
-
-  // Add more E2E checks as the UI/IDE is implemented
 });
