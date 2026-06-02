@@ -42,7 +42,14 @@ const routes = [
 ]
 
 const router = createRouter({
-  history: createWebHistory(import.meta.env.BASE_URL),
+  // Prefer the <base href> injected by the workspace SPA controller
+  // (path prefix from Traefik's X-Forwarded-Prefix, e.g. "/w/2/").
+  // Fall back to Vite's BASE_URL for `npm run dev` and other modes.
+  history: createWebHistory(
+    (typeof document !== 'undefined'
+      && document.querySelector('base')?.getAttribute('href'))
+    || import.meta.env.BASE_URL
+  ),
   routes,
 })
 
