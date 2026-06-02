@@ -64,6 +64,17 @@ export async function setProjectRoot(projectId, rootPath, cleanVfs = false) {
   return res.data
 }
 
+// Clone a public git repo into an empty project. Server enforces emptiness
+// (refuses with 409 if any DirectoryEntry rows exist). Returns 202 + job id;
+// new files surface over the existing fs/created WS events.
+export async function importProjectFromGit(projectId, gitUrl, gitRef = 'main') {
+  const res = await authService.api.post(`projects/${projectId}/import_from_git`, {
+    git_url: gitUrl,
+    git_ref: gitRef,
+  })
+  return res.data
+}
+
 // Upload a single file or archive (zip/tar/tar.gz) to a project's file tree.
 // `file` is a browser File/Blob; `dest` defaults to the project root.
 export async function uploadProjectFile(projectId, file, dest = '/') {

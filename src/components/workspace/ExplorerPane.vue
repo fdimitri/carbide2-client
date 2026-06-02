@@ -5,6 +5,18 @@
     </div>
     <input v-model="explorerSearch" class="mx-[0.6rem] mt-[0.6rem] mb-[0.4rem] px-[0.55rem] py-[0.45rem] text-[0.82rem] bg-[#0f1724] border border-line text-text rounded-[0.35rem] focus:outline-none focus:border-[#67e8dc]" placeholder="Filter explorer..." />
 
+    <!-- Empty-project banner: project has no files yet -> offer git clone.
+         Hidden as soon as the tree has any entry. -->
+    <div v-if="fileTree.length === 0 && !gitImportRunning" class="mx-[0.6rem] mb-[0.5rem] p-[0.55rem] border border-dashed border-[#3a4c66] rounded-[0.35rem] bg-[#0f1724]">
+      <div class="text-[0.78rem] text-muted mb-[0.35rem]">This project is empty.</div>
+      <button class="w-full px-[0.55rem] py-[0.34rem] bg-transparent border border-[#587296] text-[#c5d4ea] text-[0.8rem] rounded-[0.35rem] hover:border-[#7ce9de] hover:text-[#dffffa]" @click="showGitImportDialog = true">
+        <i class="pi pi-github mr-[0.35rem]"></i>Clone from git URL
+      </button>
+    </div>
+    <div v-else-if="gitImportRunning" class="mx-[0.6rem] mb-[0.5rem] p-[0.55rem] border border-[#587296] rounded-[0.35rem] bg-[#0f1724] text-[0.78rem] text-[#9efdf3]">
+      <i class="pi pi-spin pi-spinner mr-[0.35rem]"></i>Cloning {{ gitImportUrl }}…
+    </div>
+
     <div class="flex-1 min-h-0 overflow-y-auto">
       <Tree
         class="explorer-file-tree"
@@ -81,6 +93,25 @@
       </template>
     </Dialog>
 
+    <!-- Clone-from-git Dialog: shown only when the project tree is empty.
+         Server still enforces emptiness (409 on conflict) so this is just
+         a UX gate, not a security boundary. -->
+    <Dialog v-model:visible="showGitImportDialog" modal header="Clone from git URL" :style="{ width: '28rem' }">
+      <div class="flex flex-col gap-[0.35rem] mb-[0.7rem]">
+        <label class="text-muted text-[0.78rem] font-semibold">Repository URL</label>
+        <InputText v-model="gitImportUrl" class="w-full" placeholder="https://github.com/user/repo.git" autofocus />
+        <label class="text-muted text-[0.78rem] font-semibold mt-[0.4rem]">Branch / ref</label>
+        <InputText v-model="gitImportRef" class="w-full" placeholder="main" />
+        <span v-if="gitImportError" class="text-[#f38ba8] text-[0.78rem] mt-[0.3rem]">{{ gitImportError }}</span>
+      </div>
+      <template #footer>
+        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-[#587296] text-[#c5d4ea] text-[0.85rem] rounded-[0.35rem] cursor-pointer hover:border-[#7ce9de] hover:text-[#dffffa]" @click="showGitImportDialog = false" :disabled="gitImportSubmitting">Cancel</button>
+        <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-[#123549] border border-accent text-[#9efdf3] rounded-[0.35rem] cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" :disabled="!gitImportUrl.trim() || gitImportSubmitting" @click="confirmGitImport">
+          {{ gitImportSubmitting ? 'Starting…' : 'Clone' }}
+        </button>
+      </template>
+    </Dialog>
+
     <!-- Properties Dialog (#5 stat-style file info) -->
     <Dialog v-model:visible="showPropertiesDialog" modal header="Properties" :style="{ width: '28rem' }">
       <div v-if="propertiesLoading" class="text-muted text-[0.82rem]">Loading…</div>
@@ -101,7 +132,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import Tree from 'primevue/tree'
 import ContextMenu from 'primevue/contextmenu'
 import Dialog from 'primevue/dialog'
@@ -109,6 +140,11 @@ import InputText from 'primevue/inputtext'
 import { logInfo } from '../../services/log'
 import { PANE_COUNTS } from '../../composables/usePanes'
 import workerSocket from '../../services/workerSocket'
+import { useRoute } from 'vue-router'
+import { importProjectFromGit } from '../../services/projectService'
+
+const _explorerRoute = useRoute()
+const _explorerProjectId = Number(_explorerRoute.params.id)
 
 const props = defineProps({
   terminalList:     { type: Array,  required: true },
@@ -164,7 +200,42 @@ const propertiesData       = ref(null)
 const propertiesLoading    = ref(false)
 const propertiesError      = ref('')
 
+// Git-import dialog state — only meaningful while the project is empty.
+// gitImportRunning stays true from successful POST until the first fs/created
+// event arrives (fileTree becomes non-empty); the watcher takes care of the
+// rest automatically.
+const showGitImportDialog = ref(false)
+const gitImportUrl        = ref('')
+const gitImportRef        = ref('main')
+const gitImportSubmitting = ref(false)
+const gitImportRunning    = ref(false)
+const gitImportError      = ref('')
+
+async function confirmGitImport() {
+  gitImportError.value = ''
+  const url = gitImportUrl.value.trim()
+  const ref_ = gitImportRef.value.trim() || 'main'
+  if (!url) return
+  gitImportSubmitting.value = true
+  try {
+    await importProjectFromGit(_explorerProjectId, url, ref_)
+    gitImportRunning.value   = true
+    showGitImportDialog.value = false
+  } catch (e) {
+    gitImportError.value = e?.response?.data?.error || e.message || 'import failed'
+  } finally {
+    gitImportSubmitting.value = false
+  }
+}
+
+// (watcher that clears gitImportRunning lives after fileTree is declared)
+
 const fileTree = ref([])
+
+// Clear the "Cloning…" banner the moment files start showing up. The
+// VfsWatcher's fs/created event triggers requestFileTree, which sets
+// fileTree to a non-empty array; that's our cue.
+watch(() => fileTree.value.length, (n) => { if (n > 0) gitImportRunning.value = false })
 
 // ── File tree from WebSocket ─────────────────────────────────────────────────
 function serverNodeToInternal(node) {
