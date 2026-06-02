@@ -8,23 +8,31 @@
 import { test, expect } from '@playwright/test';
 
 const BASE_URL = process.env.CARBIDE_WS_URL || 'http://localhost:8080/w/1';
-const EMAIL    = process.env.CARBIDE_E2E_EMAIL    || 'e2e@example.com';
+const CONTROL_URL = 'http://localhost:8080';
+const EMAIL    = process.env.CARBIDE_E2E_EMAIL    || 'test@example.com';
 const PASSWORD = process.env.CARBIDE_E2E_PASSWORD || 'password123';
 
 test.describe('Workspace login', () => {
-  test('POST /api/login returns a JWT for valid credentials', async ({ request }) => {
-    const resp = await request.post(`${BASE_URL}/api/login`, {
+  test('control login then workspace token exchange returns a JWT', async ({ request }) => {
+    const controlResp = await request.post(`${CONTROL_URL}/api/login`, {
       data: { user: { email: EMAIL, password: PASSWORD } },
+    });
+    expect(controlResp.status(), await controlResp.text()).toBe(200);
+    const controlBody = await controlResp.json();
+    expect(controlBody.token, 'control response missing token').toBeTruthy();
+
+    const resp = await request.post(`${BASE_URL}/api/login`, {
+      headers: { Authorization: `Bearer ${controlBody.token}` },
     });
     expect(resp.status(), await resp.text()).toBe(200);
     const body = await resp.json();
-    expect(body.token, 'response missing token').toBeTruthy();
+    expect(body.token, 'workspace response missing token').toBeTruthy();
     // JWT = three base64url segments joined by dots.
     expect(body.token).toMatch(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
   });
 
-  test('POST /api/login rejects bad credentials', async ({ request }) => {
-    const resp = await request.post(`${BASE_URL}/api/login`, {
+  test('control login rejects bad credentials', async ({ request }) => {
+    const resp = await request.post(`${CONTROL_URL}/api/login`, {
       data: { user: { email: EMAIL, password: 'definitely-wrong' } },
     });
     expect(resp.status()).toBeGreaterThanOrEqual(400);
@@ -32,9 +40,14 @@ test.describe('Workspace login', () => {
   });
 
   test('JWT from login authorises subsequent API calls', async ({ request }) => {
-    // Obtain a token.
-    const loginResp = await request.post(`${BASE_URL}/api/login`, {
+    const controlResp = await request.post(`${CONTROL_URL}/api/login`, {
       data: { user: { email: EMAIL, password: PASSWORD } },
+    });
+    expect(controlResp.status()).toBe(200);
+    const { token: controlToken } = await controlResp.json();
+
+    const loginResp = await request.post(`${BASE_URL}/api/login`, {
+      headers: { Authorization: `Bearer ${controlToken}` },
     });
     expect(loginResp.status()).toBe(200);
     const { token } = await loginResp.json();

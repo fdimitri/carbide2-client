@@ -45,10 +45,31 @@ function readStoredUser() {
   }
 }
 
+function controlApiUrl(path) {
+  return `${window.location.origin}${path}`
+}
+
+async function loginControl(email, password) {
+  const response = await axios.post(controlApiUrl('/api/login'), {
+    user: { email, password },
+  }, { withCredentials: true })
+
+  return response.data
+}
+
+async function exchangeWorkspaceToken(controlToken) {
+  const response = await api.post('/login', {}, {
+    headers: { Authorization: `Bearer ${controlToken}` },
+  })
+
+  return response.data
+}
+
 const authService = {
   api,
   currentUser: readStoredUser(),
   token: localStorage.getItem(TOKEN_KEY),
+  readyPromise: null,
 
   get isAuthenticated() {
     return !!this.token && !!this.currentUser
@@ -56,22 +77,39 @@ const authService = {
 
   async login(email, password) {
     try {
-      // Avoid sending stale bearer headers from another mode/session to
-      // the login endpoint.
-      delete api.defaults.headers.common['Authorization']
+      if (isControlMode) {
+        const response = await loginControl(email, password)
+        const { user, token } = response
+        this.currentUser = user
+        this.token = token
+        localStorage.setItem(TOKEN_KEY, token)
+        localStorage.setItem(USER_KEY, JSON.stringify(user))
+        api.defaults.headers.common['Authorization'] = `Bearer ${token}`
+        return { user, token }
+      }
 
-      const response = await api.post('/login', {
-        user: { email, password },
-      })
+      // Workspace mode: first authenticate against control-plane, then
+      // exchange the control token for a workspace token.
+      const controlLogin = localStorage.getItem('control_auth_token')
+      let controlToken = controlLogin
+      let controlUser = readStoredUser()
+      if (!controlToken) {
+        const response = await loginControl(email, password)
+        controlToken = response.token
+        controlUser = response.user
+        localStorage.setItem('control_auth_token', controlToken)
+        localStorage.setItem('control_user', JSON.stringify(controlUser))
+      }
 
-      const { user, token } = response.data
+      const exchange = await exchangeWorkspaceToken(controlToken)
+      const { user, token } = exchange
       this.currentUser = user
       this.token = token
       localStorage.setItem(TOKEN_KEY, token)
       localStorage.setItem(USER_KEY, JSON.stringify(user))
       api.defaults.headers.common['Authorization'] = `Bearer ${token}`
 
-      return { user, token }
+      return { user, token, controlUser }
     } catch (error) {
       throw new Error(error.response?.data?.message || 'Login failed')
     }
@@ -95,19 +133,43 @@ const authService = {
   },
 
   async checkAuth() {
-    const token = localStorage.getItem(TOKEN_KEY)
-    if (token) {
-      this.token = token
-      this.currentUser = readStoredUser()
-      api.defaults.headers.common['Authorization'] = `Bearer ${token}`
-      try {
+    if (this.readyPromise) return this.readyPromise
+
+    this.readyPromise = (async () => {
+      const token = localStorage.getItem(TOKEN_KEY)
+      if (token) {
+        this.token = token
+        this.currentUser = readStoredUser()
+        api.defaults.headers.common['Authorization'] = `Bearer ${token}`
         return !!this.currentUser
-      } catch {
-        this.logout()
-        return false
       }
+
+      if (!isControlMode) {
+        const controlToken = localStorage.getItem('control_auth_token')
+        if (controlToken) {
+          try {
+            const exchange = await exchangeWorkspaceToken(controlToken)
+            this.currentUser = exchange.user
+            this.token = exchange.token
+            localStorage.setItem(TOKEN_KEY, exchange.token)
+            localStorage.setItem(USER_KEY, JSON.stringify(exchange.user))
+            api.defaults.headers.common['Authorization'] = `Bearer ${exchange.token}`
+            return true
+          } catch {
+            this.logout()
+            return false
+          }
+        }
+      }
+
+      return false
+    })()
+
+    try {
+      return await this.readyPromise
+    } finally {
+      this.readyPromise = null
     }
-    return false
   },
 }
 

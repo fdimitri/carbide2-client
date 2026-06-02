@@ -53,8 +53,8 @@ const router = createRouter({
   routes,
 })
 
-router.beforeEach((to, from, next) => {
-  const isAuthenticated = authService.isAuthenticated
+router.beforeEach(async (to, from, next) => {
+  const isAuthenticated = await authService.checkAuth()
   const requiresAuth = to.meta.requiresAuth
 
   if (requiresAuth && !isAuthenticated) {
