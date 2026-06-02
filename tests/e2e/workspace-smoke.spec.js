@@ -11,12 +11,15 @@ test.describe('Workspace substrate', () => {
     expect(body).toContain('background-color: green');
   });
 
-  test('GET / returns the workspace landing page', async ({ request }) => {
+  test('GET / returns the Vue SPA shell', async ({ request }) => {
     const resp = await request.get(`${BASE_URL}/`);
     expect(resp.status()).toBe(200);
     const body = await resp.text();
-    // Landing page served by carbide2-server Rails.
-    expect(body).toContain('Carbide2');
-    expect(body).toContain('Sign in');
+    // SPA built into Rails public/ by the workspace Dockerfile.
+    expect(body).toContain('Carbide2 IDE');
+    expect(body).toMatch(/<div id="app">/);
+    // Compiled asset bundle reference proves it's the built SPA, not the
+    // Rails landing page fallback.
+    expect(body).toMatch(/<script[^>]+src="\/assets\/index-[^"]+\.js"/);
   });
 });
