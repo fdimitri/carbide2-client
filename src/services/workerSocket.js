@@ -12,6 +12,15 @@ import { logWs, logInfo, logWarn } from './log'
 const getWorkerUrl = () => {
   if (import.meta.env.VITE_WORKER_URL) return import.meta.env.VITE_WORKER_URL
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  // Prefer <base href> (server-injected from X-Forwarded-Prefix) — it has
+  // the real /w/<id>/ prefix even when the build used --base=./.
+  if (typeof document !== 'undefined') {
+    const baseHref = document.querySelector('base')?.getAttribute('href')
+    if (baseHref) {
+      const wsPath = baseHref.replace(/\/$/, '') + '/ws'
+      return `${proto}//${window.location.host}${wsPath}`
+    }
+  }
   const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '')
   return `${proto}//${window.location.host}${base}/ws`
 }

@@ -1,21 +1,28 @@
 import axios from 'axios'
 import { isControlMode } from './mode'
 
-// API URL is relative to the page origin and the deployed base path
-// (import.meta.env.BASE_URL is set by Vite from VITE_BASE — '/' in plain
-// local dev, '/w/<projectId>/' when this client is mounted behind the
-// workspace ingress). This lets the same build work both as a standalone
-// SPA on :5173 and as the in-pod client served under /w/<id>/.
+// API URL is relative to the page origin and the deployed base path.
+// Prefer <base href> (injected server-side from X-Forwarded-Prefix when
+// the SPA is mounted under /w/<id>/), then fall back to Vite's BASE_URL
+// for plain local dev. document.baseURI is the resolved absolute URL,
+// so `${baseURI}api` produces e.g. http://host/w/2/api in workspace mode
+// or http://localhost:5173/api in `npm run dev`.
 //
-// In control mode the dashboard is served from carbide2-control Rails at
-// the root, and the Rails API is mounted at /api regardless of where the
-// SPA was loaded from, so don't prefix BASE_URL.
+// In control mode the API is always at /api at origin root regardless of
+// where the SPA was loaded from.
 const getApiUrl = () => {
   if (isControlMode) {
     return `${window.location.origin}/api`
   }
+  if (typeof document !== 'undefined') {
+    const baseHref = document.querySelector('base')?.getAttribute('href')
+    if (baseHref) {
+      // document.baseURI resolves <base href> against the current location.
+      return new URL('api', document.baseURI).toString()
+    }
+  }
   const base = import.meta.env.BASE_URL || '/'
-  return `${window.location.origin}${base}api`
+  return `${window.location.origin}${base.endsWith('/') ? base : base + '/'}api`
 }
 
 const API_URL = getApiUrl()
