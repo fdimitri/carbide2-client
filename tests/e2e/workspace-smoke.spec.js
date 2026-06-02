@@ -20,6 +20,6 @@ test.describe('Workspace substrate', () => {
     expect(body).toMatch(/<div id="app">/);
     // Compiled asset bundle reference proves it's the built SPA, not the
     // Rails landing page fallback.
-    expect(body).toMatch(/<script[^>]+src="\/assets\/index-[^"]+\.js"/);
+    expect(body).toMatch(/<script[^>]+src="(?:\.\/|\/)assets\/index-[^"]+\.js"/);
   });
 });
