@@ -45,6 +45,25 @@ function readStoredUser() {
   }
 }
 
+function decodeJwtPayload(token) {
+  try {
+    const part = token.split('.')[1]
+    if (!part) return null
+    const base64 = part.replace(/-/g, '+').replace(/_/g, '/')
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=')
+    return JSON.parse(atob(padded))
+  } catch {
+    return null
+  }
+}
+
+function tokenIsExpired(token) {
+  const payload = decodeJwtPayload(token)
+  if (!payload || typeof payload.exp !== 'number') return true
+  const now = Math.floor(Date.now() / 1000)
+  return payload.exp <= now
+}
+
 function controlApiUrl(path) {
   return `${window.location.origin}${path}`
 }
@@ -138,15 +157,22 @@ const authService = {
     this.readyPromise = (async () => {
       const token = localStorage.getItem(TOKEN_KEY)
       if (token) {
-        this.token = token
-        this.currentUser = readStoredUser()
-        api.defaults.headers.common['Authorization'] = `Bearer ${token}`
-        return !!this.currentUser
+        if (tokenIsExpired(token)) {
+          localStorage.removeItem(TOKEN_KEY)
+          localStorage.removeItem(USER_KEY)
+        } else {
+          this.token = token
+          this.currentUser = readStoredUser()
+          api.defaults.headers.common['Authorization'] = `Bearer ${token}`
+          if (this.currentUser) return true
+          // Token with missing user state should be treated as stale.
+          this.logout()
+        }
       }
 
       if (!isControlMode) {
         const controlToken = localStorage.getItem('control_auth_token')
-        if (controlToken) {
+        if (controlToken && !tokenIsExpired(controlToken)) {
           try {
             const exchange = await exchangeWorkspaceToken(controlToken)
             this.currentUser = exchange.user
@@ -159,6 +185,11 @@ const authService = {
             this.logout()
             return false
           }
+        }
+
+        if (controlToken && tokenIsExpired(controlToken)) {
+          localStorage.removeItem('control_auth_token')
+          localStorage.removeItem('control_user')
         }
       }
 
