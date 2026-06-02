@@ -96,6 +96,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { listProjects, createProject as apiCreateProject } from '../services/projectService'
+import { isControlMode } from '../services/mode'
 
 const router    = useRouter()
 const projects  = ref([])
@@ -135,7 +136,14 @@ async function createProject() {
 }
 
 function openProject(id) {
-  router.push(`/projects/${id}`)
+  if (isControlMode) {
+    // In control mode we redirect cross-path to the workspace ingress;
+    // Traefik forwards /w/<id>/ to the workspace pod which serves the
+    // same client build under that prefix and boots in workspace mode.
+    window.location.href = `/w/${id}/`
+  } else {
+    router.push(`/projects/${id}`)
+  }
 }
 
 function formatDate(ts) {
