@@ -3,8 +3,8 @@ import { test, expect } from '@playwright/test'
 import { loginAndCaptureLogs } from './helpers/session.js'
 
 const BASE = process.env.CARBIDE_WS_URL || 'http://localhost:5173'
-const EMAIL = process.env.CARBIDE_E2E_EMAIL || 'dev@example.com'
-const PASSWORD = process.env.CARBIDE_E2E_PASSWORD || 'password'
+const EMAIL = process.env.CARBIDE_E2E_EMAIL || 'test@example.com'
+const PASSWORD = process.env.CARBIDE_E2E_PASSWORD || 'password123'
 
 test.describe('Workspace IDE shell', () => {
   test('menu bar and Explorer pane are visible after opening a project', async ({ page, request }) => {

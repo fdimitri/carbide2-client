@@ -20,7 +20,7 @@
 
           <div class="flex flex-col gap-2">
             <label class="text-muted text-label font-semibold uppercase tracking-widest mb-1" for="email">Email</label>
-            <input v-model="email" type="email" id="email" placeholder="dev@example.com" required
+            <input v-model="email" type="email" id="email" placeholder="test@example.com" required
               class="px-4 py-3 rounded-lg bg-bg-input border border-line text-text text-sm
                      placeholder:text-dim focus:outline-none focus:border-accent
                      focus:shadow-[0_0_0_3px_rgba(46,196,182,0.12)] transition-all" />
@@ -47,7 +47,7 @@
 
         <div class="mt-6 pt-5 border-t border-line/50 text-center">
           <p class="text-dim text-label font-mono tracking-wide">
-            demo · dev@example.com · password
+            demo · test@example.com · password123
           </p>
           <p v-if="acronym" class="mt-4 text-dim/60 text-[0.7rem] italic leading-snug">
             CARBIDE is&hellip; {{ acronym }}
@@ -63,8 +63,8 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import authService from '../services/authService'
 
-const email = ref('dev@example.com')
-const password = ref('password')
+const email = ref('test@example.com')
+const password = ref('password123')
 const loading = ref(false)
 const error = ref('')
 const router = useRouter()

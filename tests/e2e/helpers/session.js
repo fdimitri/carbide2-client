@@ -7,8 +7,8 @@ import { expect } from '@playwright/test'
 //   CARBIDE_E2E_PASSWORD=password123
 // Default to the local Vite dev server.
 const BASE = process.env.CARBIDE_WS_URL || 'http://localhost:5173'
-const EMAIL = process.env.CARBIDE_E2E_EMAIL || 'dev@example.com'
-const PASSWORD = process.env.CARBIDE_E2E_PASSWORD || 'password'
+const EMAIL = process.env.CARBIDE_E2E_EMAIL || 'test@example.com'
+const PASSWORD = process.env.CARBIDE_E2E_PASSWORD || 'password123'
 
 /**
  * Log in and navigate to the dashboard.
