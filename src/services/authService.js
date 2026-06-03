@@ -1,8 +1,29 @@
 import axios from 'axios'
 import { isControlMode } from './mode'
 
-const TOKEN_KEY = isControlMode ? 'control_auth_token' : 'workspace_auth_token'
-const USER_KEY = isControlMode ? 'control_user' : 'workspace_user'
+// Per-pod token isolation.
+//
+// Every workspace pod is served from the SAME browser origin
+// (e.g. localhost:8080) but under a different base path (/w/8/, /w/7/ …).
+// localStorage is scoped to the ORIGIN, not the path, so a single shared
+// key would let a JWT minted by pod A be replayed against pod B. Each pod
+// has its OWN database with its OWN user ids, so pod B's
+// `User.find(token.sub)` then fails and every /api/* call errors out,
+// leaving an empty dashboard. Scope the stored workspace token + user to
+// the workspace's base path so each pod keeps its own credentials.
+function workspaceScope() {
+  let base = '/'
+  if (typeof document !== 'undefined') {
+    const baseHref = document.querySelector('base')?.getAttribute('href')
+    if (baseHref) base = new URL(baseHref, window.location.origin).pathname
+  }
+  if (base === '/') base = import.meta.env.BASE_URL || '/'
+  return base.endsWith('/') ? base : `${base}/`
+}
+
+const WS_SCOPE = isControlMode ? '' : workspaceScope()
+const TOKEN_KEY = isControlMode ? 'control_auth_token' : `workspace_auth_token:${WS_SCOPE}`
+const USER_KEY = isControlMode ? 'control_user' : `workspace_user:${WS_SCOPE}`
 
 // API URL is relative to the page origin and the deployed base path.
 // Prefer <base href> (injected server-side from X-Forwarded-Prefix when
