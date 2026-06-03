@@ -35,3 +35,13 @@ export async function getWorkspaceToken(workspaceId) {
   const res = await authService.api.post(`workspaces/${workspaceId}/token`, {})
   return res.data
 }
+
+// Active reachability probe for a workspace pod. Returns
+// { id, phase, reachable: { rails, ws }, ok }. The control plane reaches the
+// pod's in-cluster Service to check that Rails answers and the worker
+// WebSocket upgrades — i.e. "is this workspace actually usable", not just
+// "does Kubernetes think the pod exists".
+export async function getWorkspaceHealth(workspaceId) {
+  const res = await authService.api.get(`workspaces/${workspaceId}/health`)
+  return res.data
+}

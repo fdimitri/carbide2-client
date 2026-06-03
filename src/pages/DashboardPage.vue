@@ -45,8 +45,44 @@
             class="px-3 py-2 rounded-lg bg-bg-input border border-line text-text text-sm
                    placeholder:text-dim focus:outline-none focus:border-accent transition-all" />
         </div>
+
+        <!-- Seed method: how the new workspace's project starts out. "Empty"
+             is always valid; "Clone from git" stashes a pending seed that the
+             pod's IDE runs on first open (in-pod import_from_git). -->
+        <div class="flex flex-col gap-1.5 w-full">
+          <label class="text-muted text-label font-semibold uppercase tracking-widest">Start from</label>
+          <div class="flex gap-2">
+            <button type="button" @click="seedMethod = 'empty'"
+              :class="seedMethod === 'empty' ? 'border-accent text-text bg-bg-2/85' : 'border-line text-muted'"
+              class="px-3 py-2 rounded-lg bg-transparent border text-sm cursor-pointer hover:border-accent transition-all">
+              Empty project
+            </button>
+            <button type="button" @click="seedMethod = 'git'"
+              :class="seedMethod === 'git' ? 'border-accent text-text bg-bg-2/85' : 'border-line text-muted'"
+              class="px-3 py-2 rounded-lg bg-transparent border text-sm cursor-pointer hover:border-accent transition-all">
+              Clone from git
+            </button>
+          </div>
+        </div>
+
+        <!-- Git seed inputs, only when "Clone from git" is selected. -->
+        <div v-if="seedMethod === 'git'" class="flex flex-wrap gap-4 w-full">
+          <div class="flex flex-col gap-1.5 flex-1 min-w-[220px]">
+            <label class="text-muted text-label font-semibold uppercase tracking-widest">Repository URL</label>
+            <input v-model="seedGitUrl" placeholder="https://github.com/user/repo.git"
+              class="px-3 py-2 rounded-lg bg-bg-input border border-line text-text text-sm
+                     placeholder:text-dim focus:outline-none focus:border-accent transition-all" />
+          </div>
+          <div class="flex flex-col gap-1.5 min-w-[160px]">
+            <label class="text-muted text-label font-semibold uppercase tracking-widest">Branch / ref</label>
+            <input v-model="seedGitRef" placeholder="default branch"
+              class="px-3 py-2 rounded-lg bg-bg-input border border-line text-text text-sm
+                     placeholder:text-dim focus:outline-none focus:border-accent transition-all" />
+          </div>
+        </div>
+
         <div class="flex gap-2">
-          <button @click="createItem" :disabled="!newName.trim()"
+          <button @click="createItem" :disabled="!canCreate"
             class="px-4 py-2 rounded-lg bg-accent text-accent-text text-sm font-bold border-0 cursor-pointer
                    hover:brightness-110 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
             Create
@@ -80,7 +116,12 @@
                  transition-all duration-200"
           @click="openItem(p.id)">
           <div class="absolute inset-x-0 top-0 h-[2px] bg-accent origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-200"></div>
-          <h3 class="text-text font-semibold mb-1">{{ p.name }}</h3>
+          <div class="flex items-start justify-between gap-2 mb-1">
+            <h3 class="text-text font-semibold">{{ p.name }}</h3>
+            <span class="shrink-0 flex items-center gap-1.5 mt-0.5" :title="healthTitle(p.id)">
+              <span class="inline-block w-2 h-2 rounded-full" :class="healthDotClass(p.id)"></span>
+            </span>
+          </div>
           <p class="text-muted text-xs mb-4 line-clamp-2 leading-relaxed">{{ p.description || 'No description' }}</p>
           <span class="text-[0.65rem] text-[#3a4d64] font-mono">{{ formatDate(p.created_at) }}</span>
         </div>
@@ -92,9 +133,10 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import { listWorkspaces, createWorkspace } from '../services/workspaceService'
+import { listWorkspaces, createWorkspace, getWorkspaceHealth } from '../services/workspaceService'
+import { setPendingSeed } from '../services/pendingSeed'
 
 // Model B: this Dashboard is the CONTROL-PLANE dashboard. It lists the
 // user's Workspaces (one isolated pod each). Workspace pods themselves have
@@ -105,9 +147,25 @@ const items   = ref([])
 const loading = ref(true)
 const error   = ref('')
 
+// Per-workspace reachability, keyed by id: { phase, reachable:{rails,ws}, ok }.
+// `undefined` = not yet probed (shown as a neutral/pending dot).
+const health = reactive({})
+const HEALTH_POLL_MS = 8000
+let healthTimer = null
+
 const showNewForm = ref(false)
 const newName = ref('')
 const newDesc = ref('')
+
+// Seed method chosen at create time. 'empty' is always valid; 'git' defers an
+// in-pod clone to the workspace's first open (see services/pendingSeed.js).
+const seedMethod = ref('empty')
+const seedGitUrl = ref('')
+const seedGitRef = ref('')
+
+const canCreate = computed(() =>
+  newName.value.trim() && (seedMethod.value !== 'git' || seedGitUrl.value.trim())
+)
 
 const singularTitle = 'Workspace'
 const pluralTitle   = 'Your Workspaces'
@@ -115,7 +173,15 @@ const pluralLower   = 'workspaces'
 const singularSlug  = 'workspace'
 const scopeLabel    = 'Control Plane'
 
-onMounted(load)
+onMounted(async () => {
+  await load()
+  pollHealth()
+  healthTimer = setInterval(pollHealth, HEALTH_POLL_MS)
+})
+
+onBeforeUnmount(() => {
+  if (healthTimer) clearInterval(healthTimer)
+})
 
 async function load() {
   loading.value = true
@@ -129,13 +195,58 @@ async function load() {
   }
 }
 
+// Probe every workspace in parallel. A failed probe leaves the last known
+// state in place rather than flickering the dot to "down".
+async function pollHealth() {
+  await Promise.all(
+    items.value.map(async (p) => {
+      try {
+        health[p.id] = await getWorkspaceHealth(p.id)
+      } catch {
+        /* keep previous state; transient API hiccup */
+      }
+    })
+  )
+}
+
+function healthDotClass(id) {
+  const h = health[id]
+  if (!h) return 'bg-bg-3 animate-pulse'            // not yet probed
+  if (h.ok) return 'bg-emerald-400'                 // rails + worker reachable
+  if (h.reachable?.rails || h.reachable?.ws) return 'bg-amber-400' // partial
+  return 'bg-rose-500'                              // unreachable
+}
+
+function healthTitle(id) {
+  const h = health[id]
+  if (!h) return 'Checking…'
+  if (h.ok) return 'Running — Rails and worker reachable'
+  const parts = []
+  parts.push(h.reachable?.rails ? 'Rails up' : 'Rails unreachable')
+  parts.push(h.reachable?.ws ? 'worker up' : 'worker unreachable')
+  return `${h.phase || 'unknown'} — ${parts.join(', ')}`
+}
+
 async function createItem() {
   try {
-    await createWorkspace(newName.value.trim(), newDesc.value.trim())
+    const ws = await createWorkspace(newName.value.trim(), newDesc.value.trim())
+    // Stash the seed so the new pod's IDE performs it on first open. Keyed by
+    // the pod's base path (/w/<id>/), which survives the cross-path redirect.
+    if (seedMethod.value === 'git' && seedGitUrl.value.trim() && ws?.id != null) {
+      setPendingSeed(`/w/${ws.id}/`, {
+        method: 'git',
+        gitUrl: seedGitUrl.value.trim(),
+        gitRef: seedGitRef.value.trim(),
+      })
+    }
     newName.value = ''
     newDesc.value = ''
+    seedMethod.value = 'empty'
+    seedGitUrl.value = ''
+    seedGitRef.value = ''
     showNewForm.value = false
     await load()
+    pollHealth()
   } catch (e) {
     error.value = e.message || 'Failed to create workspace'
   }

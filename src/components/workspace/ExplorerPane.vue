@@ -100,8 +100,8 @@
       <div class="flex flex-col gap-[0.35rem] mb-[0.7rem]">
         <label class="text-muted text-[0.78rem] font-semibold">Repository URL</label>
         <InputText v-model="gitImportUrl" class="w-full" placeholder="https://github.com/user/repo.git" autofocus />
-        <label class="text-muted text-[0.78rem] font-semibold mt-[0.4rem]">Branch / ref</label>
-        <InputText v-model="gitImportRef" class="w-full" placeholder="main" />
+        <label class="text-muted text-[0.78rem] font-semibold mt-[0.4rem]">Branch / ref <span class="font-normal opacity-70">(blank = default branch)</span></label>
+        <InputText v-model="gitImportRef" class="w-full" placeholder="default branch" />
         <span v-if="gitImportError" class="text-[#f38ba8] text-[0.78rem] mt-[0.3rem]">{{ gitImportError }}</span>
       </div>
       <template #footer>
@@ -141,7 +141,7 @@ import { logInfo } from '../../services/log'
 import { PANE_COUNTS } from '../../composables/usePanes'
 import workerSocket from '../../services/workerSocket'
 import { useRoute } from 'vue-router'
-import { importProjectFromGit } from '../../services/projectService'
+import { takePendingSeed, currentScope } from '../../services/pendingSeed'
 
 const _explorerRoute = useRoute()
 const _explorerProjectId = Number(_explorerRoute.params.id)
@@ -206,7 +206,7 @@ const propertiesError      = ref('')
 // rest automatically.
 const showGitImportDialog = ref(false)
 const gitImportUrl        = ref('')
-const gitImportRef        = ref('main')
+const gitImportRef        = ref('')
 const gitImportSubmitting = ref(false)
 const gitImportRunning    = ref(false)
 const gitImportError      = ref('')
@@ -214,18 +214,33 @@ const gitImportError      = ref('')
 async function confirmGitImport() {
   gitImportError.value = ''
   const url = gitImportUrl.value.trim()
-  const ref_ = gitImportRef.value.trim() || 'main'
+  const ref_ = gitImportRef.value.trim()
   if (!url) return
   gitImportSubmitting.value = true
-  try {
-    await importProjectFromGit(_explorerProjectId, url, ref_)
-    gitImportRunning.value   = true
-    showGitImportDialog.value = false
-  } catch (e) {
-    gitImportError.value = e?.response?.data?.error || e.message || 'import failed'
-  } finally {
-    gitImportSubmitting.value = false
-  }
+  // The worker owns the clone+ingest: it clones into the project root, walks
+  // the result into the DBFS, and broadcasts a tree refresh — all in-process.
+  workerSocket.send('fs', 'import_git', { git_url: url, git_ref: ref_ })
+  gitImportRunning.value    = true
+  showGitImportDialog.value = false
+  gitImportSubmitting.value = false
+}
+
+// Seed-on-first-open: if a seed method was chosen on the control-plane create
+// form, it was stashed as a pending seed keyed by this pod's base path. Run it
+// once, the first time we learn the project is empty. Runs at most once per
+// mount; takePendingSeed clears the marker so a reload won't re-clone.
+const _pendingSeedHandled = ref(false)
+async function maybeRunPendingSeed() {
+  if (_pendingSeedHandled.value) return
+  _pendingSeedHandled.value = true
+  const seed = takePendingSeed(currentScope())
+  if (!seed || seed.method !== 'git' || !seed.gitUrl) return
+  if (fileTree.value.length > 0) return // already has content; nothing to seed
+  gitImportUrl.value   = seed.gitUrl
+  gitImportRef.value   = seed.gitRef || ''
+  gitImportError.value = ''
+  gitImportRunning.value = true
+  workerSocket.send('fs', 'import_git', { git_url: seed.gitUrl, git_ref: seed.gitRef || '' })
 }
 
 // (watcher that clears gitImportRunning lives after fileTree is declared)
@@ -256,12 +271,14 @@ const _offFsRenamed   = ref(null)
 const _offFsDeleted   = ref(null)
 const _offFsStat      = ref(null)
 const _offFsStatErr   = ref(null)
+const _offFsImportDone = ref(null)
 
 onMounted(() => {
   _offFsTree.value = workerSocket.on('fs', 'tree', (payload) => {
     const root = payload?.tree
     if (!root || Array.isArray(root)) { fileTree.value = []; return }
     fileTree.value = (root.children || []).map(serverNodeToInternal)
+    maybeRunPendingSeed()
   })
   _offWsConnected.value = workerSocket.on('system', 'connected', () => requestFileTree())
   _offFsCreated.value   = workerSocket.on('fs', 'created', () => requestFileTree())
@@ -276,10 +293,20 @@ onMounted(() => {
     propertiesLoading.value = false
   })
   _offFsStatErr.value   = workerSocket.on('fs', 'error', (payload) => {
+    // A failed git import clears the "Cloning…" banner and surfaces the error.
+    if (gitImportRunning.value) {
+      gitImportRunning.value = false
+      gitImportError.value   = payload?.message || payload?.error || 'import failed'
+      logInfo('[ExplorerPane] git import failed: ' + gitImportError.value)
+    }
     if (!propertiesLoading.value) return
     if (payload?.path && payload.path !== propertiesPath.value) return
     propertiesError.value   = payload?.error || payload?.message || 'stat failed'
     propertiesLoading.value = false
+  })
+  _offFsImportDone.value = workerSocket.on('fs', 'import_done', () => {
+    gitImportRunning.value = false
+    requestFileTree()
   })
   requestFileTree()
 })
@@ -292,6 +319,7 @@ onBeforeUnmount(() => {
   _offFsDeleted.value?.()
   _offFsStat.value?.()
   _offFsStatErr.value?.()
+  _offFsImportDone.value?.()
 })
 
 // ── Computed tree nodes ───────────────────────────────────────────────────────
