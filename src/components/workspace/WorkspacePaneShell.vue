@@ -36,7 +36,18 @@
         :users="paneUsers"
         :typing-map="paneTypingMap"
         :channel-id="activeChatChannelId"
+        :channel-name="activeChatLabel"
+        :call-active="paneCallActive"
+        :local-stream="store.callLocalStream"
+        :remote-streams="store.callRemoteStreams"
+        :participants="store.callParticipants"
+        :mic-enabled="store.callMicEnabled"
+        :cam-enabled="store.callCamEnabled"
         @send="(text) => emit('send-chat', activeChatChannelId, text)"
+        @start-call="emit('start-call', activeChatChannelId)"
+        @leave-call="emit('leave-call')"
+        @toggle-mic="emit('toggle-mic')"
+        @toggle-cam="emit('toggle-cam')"
       />
     </div>
 
@@ -170,6 +181,11 @@ const paneTypingMap = computed(() => {
   return cid ? (store.chatTypingMap[cid] ?? {}) : {}
 })
 
+const paneCallActive = computed(() => {
+  const cid = activeChatChannelId.value
+  return !!cid && Number(store.callChannelId) === cid
+})
+
 const activeChatLabel = computed(() => {
   if (activeTabKind.value !== 'channel') return ''
   const fromTab = props.pane?.tabs?.find((t) => t.key === effectiveActiveKey.value)?.label
@@ -181,6 +197,10 @@ const emit = defineEmits([
   'close-tab',
   'rename-terminal',
   'send-chat',
+  'start-call',
+  'leave-call',
+  'toggle-mic',
+  'toggle-cam',
   'pane-drop',
   'tab-drag-start',
   'tab-drop',

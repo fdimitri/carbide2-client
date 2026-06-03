@@ -2,8 +2,48 @@
 <template>
   <div class="flex flex-1 min-h-0 monaco-bg monaco-fg overflow-hidden">
 
-    <!-- ── Messages column ─────────────────────────────────────────────────── -->
+    <!-- ── Messages column ────────────────────────────────────────── -->
     <div class="flex flex-col flex-1 min-w-0 min-h-0">
+
+      <!-- ── Call bar (video shares the channel's context) ───────────────── -->
+      <div class="flex items-center gap-2 px-3 py-[0.4rem] border-b monaco-panel-border monaco-tabs-bg">
+        <template v-if="!callActive">
+          <button
+            class="inline-flex items-center gap-[0.35rem] px-[0.7rem] py-[0.32rem] text-[0.78rem] rounded-[0.3rem] cursor-pointer border monaco-input-border monaco-input-bg monaco-fg hover:monaco-focus-border disabled:opacity-40 disabled:cursor-default"
+            :disabled="!canSend"
+            title="Start a video call in this channel"
+            @click="emit('start-call')"
+          >▶ Start call</button>
+          <span class="text-[0.72rem] monaco-line-fg">Video call in #{{ channelName || 'channel' }}</span>
+        </template>
+        <template v-else>
+          <button
+            class="px-[0.6rem] py-[0.3rem] text-[0.76rem] rounded-[0.3rem] cursor-pointer border monaco-input-border monaco-input-bg monaco-fg hover:monaco-focus-border"
+            @click="emit('toggle-mic')"
+          >{{ micEnabled ? 'Mute' : 'Unmute' }}</button>
+          <button
+            class="px-[0.6rem] py-[0.3rem] text-[0.76rem] rounded-[0.3rem] cursor-pointer border monaco-input-border monaco-input-bg monaco-fg hover:monaco-focus-border"
+            @click="emit('toggle-cam')"
+          >{{ camEnabled ? 'Camera off' : 'Camera on' }}</button>
+          <button
+            class="px-[0.6rem] py-[0.3rem] text-[0.76rem] text-white rounded-[0.3rem] cursor-pointer border-0 bg-[#c0392b] hover:brightness-110"
+            @click="emit('leave-call')"
+          >Leave</button>
+          <span class="text-[0.72rem] monaco-line-fg ml-auto">{{ participants.length + 1 }} in call</span>
+        </template>
+      </div>
+
+      <!-- ── Video tiles ─────────────────────────────────────────────── -->
+      <div v-if="callActive" class="flex gap-2 px-3 py-2 overflow-x-auto border-b monaco-panel-border bg-black/20">
+        <CallTile :stream="localStream" label="You" :muted="true" />
+        <CallTile
+          v-for="p in participants"
+          :key="p.peer_id"
+          :stream="remoteStreams[p.peer_id] || null"
+          :label="p.name"
+        />
+      </div>
+
       <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-2 min-h-0" ref="chatEl">
         <div v-for="(msg, i) in messages" :key="i"
           class="flex flex-col gap-[0.1rem] max-w-[80ch]"
@@ -69,6 +109,7 @@
 <script setup>
 import { ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import workerSocket from '../../services/workerSocket'
+import CallTile from './CallTile.vue'
 
 const props = defineProps({
   messages:      { type: Array,   default: () => [] },
@@ -79,9 +120,17 @@ const props = defineProps({
   users:         { type: Array,   default: () => [] },
   typingMap:     { type: Object,  default: () => ({}) },  // { [userId]: until_ms }
   channelId:     { type: Number,  default: null },
+  channelName:   { type: String,  default: '' },
+  // ── Call (WebRTC) ──
+  callActive:    { type: Boolean, default: false },
+  localStream:   { type: Object,  default: null },
+  remoteStreams: { type: Object,  default: () => ({}) },
+  participants:  { type: Array,   default: () => [] },
+  micEnabled:    { type: Boolean, default: true },
+  camEnabled:    { type: Boolean, default: true },
 })
 
-const emit    = defineEmits(['send'])
+const emit    = defineEmits(['send', 'start-call', 'leave-call', 'toggle-mic', 'toggle-cam'])
 const chatEl  = ref(null)
 const localInput = ref('')
 

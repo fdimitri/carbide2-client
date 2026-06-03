@@ -22,6 +22,16 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const chatUsersMap           = ref({})   // { [channelId]: [{user_id, name}] }
   const chatTypingMap          = ref({})   // { [channelId]: { [userId]: until_ms } }
 
+  // ── Live call (WebRTC) ──────────────────────────────────────────────────────
+  // A call is scoped to a chat channel, so video shares the same context as
+  // text. Only one active call at a time (the channel you joined).
+  const callChannelId    = ref(null)   // channel id of the call we're in, or null
+  const callParticipants = ref([])     // remote peers: [{ peer_id, name }]
+  const callLocalStream  = ref(null)   // our own MediaStream (camera + mic)
+  const callRemoteStreams = ref({})    // { [peer_id]: MediaStream }
+  const callMicEnabled   = ref(true)
+  const callCamEnabled   = ref(true)
+
   // ── Agents (LLM tool-call sessions) ────────────────────────────────────────
   // Single conversation per project for now. AgentPane reads/writes these
   // directly; useAgents composable owns the WS handlers.
@@ -57,6 +67,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     joinedChatChannels,
     chatUsersMap,
     chatTypingMap,
+    callChannelId,
+    callParticipants,
+    callLocalStream,
+    callRemoteStreams,
+    callMicEnabled,
+    callCamEnabled,
     agentList,
     agentListLoaded,
     agentSelectedSlug,

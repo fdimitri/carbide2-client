@@ -53,6 +53,10 @@
               @tab-drop="onTabDrop"
               @rename-terminal="renameSelectedTerminal"
               @send-chat="(channelId, text) => sendChat(channelId, text)"
+              @start-call="(channelId) => rtc.startCall(channelId)"
+              @leave-call="rtc.leaveCall"
+              @toggle-mic="rtc.toggleMic"
+              @toggle-cam="rtc.toggleCam"
               @agent-send="agents.send"
               @agent-reset="agents.resetConversation"
               @agent-pick="agents.selectAgent"
@@ -81,6 +85,10 @@
                   @tab-drop="onTabDrop"
                   @rename-terminal="renameSelectedTerminal"
                   @send-chat="(channelId, text) => sendChat(channelId, text)"
+                  @start-call="(channelId) => rtc.startCall(channelId)"
+                  @leave-call="rtc.leaveCall"
+                  @toggle-mic="rtc.toggleMic"
+                  @toggle-cam="rtc.toggleCam"
                   @agent-send="agents.send"
                   @agent-reset="agents.resetConversation"
                   @agent-pick="agents.selectAgent"
@@ -188,6 +196,7 @@ import { storeToRefs } from 'pinia'
 import { usePanes, PANE_COUNTS } from '../composables/usePanes'
 import { useTerminals } from '../composables/useTerminals'
 import { useChat } from '../composables/useChat'
+import { useRtc } from '../composables/useRtc'
 import { useAgents } from '../composables/useAgents'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import { useDebugLogStore } from '../stores/debugLogStore'
@@ -262,6 +271,9 @@ const {
 
 const agents = useAgents({ error, bindTabToActivePane })
 const { registerHandlers: registerAgentHandlers } = agents
+
+const rtc = useRtc({ error })
+const { registerHandlers: registerRtcHandlers, cleanup: cleanupRtc } = rtc
 
 // ── Channel dialog ────────────────────────────────────────────────────────────
 const showCreateChannelDialog = ref(false)
@@ -527,6 +539,7 @@ onMounted(async () => {
     registerTerminalHandlers(offHandlers, (tid) => selectTerminalNode(tid))
     registerChatHandlers(offHandlers)
     registerAgentHandlers(offHandlers)
+    registerRtcHandlers(offHandlers)
 
     workerSocket.connect(() => getWsToken(projectId))
     // Intentionally do not auto-open any file; explorer will populate from server.
@@ -538,6 +551,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   offHandlers.forEach(off => off())
   cleanupChat()
+  cleanupRtc()
   cleanupTerminals()
   workerSocket.disconnect()
 })
