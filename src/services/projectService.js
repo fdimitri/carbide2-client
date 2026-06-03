@@ -1,7 +1,14 @@
 import authService from './authService'
 
-// All project API calls use the shared authService.api instance, which carries
-// the Authorization header and targets the correct host (handles WSL bridging).
+// projectService — workspace-local Project resource.
+//
+// A Project lives inside a Workspace pod: it owns a file tree, chat channels,
+// project settings, and per-project shells. Top-level Workspaces (the
+// control-plane resource that provisions the pod itself) live in
+// workspaceService.js — do NOT call those endpoints from here.
+//
+// All calls here use the shared authService.api instance, which already
+// targets the workspace pod's API base and carries its bearer token.
 
 export async function listProjects() {
   const res = await authService.api.get('projects')
