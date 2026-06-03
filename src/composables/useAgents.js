@@ -21,7 +21,7 @@ export function useAgents({ error, bindTabToActivePane }) {
   const store    = useWorkspaceStore()
   const debugLog = useDebugLogStore()
   const {
-    agentList, agentSelectedSlug, agentConversationId,
+    agentList, agentListLoaded, agentSelectedSlug, agentConversationId,
     agentMessages, agentStatus,
     agentRecent, agentVisibility, agentOwnerUserId, agentOwnerIsSelf,
   } = storeToRefs(store)
@@ -84,8 +84,18 @@ export function useAgents({ error, bindTabToActivePane }) {
 
   function registerHandlers(offHandlers) {
     offHandlers.push(
+      // The worker assigns a fresh session on every (re)connect (e.g. after a
+      // worker restart), so re-request the agent list whenever the socket
+      // comes up. Without this, an agent pane opened before the socket was
+      // ready — or one that outlived a worker restart — would keep showing an
+      // empty list. Mirrors ExplorerPane's tree refresh on 'system:connected'.
+      workerSocket.on('system', 'connected', () => {
+        workerSocket.send('agent', 'list', {})
+        workerSocket.send('agent', 'recent', { limit: 25 })
+      }),
       workerSocket.on('agent', 'list', (p) => {
         agentList.value = Array.isArray(p?.agents) ? p.agents : []
+        agentListLoaded.value = true
         // Default to first 'coder' or whatever's enabled if nothing picked.
         if (!agentSelectedSlug.value && agentList.value.length) {
           const preferred = agentList.value.find(a => a.role === 'coder') || agentList.value[0]

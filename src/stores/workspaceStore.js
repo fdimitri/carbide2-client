@@ -26,6 +26,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   // Single conversation per project for now. AgentPane reads/writes these
   // directly; useAgents composable owns the WS handlers.
   const agentList            = ref([])     // [{ slug, name, role, model, tools, description }]
+  const agentListLoaded      = ref(false)  // true once an agent/list reply has arrived
   const agentSelectedSlug    = ref(null)   // which agent the user is talking to
   const agentConversationId  = ref(null)   // assigned by worker via agent/started
   const agentMessages        = ref([])     // unified timeline:
@@ -57,6 +58,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     chatUsersMap,
     chatTypingMap,
     agentList,
+    agentListLoaded,
     agentSelectedSlug,
     agentConversationId,
     agentMessages,

@@ -63,8 +63,11 @@
 
     <!-- Timeline -->
     <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-2 min-h-0" ref="scrollEl">
-      <div v-if="!messages.length && !store.agentSelectedSlug" class="flex-1 grid place-items-center monaco-line-fg p-4 text-[0.85rem]">
+      <div v-if="!messages.length && !store.agentSelectedSlug && store.agentListLoaded && !agents.length" class="flex-1 grid place-items-center monaco-line-fg p-4 text-[0.85rem]">
         No agents seeded. Run <code>rails db:seed</code>.
+      </div>
+      <div v-else-if="!messages.length && !store.agentSelectedSlug" class="flex-1 grid place-items-center monaco-line-fg p-4 text-[0.85rem]">
+        Loading agents…
       </div>
       <div v-else-if="!messages.length" class="flex-1 grid place-items-center monaco-line-fg p-4 text-[0.85rem]">
         Ask {{ activeAgentName }} something.
