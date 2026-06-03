@@ -92,12 +92,14 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { isControlMode } from '../services/mode'
 import { listWorkspaces, createWorkspace } from '../services/workspaceService'
-import { listProjects,   createProject   } from '../services/projectService'
 
+// Model B: this Dashboard is the CONTROL-PLANE dashboard. It lists the
+// user's Workspaces (one isolated pod each). Workspace pods themselves have
+// no dashboard — opening a Workspace lands directly in its IDE (handled by
+// the router guard in workspace mode).
 const router  = useRouter()
 const items   = ref([])
 const loading = ref(true)
@@ -107,18 +109,11 @@ const showNewForm = ref(false)
 const newName = ref('')
 const newDesc = ref('')
 
-// Dashboard renders different top-level resources per SPA mode:
-//   control mode    → Workspaces (control-plane, one per workspace pod)
-//   workspace mode  → Projects   (workspace-local, many inside one pod)
-// The two services are intentionally separate; this page just picks one.
-const singularTitle = computed(() => isControlMode ? 'Workspace' : 'Project')
-const pluralTitle   = computed(() => `Your ${singularTitle.value}s`)
-const pluralLower   = computed(() => singularTitle.value.toLowerCase() + 's')
-const singularSlug  = computed(() => singularTitle.value.toLowerCase())
-const scopeLabel    = computed(() => isControlMode ? 'Control Plane' : 'Workspace')
-
-const loadItems  = isControlMode ? listWorkspaces  : listProjects
-const createCall = isControlMode ? createWorkspace : createProject
+const singularTitle = 'Workspace'
+const pluralTitle   = 'Your Workspaces'
+const pluralLower   = 'workspaces'
+const singularSlug  = 'workspace'
+const scopeLabel    = 'Control Plane'
 
 onMounted(load)
 
@@ -126,9 +121,9 @@ async function load() {
   loading.value = true
   error.value   = ''
   try {
-    items.value = await loadItems()
+    items.value = await listWorkspaces()
   } catch (e) {
-    error.value = e.message || `Failed to load ${pluralLower.value}`
+    error.value = e.message || 'Failed to load workspaces'
   } finally {
     loading.value = false
   }
@@ -136,25 +131,21 @@ async function load() {
 
 async function createItem() {
   try {
-    await createCall(newName.value.trim(), newDesc.value.trim())
+    await createWorkspace(newName.value.trim(), newDesc.value.trim())
     newName.value = ''
     newDesc.value = ''
     showNewForm.value = false
     await load()
   } catch (e) {
-    error.value = e.message || `Failed to create ${singularSlug.value}`
+    error.value = e.message || 'Failed to create workspace'
   }
 }
 
 function openItem(id) {
-  if (isControlMode) {
-    // In control mode we redirect cross-path to the workspace ingress;
-    // Traefik forwards /w/<id>/ to the workspace pod which serves the
-    // same client build under that prefix and boots in workspace mode.
-    window.location.href = `/w/${id}/`
-  } else {
-    router.push(`/projects/${id}`)
-  }
+  // Redirect cross-path to the workspace ingress; Traefik forwards /w/<id>/
+  // to the workspace pod, which serves the SPA in workspace mode and lands
+  // directly in the IDE.
+  window.location.href = `/w/${id}/`
 }
 
 function formatDate(ts) {

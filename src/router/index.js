@@ -5,6 +5,8 @@ import ProjectPage from '../pages/ProjectPage.vue'
 import PreferencesPage from '../pages/PreferencesPage.vue'
 import AboutPage from '../pages/AboutPage.vue'
 import authService from '../services/authService'
+import { isWorkspaceMode } from '../services/mode'
+import { listProjects } from '../services/projectService'
 
 const routes = [
   {
@@ -58,12 +60,27 @@ router.beforeEach(async (to, from, next) => {
   const requiresAuth = to.meta.requiresAuth
 
   if (requiresAuth && !isAuthenticated) {
-    next('/login')
-  } else if (to.path === '/login' && isAuthenticated) {
-    next('/dashboard')
-  } else {
-    next()
+    return next('/login')
   }
+  if (to.path === '/login' && isAuthenticated) {
+    return next('/dashboard')
+  }
+
+  // Model B: a workspace pod hosts exactly one project and has no in-pod
+  // dashboard. Landing on /dashboard in workspace mode resolves that single
+  // canonical project and drops the user straight into its IDE.
+  if (isWorkspaceMode && isAuthenticated && to.name === 'Dashboard') {
+    try {
+      const projects = await listProjects()
+      if (projects.length) {
+        return next(`/projects/${projects[0].id}`)
+      }
+    } catch {
+      // Fall through to the Dashboard view, which surfaces the load error.
+    }
+  }
+
+  next()
 })
 
 export default router

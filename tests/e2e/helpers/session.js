@@ -33,18 +33,21 @@ export async function loginAndCaptureLogs(page) {
   await page.fill('#email', EMAIL)
   await page.fill('#password', PASSWORD)
   await page.click('button[type=submit]')
-  await page.waitForURL('**/dashboard', { timeout: 10000 })
+  // Model B: in workspace mode the router redirects /dashboard straight to
+  // the pod's single canonical project IDE, so the URL may settle on either
+  // /dashboard (control mode) or /projects/<id> (workspace mode).
+  await page.waitForURL(
+    (url) => /\/(dashboard|projects)(\/|$)/.test(new URL(url).pathname),
+    { timeout: 10000 },
+  )
 }
 
 /**
- * Open the first project listed on the dashboard, wait for ProjectPage to mount.
- * Returns after system:connected is logged (i.e. WS is live).
+ * Ensure ProjectPage is mounted. In workspace mode (Model B) the pod already
+ * auto-opened its single project, so this just sets up WS capture. In control
+ * mode it clicks the first project card. Waits until the IDE is live.
  */
 export async function openFirstProject(page) {
-  // Wait for at least one project card (div with cursor-pointer inside the grid)
-  const card = page.locator('div.cursor-pointer h3').first()
-  await expect(card).toBeVisible({ timeout: 10000 })
-
   // Capture WS frames
   const wsFrames = []
   page.on('websocket', ws => {
@@ -52,7 +55,13 @@ export async function openFirstProject(page) {
     ws.on('framereceived', f => wsFrames.push({ dir: '←', data: f.payload }))
   })
 
-  await card.click()
+  if (!/\/projects(\/|$)/.test(new URL(page.url()).pathname)) {
+    // Control mode: a project card is present; click it.
+    const card = page.locator('div.cursor-pointer h3').first()
+    await expect(card).toBeVisible({ timeout: 10000 })
+    await card.click()
+  }
+
   await page.waitForURL('**/projects/**', { timeout: 10000 })
 
   // Give the WS a moment to connect and receive system:connected + term:list
