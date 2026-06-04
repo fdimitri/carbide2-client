@@ -31,6 +31,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const callRemoteStreams = ref({})    // { [peer_id]: MediaStream }
   const callMicEnabled   = ref(true)
   const callCamEnabled   = ref(true)
+  // Channel-wide call presence, independent of whether we're in the call:
+  // { [channelId]: [{ peer_id, user_id, name }] }. Lets us show a "Join call"
+  // affordance to members who aren't participating yet.
+  const activeCalls      = ref({})
 
   // ── Agents (LLM tool-call sessions) ────────────────────────────────────────
   // Single conversation per project for now. AgentPane reads/writes these
@@ -73,6 +77,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     callRemoteStreams,
     callMicEnabled,
     callCamEnabled,
+    activeCalls,
     agentList,
     agentListLoaded,
     agentSelectedSlug,

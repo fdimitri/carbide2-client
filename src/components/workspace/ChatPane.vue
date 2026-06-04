@@ -10,11 +10,14 @@
         <template v-if="!callActive">
           <button
             class="inline-flex items-center gap-[0.35rem] px-[0.7rem] py-[0.32rem] text-[0.78rem] rounded-[0.3rem] cursor-pointer border monaco-input-border monaco-input-bg monaco-fg hover:monaco-focus-border disabled:opacity-40 disabled:cursor-default"
+            :class="callAvailable ? 'bg-[#2d7d46] text-white border-0 hover:brightness-110' : ''"
             :disabled="!canSend"
-            title="Start a video call in this channel"
+            :title="callAvailable ? 'Join the call in progress in this channel' : 'Start a video call in this channel'"
             @click="emit('start-call')"
-          >▶ Start call</button>
-          <span class="text-[0.72rem] monaco-line-fg">Video call in #{{ channelName || 'channel' }}</span>
+          >{{ callAvailable ? `Join call (${callAvailableCount})` : '▶ Start call' }}</button>
+          <span class="text-[0.72rem] monaco-line-fg">
+            {{ callAvailable ? `Call in progress in #${channelName || 'channel'}` : `Video call in #${channelName || 'channel'}` }}
+          </span>
         </template>
         <template v-else>
           <button
@@ -123,6 +126,8 @@ const props = defineProps({
   channelName:   { type: String,  default: '' },
   // ── Call (WebRTC) ──
   callActive:    { type: Boolean, default: false },
+  callAvailable: { type: Boolean, default: false },
+  callAvailableCount: { type: Number, default: 0 },
   localStream:   { type: Object,  default: null },
   remoteStreams: { type: Object,  default: () => ({}) },
   participants:  { type: Array,   default: () => [] },

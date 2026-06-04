@@ -38,6 +38,8 @@
         :channel-id="activeChatChannelId"
         :channel-name="activeChatLabel"
         :call-active="paneCallActive"
+        :call-available="paneCallAvailable"
+        :call-available-count="paneCallAvailableCount"
         :local-stream="store.callLocalStream"
         :remote-streams="store.callRemoteStreams"
         :participants="store.callParticipants"
@@ -184,6 +186,18 @@ const paneTypingMap = computed(() => {
 const paneCallActive = computed(() => {
   const cid = activeChatChannelId.value
   return !!cid && Number(store.callChannelId) === cid
+})
+
+// A call is live in this channel but we haven't joined it yet — offer "Join".
+const paneCallAvailable = computed(() => {
+  const cid = activeChatChannelId.value
+  if (!cid || paneCallActive.value) return false
+  return (store.activeCalls[cid]?.length || 0) > 0
+})
+
+const paneCallAvailableCount = computed(() => {
+  const cid = activeChatChannelId.value
+  return cid ? (store.activeCalls[cid]?.length || 0) : 0
 })
 
 const activeChatLabel = computed(() => {

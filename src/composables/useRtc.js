@@ -21,7 +21,7 @@ export function useRtc({ error }) {
   const store = useWorkspaceStore()
   const {
     callChannelId, callParticipants, callLocalStream, callRemoteStreams,
-    callMicEnabled, callCamEnabled,
+    callMicEnabled, callCamEnabled, activeCalls,
   } = storeToRefs(store)
 
   // peer_id -> { pc, pendingCandidates: [] }
@@ -145,11 +145,34 @@ export function useRtc({ error }) {
     return callParticipants.value.find(p => p.peer_id === peerId)?.name || 'peer'
   }
 
+  // Acquire camera+mic. getUserMedia only exists in a secure context
+  // (HTTPS or http://localhost). Over plain HTTP to an IP/hostname
+  // `navigator.mediaDevices` is undefined, which otherwise surfaces as a
+  // cryptic "Cannot read properties of undefined (reading 'getUserMedia')".
+  async function acquireLocalMedia() {
+    const md = navigator.mediaDevices
+    if (md && md.getUserMedia) {
+      return md.getUserMedia({ video: true, audio: true })
+    }
+    // Legacy prefixed fallback for older engines.
+    const legacy = navigator.getUserMedia || navigator.webkitGetUserMedia ||
+                   navigator.mozGetUserMedia
+    if (legacy) {
+      return new Promise((resolve, reject) =>
+        legacy.call(navigator, { video: true, audio: true }, resolve, reject))
+    }
+    const err = new Error(window.isSecureContext === false
+      ? 'Camera/mic need a secure connection. Open this app over HTTPS or via http://localhost.'
+      : 'This browser does not support camera/microphone access.')
+    err.name = 'InsecureContextError'
+    throw err
+  }
+
   async function startCall(channelId) {
     const cid = Number(channelId)
     if (!cid || callChannelId.value) return
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      const stream = await acquireLocalMedia()
       callLocalStream.value = stream
       callMicEnabled.value  = true
       callCamEnabled.value  = true
@@ -207,9 +230,21 @@ export function useRtc({ error }) {
         if (Number(p.channel_id) !== callChannelId.value) return
         handleSignal(p.from, p.data)
       }),
+      // Channel-wide call presence (sent to every channel member, not just call
+      // participants). Drives the "Join call" affordance for non-participants.
+      workerSocket.on('rtc', 'call_state', (p) => {
+        const cid = Number(p.channel_id)
+        if (!cid) return
+        const roster = p.participants || []
+        const next = { ...activeCalls.value }
+        if (roster.length) next[cid] = roster
+        else delete next[cid]
+        activeCalls.value = next
+      }),
       // A reconnect invalidates every peer connection; tear the call down so
       // the user can rejoin cleanly rather than staring at frozen tiles.
       workerSocket.on('system', 'connected', () => {
+        activeCalls.value = {}
         if (callChannelId.value) reset()
       })
     )
