@@ -195,6 +195,26 @@ const offChange     = workerSocket.on('fs', 'change',      onFsChange)
 const offSetContents = workerSocket.on('fs', 'set_contents', onFsSetContents)
 const offCursor      = workerSocket.on('fs', 'cursor',       onFsCursor)
 const offOpened      = workerSocket.on('fs', 'opened',       onFsOpened)
+
+// Connection-aware loading. A dropped socket would otherwise leave the editor
+// stuck on "Loading…" forever (the fs/content reply never arrives). Clear the
+// spinner with an honest message on disconnect, and transparently re-open +
+// re-read the file once the socket comes back so the view self-heals.
+function onWsDisconnected() {
+  if (loading.value) {
+    loading.value = false
+    loadError.value = 'Connection lost — will reload when reconnected.'
+  }
+}
+function onWsConnected() {
+  if (!props.fileId) return
+  loadError.value = ''
+  workerSocket.send('fs', 'open', { path: props.fileId })
+  requestFile(props.fileId)
+}
+const offDisconnected = workerSocket.on('system', 'disconnected', onWsDisconnected)
+const offConnected    = workerSocket.on('system', 'connected',    onWsConnected)
+
 onMounted(() => {
   if (props.fileId) {
     workerSocket.send('fs', 'open', { path: props.fileId })
@@ -215,6 +235,7 @@ onBeforeUnmount(() => {
   if (props.fileId) workerSocket.send('fs', 'close', { path: props.fileId })
   releaseBlob()
   offContent(); offError(); offChange(); offSetContents(); offCursor(); offOpened()
+  offDisconnected(); offConnected()
 })
 </script>
 

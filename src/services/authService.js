@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { ref } from 'vue'
 import { isControlMode } from './mode'
 
 // Per-pod token isolation.
@@ -110,6 +111,11 @@ const authService = {
   currentUser: readStoredUser(),
   token: localStorage.getItem(TOKEN_KEY),
   readyPromise: null,
+  // Reactive: set true when the upstream session is truly gone (silent refresh
+  // failed). The app watches this to show the "session expired" overlay.
+  sessionExpired: ref(false),
+  // Guards against several concurrent 401s all kicking off their own refresh.
+  _refreshPromise: null,
 
   get isAuthenticated() {
     return !!this.token && !!this.currentUser
@@ -223,7 +229,61 @@ const authService = {
       this.readyPromise = null
     }
   },
+
+  // Silently mint a fresh workspace bearer by re-exchanging the still-valid
+  // control token. Returns true on success. In control mode the control token
+  // IS the bearer, so there is nothing to refresh — only a fresh login helps.
+  async refresh() {
+    if (isControlMode) return false
+    if (this._refreshPromise) return this._refreshPromise
+    this._refreshPromise = (async () => {
+      const controlToken = localStorage.getItem('control_auth_token')
+      if (!controlToken || tokenIsExpired(controlToken)) return false
+      try {
+        const exchange = await exchangeWorkspaceToken(controlToken)
+        this.currentUser = exchange.user
+        this.token = exchange.token
+        localStorage.setItem(TOKEN_KEY, exchange.token)
+        localStorage.setItem(USER_KEY, JSON.stringify(exchange.user))
+        api.defaults.headers.common['Authorization'] = `Bearer ${exchange.token}`
+        this.sessionExpired.value = false
+        return true
+      } catch {
+        return false
+      }
+    })()
+    try {
+      return await this._refreshPromise
+    } finally {
+      this._refreshPromise = null
+    }
+  },
 }
+
+// 401 interceptor: a single expired-bearer response should not silently break
+// the app. Attempt one in-place refresh (re-exchange the control token) and
+// replay the request; if that fails, the upstream session is truly gone —
+// flag it so the UI can prompt re-authentication. The exchange endpoint itself
+// (/login) is exempt to avoid recursion.
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const original = error.config
+    const status = error.response?.status
+    const isLoginCall = original?.url?.includes('/login')
+    if (status === 401 && original && !original._retried && !isLoginCall) {
+      original._retried = true
+      const ok = await authService.refresh()
+      if (ok) {
+        original.headers = original.headers || {}
+        original.headers['Authorization'] = `Bearer ${authService.token}`
+        return api(original)
+      }
+      authService.sessionExpired.value = true
+    }
+    return Promise.reject(error)
+  },
+)
 
 // Restore token on page load
 authService.checkAuth()

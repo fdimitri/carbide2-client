@@ -191,6 +191,7 @@ import WorkspacePaneShell from '../components/workspace/WorkspacePaneShell.vue'
 import ExplorerPane from '../components/workspace/ExplorerPane.vue'
 import RecordingsDialog from '../components/workspace/RecordingsDialog.vue'
 import workerSocket from '../services/workerSocket'
+import authService from '../services/authService'
 import { listProjects, getWsToken, uploadProjectFile, importProjectFromDisk } from '../services/projectService'
 import { storeToRefs } from 'pinia'
 import { usePanes, PANE_COUNTS } from '../composables/usePanes'
@@ -518,6 +519,20 @@ onMounted(async () => {
         // agent / fs activity shows up in the Debug pane in real time.
         // See #3 in May30-Questions.md.
         workerSocket.send('debug', 'subscribe', {})
+      }),
+      // Reflect drops so panes can react (e.g. clear stuck spinners) instead of
+      // appearing frozen.
+      workerSocket.on('system', 'disconnected', () => {
+        wsConnected.value = false
+      }),
+      // The socket couldn't authenticate (expired/revoked session). Try one
+      // silent credential refresh and reconnect; if that fails, surface the
+      // session-expired overlay (driven by authService.sessionExpired).
+      workerSocket.on('system', 'unauthorized', async () => {
+        wsConnected.value = false
+        const ok = await authService.refresh()
+        if (ok) workerSocket.reconnectNow()
+        else authService.sessionExpired.value = true
       })
     )
 

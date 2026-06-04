@@ -4,6 +4,7 @@
 //        workerSocket.connect(token)
 //        workerSocket.on('term', 'output', handler)
 //        workerSocket.send('chat', 'message', { text: 'hello' })
+import { ref } from 'vue'
 import { logWs, logInfo, logWarn } from './log'
 
 // Worker WebSocket URL. Behind the workspace ingress the worker is reached
@@ -27,7 +28,29 @@ const getWorkerUrl = () => {
 
 const RECONNECT_BASE_MS  = 1000
 const RECONNECT_MAX_MS   = 30000
-const RECONNECT_MAX_TRIES = 10
+// Number of consecutive failed attempts before we consider the worker
+// "offline" (a sustained outage). We never stop retrying — an IDE that gives
+// up and silently strands the user is worse than one that keeps knocking.
+const RECONNECT_OFFLINE_AFTER = 4
+
+// Heartbeat: prove the socket is alive end-to-end (not just TCP-open) and
+// measure round-trip latency for the status indicator.
+const HEARTBEAT_MS = 10000
+// Sliding window for the throughput readout in the status bar.
+const RATE_WINDOW_MS = 30000
+// Refresh the worker JWT in-band this long before it expires, so a long-lived
+// session survives token rotation without ever dropping the socket.
+const REAUTH_LEAD_MS = 90000
+
+// True when a token-fetch rejection is an authentication failure (expired /
+// revoked upstream session) rather than a transient network error. Auth
+// failures must NOT trigger the blind reconnect loop — the app refreshes
+// credentials or routes to login instead.
+function isAuthError(e) {
+  return e?.isAuthError === true ||
+         e?.status === 401 ||
+         e?.response?.status === 401
+}
 
 class WorkerSocket {
   constructor() {
@@ -40,6 +63,23 @@ class WorkerSocket {
     this._reconnectAttempt = 0
     this._reconnectTimer   = null
     this._stopped    = false // true after explicit disconnect()
+
+    // ── Reactive, app-wide connection telemetry (consumed by the status bar) ──
+    // status: 'idle' (never connected / after disconnect) | 'connecting' |
+    //         'connected' | 'reconnecting' | 'offline' (sustained outage) |
+    //         'unauthorized' (auth failed — needs credential refresh / login).
+    this.status      = ref('idle')
+    this.latencyMs   = ref(null)   // last measured round-trip, ms
+    this.rateIn      = ref(0)      // bytes/sec received, ~30s average
+    this.rateOut     = ref(0)      // bytes/sec sent, ~30s average
+    this.attempt     = ref(0)      // current reconnect attempt (0 when connected)
+
+    this._heartbeatTimer = null
+    this._rateTimer      = null
+    this._inSamples      = []  // [{ t, n }]
+    this._outSamples     = []  // [{ t, n }]
+    this._tokenExpMs     = null // worker JWT expiry (ms), from system/connected
+    this._reauthInFlight = false
   }
 
   // tokenFetcher: async () => string — called fresh on every (re)connect so the
@@ -51,6 +91,9 @@ class WorkerSocket {
       : () => Promise.resolve(tokenFetcher)
     this._stopped = false
     this._reconnectAttempt = 0
+    this.attempt.value = 0
+    this.status.value = 'connecting'
+    this._startRateTimer()
     this._clearReconnectTimer()
     this._open()
   }
@@ -67,6 +110,15 @@ class WorkerSocket {
     try {
       token = await this._tokenFetcher()
     } catch (e) {
+      // Auth failure (expired/revoked upstream session) is unrecoverable by
+      // retrying with the same credentials — surface it so the app can refresh
+      // or route to login, and stop the blind reconnect loop.
+      if (isAuthError(e)) {
+        logWarn('WorkerSocket', 'token fetch unauthorized — needs re-auth')
+        this.status.value = 'unauthorized'
+        this._emitLocal('system', 'unauthorized', {})
+        return
+      }
       logWarn('WorkerSocket', 'failed to fetch token:', e)
       if (!this._stopped) this._scheduleReconnect()
       return
@@ -82,14 +134,43 @@ class WorkerSocket {
       logInfo('WorkerSocket', 'connected')
       this._ready = true
       this._reconnectAttempt = 0
-      this._queue.forEach(m => this._ws.send(m))
+      this.attempt.value = 0
+      this.status.value = 'connected'
+      this._queue.forEach(m => { this._countOut(m); this._ws.send(m) })
       this._queue = []
+      this._startHeartbeat()
+      this._emitLocal('system', 'open', {})
     }
 
     this._ws.onmessage = (event) => {
       if (this._generation !== gen) return
+      this._countIn(event.data)
       let msg
       try { msg = JSON.parse(event.data) } catch { return }
+      // Heartbeat reply — measure round-trip and swallow (not an app event).
+      if (msg.cs === 'system' && msg.cmd === 'pong') {
+        if (msg.payload && typeof msg.payload.t === 'number') {
+          this.latencyMs.value = Math.max(0, Date.now() - msg.payload.t)
+        }
+        return
+      }
+      // Capture token expiry so we can refresh in-band before it lapses.
+      if (msg.cs === 'system' && msg.cmd === 'connected') {
+        this._setTokenExp(msg.payload?.token_exp)
+      }
+      // Reauth outcomes are workerSocket-internal — adopt the new expiry and
+      // swallow them rather than leaking to app handlers.
+      if (msg.cs === 'system' && msg.cmd === 'reauth_ok') {
+        this._setTokenExp(msg.payload?.exp)
+        this._reauthInFlight = false
+        logInfo('WorkerSocket', 'reauth ok')
+        return
+      }
+      if (msg.cs === 'system' && msg.cmd === 'reauth_failed') {
+        this._reauthInFlight = false
+        logWarn('WorkerSocket', 'reauth failed:', msg.payload?.message)
+        return
+      }
       logWs('recv', msg.cs, msg.cmd, msg.payload)
       const key = `${msg.cs}:${msg.cmd}`
       const handlers = this._handlers[key] || []
@@ -101,7 +182,14 @@ class WorkerSocket {
       if (this._generation !== gen) return
       logWarn('WorkerSocket', 'closed', e.code, e.reason)
       this._ready = false
-      if (!this._stopped) this._scheduleReconnect()
+      this.latencyMs.value = null
+      this._tokenExpMs = null
+      this._reauthInFlight = false
+      this._stopHeartbeat()
+      if (!this._stopped) {
+        this._emitLocal('system', 'disconnected', { code: e.code })
+        this._scheduleReconnect()
+      }
     }
 
     this._ws.onerror = (e) => {
@@ -111,16 +199,29 @@ class WorkerSocket {
   }
 
   _scheduleReconnect() {
-    if (this._stopped || this._reconnectAttempt >= RECONNECT_MAX_TRIES) {
-      logWarn('WorkerSocket', 'giving up reconnect after', this._reconnectAttempt, 'attempts')
-      return
-    }
+    if (this._stopped) return
     const delay = Math.min(RECONNECT_BASE_MS * 2 ** this._reconnectAttempt, RECONNECT_MAX_MS)
     this._reconnectAttempt++
+    this.attempt.value = this._reconnectAttempt
+    // Surface a clear "offline" state once the outage is sustained, but keep
+    // retrying forever at the capped interval rather than abandoning the user.
+    this.status.value = this._reconnectAttempt >= RECONNECT_OFFLINE_AFTER
+      ? 'offline'
+      : 'reconnecting'
     logInfo('WorkerSocket', `reconnecting in ${delay}ms (attempt ${this._reconnectAttempt})`)
     this._reconnectTimer = setTimeout(() => {
       if (!this._stopped) this._open()
     }, delay)
+  }
+
+  // Force an immediate reconnect attempt (e.g. user clicked "Retry now").
+  reconnectNow() {
+    if (this._stopped || !this._tokenFetcher) return
+    this._reconnectAttempt = 0
+    this.attempt.value = 0
+    this.status.value = 'connecting'
+    this._clearReconnectTimer()
+    this._open()
   }
 
   _clearReconnectTimer() {
@@ -133,6 +234,8 @@ class WorkerSocket {
   disconnect() {
     this._stopped = true
     this._clearReconnectTimer()
+    this._stopHeartbeat()
+    this._stopRateTimer()
     if (this._ws) {
       const old = this._ws
       old.onclose = null
@@ -142,17 +245,117 @@ class WorkerSocket {
     }
     this._ready = false
     this._queue = []
+    this.status.value = 'idle'
+    this.latencyMs.value = null
+    this.attempt.value = 0
+    this.rateIn.value = 0
+    this.rateOut.value = 0
+    this._inSamples = []
+    this._outSamples = []
+    this._tokenExpMs = null
+    this._reauthInFlight = false
   }
 
   send(cs, cmd, payload = {}) {
     const msg = JSON.stringify({ cs, cmd, payload })
     if (this._ready) {
       logWs('send', cs, cmd, payload)
+      this._countOut(msg)
       this._ws.send(msg)
     } else {
       logWarn('WorkerSocket', 'not ready, queuing', cs, cmd)
       this._queue.push(msg)
     }
+  }
+
+  // ── Local (client-originated) lifecycle events ──────────────────────────────
+  // Dispatched through the same handler map as server messages so app code can
+  // react to open/close uniformly, e.g. workerSocket.on('system','disconnected')
+  _emitLocal(cs, cmd, payload) {
+    const handlers = this._handlers[`${cs}:${cmd}`] || []
+    const wildcards = this._handlers[`${cs}:*`] || []
+    ;[...handlers, ...wildcards].forEach(fn => fn(payload, { cs, cmd, payload }))
+  }
+
+  // ── Heartbeat ───────────────────────────────────────────────────────────────
+  _startHeartbeat() {
+    this._stopHeartbeat()
+    const beat = () => {
+      if (!this._ready) return
+      this.send('system', 'ping', { t: Date.now() })
+      this._maybeReauth()
+    }
+    beat()
+    this._heartbeatTimer = setInterval(beat, HEARTBEAT_MS)
+  }
+
+  _stopHeartbeat() {
+    if (this._heartbeatTimer !== null) {
+      clearInterval(this._heartbeatTimer)
+      this._heartbeatTimer = null
+    }
+  }
+
+  // ── In-band token refresh ───────────────────────────────────────────────────
+  _setTokenExp(expSeconds) {
+    this._tokenExpMs = (typeof expSeconds === 'number') ? expSeconds * 1000 : null
+  }
+
+  // Mint a fresh worker JWT and present it over the live socket shortly before
+  // the current one lapses, so the connection never has to drop for rotation.
+  async _maybeReauth() {
+    if (!this._ready || this._reauthInFlight || !this._tokenExpMs) return
+    if (Date.now() < this._tokenExpMs - REAUTH_LEAD_MS) return
+    this._reauthInFlight = true
+    let token
+    try {
+      token = await this._tokenFetcher()
+    } catch (e) {
+      this._reauthInFlight = false
+      // Upstream session is gone — let the app refresh credentials / re-login.
+      // The worker's expiry sweep will close the socket if we never recover.
+      if (isAuthError(e)) {
+        logWarn('WorkerSocket', 'reauth token fetch unauthorized')
+        this.status.value = 'unauthorized'
+        this._emitLocal('system', 'unauthorized', {})
+      } else {
+        logWarn('WorkerSocket', 'reauth token fetch failed:', e)
+      }
+      return
+    }
+    if (this._ready) this.send('system', 'reauth', { token })
+    else this._reauthInFlight = false
+  }
+
+  // ── Throughput sampling (~30s sliding average) ──────────────────────────────
+  _countIn(data)  { this._inSamples.push({ t: Date.now(), n: this._sizeOf(data) }) }
+  _countOut(data) { this._outSamples.push({ t: Date.now(), n: this._sizeOf(data) }) }
+
+  _sizeOf(data) {
+    if (typeof data === 'string') return data.length
+    if (data && typeof data.byteLength === 'number') return data.byteLength
+    return 0
+  }
+
+  _startRateTimer() {
+    if (this._rateTimer !== null) return
+    this._rateTimer = setInterval(() => this._recomputeRates(), 2000)
+  }
+
+  _stopRateTimer() {
+    if (this._rateTimer !== null) {
+      clearInterval(this._rateTimer)
+      this._rateTimer = null
+    }
+  }
+
+  _recomputeRates() {
+    const cutoff = Date.now() - RATE_WINDOW_MS
+    this._inSamples  = this._inSamples.filter(s => s.t >= cutoff)
+    this._outSamples = this._outSamples.filter(s => s.t >= cutoff)
+    const secs = RATE_WINDOW_MS / 1000
+    this.rateIn.value  = this._inSamples.reduce((a, s) => a + s.n, 0) / secs
+    this.rateOut.value = this._outSamples.reduce((a, s) => a + s.n, 0) / secs
   }
 
   on(cs, cmd, fn) {

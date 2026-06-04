@@ -14,6 +14,10 @@ export function useChat(projectId, { wsConnected, error, bindTabToActivePane, ac
 
   const chatEl     = ref(null)
   let joinTimeoutHandle = null
+  // Channels the user wants to be in. A worker reconnect resets server-side
+  // membership, so we replay these joins on every system/connected to keep
+  // chat working transparently across drops.
+  const desiredChannels = new Set()
 
   const currentUserId     = computed(() => store.currentUserId)
   const activeChannelName = computed(() => {
@@ -38,7 +42,11 @@ export function useChat(projectId, { wsConnected, error, bindTabToActivePane, ac
     joinTimeoutHandle = setTimeout(() => {
       if (!isJoinedChannel(channelId)) {
         chatJoiningMap.value = { ...chatJoiningMap.value, [channelId]: false }
-        error.value = 'Could not join channel yet. Check worker connection and try again.'
+        // Don't cry wolf during a known outage — the join will replay
+        // automatically once the socket is back.
+        error.value = workerSocket.connected
+          ? 'Could not join channel yet. Check worker connection and try again.'
+          : 'Disconnected — will join this channel once reconnected.'
       }
       joinTimeoutHandle = null
     }, 4500)
@@ -59,6 +67,7 @@ export function useChat(projectId, { wsConnected, error, bindTabToActivePane, ac
 
     // Only join if not already joined
     if (!isJoinedChannel(nextChannel)) {
+      desiredChannels.add(nextChannel)
       startJoinWait(nextChannel)
       workerSocket.send('chat', 'join', { channel_id: nextChannel })
     }
@@ -124,6 +133,7 @@ export function useChat(projectId, { wsConnected, error, bindTabToActivePane, ac
 
   function leaveChannelFromContext(channelId) {
     if (!isJoinedChannel(channelId)) return
+    desiredChannels.delete(Number(channelId))
     setJoinedChannel(channelId, false)
     workerSocket.send('chat', 'leave', { channel_id: channelId })
   }
@@ -176,6 +186,15 @@ export function useChat(projectId, { wsConnected, error, bindTabToActivePane, ac
         const until = Date.now() + 250
         const byChannel = chatTypingMap.value[cid] || {}
         chatTypingMap.value = { ...chatTypingMap.value, [cid]: { ...byChannel, [uid]: until } }
+      }),
+      // Replay desired joins after a (re)connect — server-side membership is
+      // reset on each new socket, so without this chat silently stops working
+      // after any drop.
+      workerSocket.on('system', 'connected', () => {
+        desiredChannels.forEach(cid => {
+          startJoinWait(cid)
+          workerSocket.send('chat', 'join', { channel_id: cid })
+        })
       })
     )
   }
