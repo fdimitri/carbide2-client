@@ -162,10 +162,25 @@ export function useRtc({ error }) {
         legacy.call(navigator, { video: true, audio: true }, resolve, reject))
     }
     const err = new Error(window.isSecureContext === false
-      ? 'Camera/mic need a secure connection. Open this app over HTTPS or via http://localhost.'
+      ? `Camera/mic need a secure connection. Open this app at ${secureUrlHint()}`
       : 'This browser does not support camera/microphone access.')
     err.name = 'InsecureContextError'
     throw err
+  }
+
+  // Suggest the HTTPS equivalent of the current page. The dev cluster maps
+  // host :8080 -> Traefik HTTP and :8443 -> Traefik HTTPS, so when we're on the
+  // plain :8080 dev port we point at :8443; otherwise we just swap the scheme.
+  function secureUrlHint() {
+    try {
+      const u = new URL(window.location.href)
+      u.protocol = 'https:'
+      if (u.port === '8080') u.port = '8443'
+      else if (u.port === '80') u.port = ''
+      return u.toString()
+    } catch {
+      return 'this site over HTTPS'
+    }
   }
 
   async function startCall(channelId) {
