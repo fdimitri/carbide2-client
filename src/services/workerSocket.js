@@ -26,6 +26,17 @@ const getWorkerUrl = () => {
   return `${proto}//${window.location.host}${base}/ws`
 }
 
+// ── Wire-protocol versioning ────────────────────────────────────────────────
+// Compatibility is one integer per side plus a floor, not a SemVer range matrix:
+//   PROTOCOL   — the wire protocol this build speaks. Bump on ANY wire change.
+//   MIN_SERVER — the oldest worker PROTOCOL this build still tolerates. Bump
+//                ONLY on a breaking change.
+// Sent to the worker on the handshake URL (&proto=&min_server=); the worker
+// advertises its own protocol/min_client in system/connected. We compare both
+// floors and, for now, only WARN on a mismatch (advisory — still connect).
+const PROTOCOL   = 1
+const MIN_SERVER = 1
+
 const RECONNECT_BASE_MS  = 1000
 const RECONNECT_MAX_MS   = 30000
 // Number of consecutive failed attempts before we consider the worker
@@ -73,7 +84,10 @@ class WorkerSocket {
     this.rateIn      = ref(0)      // bytes/sec received, ~30s average
     this.rateOut     = ref(0)      // bytes/sec sent, ~30s average
     this.attempt     = ref(0)      // current reconnect attempt (0 when connected)
-
+      // Set true when the worker's advertised wire protocol is incompatible
+      // with ours (either floor crossed). Advisory only for now — the socket
+      // still connects; UI can bind this to a banner. See PROTOCOL/MIN_SERVER.
+      this.protocolMismatch = ref(false)
     this._heartbeatTimer = null
     this._rateTimer      = null
     this._inSamples      = []  // [{ t, n }]
@@ -125,8 +139,8 @@ class WorkerSocket {
     }
 
     const gen = ++this._generation
-    const url = `${getWorkerUrl()}/?token=${encodeURIComponent(token)}`
-    logInfo('WorkerSocket', 'connecting to', url)
+      const url = `${getWorkerUrl()}/?token=${encodeURIComponent(token)}` +
+        `&proto=${PROTOCOL}&min_server=${MIN_SERVER}`
     this._ws = new WebSocket(url)
 
     this._ws.onopen = () => {
@@ -157,6 +171,7 @@ class WorkerSocket {
       // Capture token expiry so we can refresh in-band before it lapses.
       if (msg.cs === 'system' && msg.cmd === 'connected') {
         this._setTokenExp(msg.payload?.token_exp)
+        this._checkProtocol(msg.payload)
       }
       // Reauth outcomes are workerSocket-internal — adopt the new expiry and
       // swallow them rather than leaking to app handlers.
@@ -299,6 +314,22 @@ class WorkerSocket {
   // ── In-band token refresh ───────────────────────────────────────────────────
   _setTokenExp(expSeconds) {
     this._tokenExpMs = (typeof expSeconds === 'number') ? expSeconds * 1000 : null
+  }
+
+  // Compare the worker's advertised wire protocol against ours. A pre-versioning
+  // worker omits these fields (treated as 0), so the floor check still runs.
+  // Advisory for now: we only warn and flag — the socket stays connected.
+  _checkProtocol(payload) {
+    const serverProto     = Number(payload?.protocol) || 0
+    const serverMinClient = Number(payload?.min_client) || 0
+    const ok = PROTOCOL >= serverMinClient && serverProto >= MIN_SERVER
+    this.protocolMismatch.value = !ok
+    if (!ok) {
+      logWarn('WorkerSocket',
+        `wire-protocol mismatch: client(proto=${PROTOCOL} min_server=${MIN_SERVER}) ` +
+        `server(proto=${serverProto} min_client=${serverMinClient}) — ` +
+        'connected anyway; behaviour may be inconsistent. Reload after deploy completes.')
+    }
   }
 
   // Mint a fresh worker JWT and present it over the live socket shortly before
