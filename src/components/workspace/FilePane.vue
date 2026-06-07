@@ -4,8 +4,10 @@
       Open a file from the explorer.
     </div>
     <template v-else>
-      <div class="flex items-center gap-3 px-3 py-1 bg-bg-2 border-b border-line text-ui-sm shrink-0">
-        <span class="text-text font-medium">{{ filename }}</span>
+      <!-- No filename header: the tab already shows it. This strip only
+           appears when there's a transient status to surface. -->
+      <div v-if="loading || loadError || isBinary"
+           class="flex items-center gap-3 px-3 py-1 bg-bg-2 border-b border-line text-ui-sm shrink-0">
         <span v-if="loading" class="text-muted italic">Loading…</span>
         <span v-if="loadError" class="text-warn">{{ loadError }}</span>
         <span v-if="isBinary" class="text-muted italic">(binary)</span>
