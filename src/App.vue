@@ -19,7 +19,7 @@
       </div>
       <div id="app-nav-right" v-if="authService.isAuthenticated" class="flex gap-3 items-center">
         <ConnectionStatus v-if="!inWorkspace" />
-        <span class="hidden sm:inline text-dim text-[0.7rem] font-mono tracking-wide">{{ VERSION_LABEL }}</span>
+        <span class="hidden sm:inline text-dim text-ui-xs font-mono tracking-wide">{{ VERSION_LABEL }}</span>
         <span class="hidden md:inline text-muted text-xs font-mono">{{ authService.currentUser?.email }}</span>
         <button
           class="px-3 py-1 text-xs rounded border border-warn/50 text-warn bg-transparent cursor-pointer hover:bg-warn/10 transition-colors"

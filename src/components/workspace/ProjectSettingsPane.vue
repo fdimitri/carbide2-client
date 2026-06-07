@@ -10,7 +10,7 @@
       <template v-else>
         <!-- ── VFS Root ─────────────────────────────────────────────────── -->
         <section class="mb-7">
-          <h3 class="text-[0.72rem] font-semibold text-muted uppercase tracking-widest mb-3">VFS Root</h3>
+          <h3 class="text-ui-xs font-semibold text-muted uppercase tracking-widest mb-3">VFS Root</h3>
 
           <FieldLabel label="Root path on server" helpKey="root_path" :openHelp="openHelp" :activeHelp="activeHelp" />
           <HelpText helpKey="root_path" :activeHelp="activeHelp">
@@ -25,11 +25,11 @@
           />
 
           <div class="mt-3">
-            <label class="flex items-center gap-2 text-[0.82rem] text-text cursor-pointer select-none w-fit" @click.prevent="onWipeCheckboxClick">
+            <label class="flex items-center gap-2 text-ui-md text-text cursor-pointer select-none w-fit" @click.prevent="onWipeCheckboxClick">
               <input type="checkbox" :checked="form.clean_vfs" class="accent-accent pointer-events-none" readonly />
               Wipe VFS database before re-importing
               <span
-                class="inline-flex items-center justify-center w-4 h-4 rounded-full border border-muted text-[0.65rem] text-muted cursor-pointer hover:border-accent hover:text-accent transition-colors leading-none"
+                class="inline-flex items-center justify-center w-4 h-4 rounded-full border border-muted text-ui-2xs text-muted cursor-pointer hover:border-accent hover:text-accent transition-colors leading-none"
                 @click.stop="openHelp('clean_vfs')"
               >?</span>
             </label>
@@ -43,7 +43,7 @@
 
         <!-- ── Flush Settings ─────────────────────────────────────────── -->
         <section class="mb-7">
-          <h3 class="text-[0.72rem] font-semibold text-muted uppercase tracking-widest mb-3">Flush Settings</h3>
+          <h3 class="text-ui-xs font-semibold text-muted uppercase tracking-widest mb-3">Flush Settings</h3>
 
           <div class="flex gap-4">
             <div class="flex-1">
@@ -80,7 +80,7 @@
 
         <!-- ── Shell Image ────────────────────────────────────────────── -->
         <section class="mb-7">
-          <h3 class="text-[0.72rem] font-semibold text-muted uppercase tracking-widest mb-3">Docker Shell</h3>
+          <h3 class="text-ui-xs font-semibold text-muted uppercase tracking-widest mb-3">Docker Shell</h3>
 
           <FieldLabel label="Container image" helpKey="shell_image" :openHelp="openHelp" :activeHelp="activeHelp" />
           <HelpText helpKey="shell_image" :activeHelp="activeHelp">
@@ -161,11 +161,11 @@ const FieldLabel = defineComponent({
   props: { label: String, helpKey: String, openHelp: Function, activeHelp: String },
   setup(props) {
     return () => h('div', { class: 'flex items-center gap-1.5 mb-1' }, [
-      h('label', { class: 'text-[0.82rem] text-text' }, props.label),
+      h('label', { class: 'text-ui-md text-text' }, props.label),
       h('button', {
         type: 'button',
         class: [
-          'inline-flex items-center justify-center w-4 h-4 rounded-full border text-[0.65rem] leading-none transition-colors',
+          'inline-flex items-center justify-center w-4 h-4 rounded-full border text-ui-2xs leading-none transition-colors',
           props.activeHelp === props.helpKey
             ? 'border-accent text-accent bg-accent/10'
             : 'border-muted text-muted hover:border-accent hover:text-accent',
@@ -182,7 +182,7 @@ const HelpText = defineComponent({
   slots: ['default'],
   setup(props, { slots }) {
     return () => props.activeHelp === props.helpKey
-      ? h('p', { class: 'text-[0.8rem] text-muted leading-relaxed mb-2 px-3 py-2 rounded-lg bg-bg-2/60 border border-line' },
+      ? h('p', { class: 'text-ui-md text-muted leading-relaxed mb-2 px-3 py-2 rounded-lg bg-bg-2/60 border border-line' },
           slots.default?.())
       : null
   },

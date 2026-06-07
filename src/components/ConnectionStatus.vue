@@ -7,7 +7,7 @@
   only appears where it's meaningful.
 -->
 <template>
-  <div v-if="status !== 'idle'" class="flex items-center gap-2 font-mono text-[0.7rem]">
+  <div v-if="status !== 'idle'" class="flex items-center gap-2 font-mono text-ui-xs">
     <span class="flex items-center gap-1.5" :title="title">
       <span class="inline-block w-2 h-2 rounded-full" :class="dotClass"></span>
       <span :class="labelClass">{{ label }}</span>

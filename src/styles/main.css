@@ -42,6 +42,26 @@
 
   /* Font-size scale additions */
   --text-label: 0.7rem;           /* Small uppercase form/column labels */
+
+  /* Carbide UI type scale — a dense, namespaced ladder that sits alongside
+     (never overrides) Tailwind's default text-xs/sm/base. Near-duplicate
+     ad-hoc rem values were snapped to the nearest step here. Utilities:
+     text-ui-3xs … text-ui-3xl. */
+  --text-ui-3xs: 0.6rem;          /* micro badges/counts */
+  --text-ui-2xs: 0.65rem;         /* fine helper / captions */
+  --text-ui-xs:  0.72rem;         /* dense labels, meta rows */
+  --text-ui-sm:  0.78rem;         /* secondary body */
+  --text-ui-md:  0.82rem;         /* primary body */
+  --text-ui-lg:  0.85rem;         /* emphasised body */
+  --text-ui-xl:  0.95rem;         /* small headings */
+  --text-ui-2xl: 1.4rem;          /* section headings */
+  --text-ui-3xl: 1.7rem;          /* page / hero headings */
+
+  /* Carbide UI radius scale — namespaced so it never overrides Tailwind's
+     rounded-sm/md/lg. Utilities: rounded-ui-xs/sm/md. */
+  --radius-ui-xs: 0.25rem;        /* chips, inputs, small controls */
+  --radius-ui-sm: 0.3rem;         /* buttons, cards */
+  --radius-ui-md: 0.35rem;        /* panels, larger surfaces */
 }
 
 /* ── Base ─────────────────────────────────────────────────────────────────── */

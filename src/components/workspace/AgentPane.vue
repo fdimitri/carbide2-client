@@ -6,13 +6,13 @@
   <div class="flex flex-col flex-1 min-h-0 monaco-bg monaco-fg overflow-hidden">
 
     <!-- Toolbar: agent picker + new conversation -->
-    <div class="flex items-center gap-2 px-3 py-[0.4rem] border-b monaco-panel-border monaco-tabs-bg text-[0.8rem]">
+    <div class="flex items-center gap-2 px-3 py-[0.4rem] border-b monaco-panel-border monaco-tabs-bg text-ui-md">
       <label class="opacity-70">Agent:</label>
       <select
         :value="store.agentSelectedSlug || ''"
         @change="onPickAgent($event.target.value)"
         :disabled="!agents.length"
-        class="px-[0.4rem] py-[0.2rem] rounded-[0.25rem] border monaco-input-bg monaco-input-fg monaco-input-border outline-none"
+        class="px-[0.4rem] py-[0.2rem] rounded-ui-xs border monaco-input-bg monaco-input-fg monaco-input-border outline-none"
       >
         <option value="" disabled>{{ agents.length ? 'Select…' : 'None available' }}</option>
         <option v-for="a in agents" :key="a.slug" :value="a.slug">
@@ -23,9 +23,9 @@
         {{ activeAgentMeta }}
       </span>
       <span class="ml-auto flex items-center gap-2">
-        <span v-if="store.agentStatus === 'thinking'" class="text-[0.72rem] opacity-70 italic">thinking…</span>
+        <span v-if="store.agentStatus === 'thinking'" class="text-ui-xs opacity-70 italic">thinking…</span>
         <button
-          class="px-[0.55rem] py-[0.2rem] text-[0.72rem] rounded-[0.25rem] border monaco-panel-border opacity-80 hover:opacity-100"
+          class="px-[0.55rem] py-[0.2rem] text-ui-xs rounded-ui-xs border monaco-panel-border opacity-80 hover:opacity-100"
           @click="onReset"
           :disabled="store.agentStatus === 'thinking'"
           title="Start a fresh conversation"
@@ -34,12 +34,12 @@
     </div>
 
     <!-- Conversation picker + visibility -->
-    <div class="flex items-center gap-2 px-3 py-[0.35rem] border-b monaco-panel-border text-[0.75rem]">
+    <div class="flex items-center gap-2 px-3 py-[0.35rem] border-b monaco-panel-border text-ui-sm">
       <label class="opacity-70">Conversation:</label>
       <select
         :value="store.agentConversationId || ''"
         @change="onPickConversation($event.target.value)"
-        class="flex-1 min-w-0 px-[0.4rem] py-[0.15rem] rounded-[0.25rem] border monaco-input-bg monaco-input-fg monaco-input-border outline-none"
+        class="flex-1 min-w-0 px-[0.4rem] py-[0.15rem] rounded-ui-xs border monaco-input-bg monaco-input-fg monaco-input-border outline-none"
       >
         <option value="">— current (new) —</option>
         <option v-for="c in store.agentRecent" :key="c.conversation_id" :value="c.conversation_id">
@@ -48,7 +48,7 @@
       </select>
       <button
         v-if="store.agentConversationId && store.agentOwnerIsSelf"
-        class="px-[0.5rem] py-[0.15rem] text-[0.7rem] rounded-[0.25rem] border monaco-panel-border opacity-80 hover:opacity-100"
+        class="px-[0.5rem] py-[0.15rem] text-ui-xs rounded-ui-xs border monaco-panel-border opacity-80 hover:opacity-100"
         @click="onToggleVisibility"
         :title="store.agentVisibility === 'project' ? 'Click to make private' : 'Click to share with project'"
       >
@@ -56,27 +56,27 @@
       </button>
       <span
         v-else-if="store.agentConversationId && !store.agentOwnerIsSelf"
-        class="text-[0.7rem] opacity-60 italic"
+        class="text-ui-xs opacity-60 italic"
         :title="'Owned by another user — read-only view'"
       >watching</span>
     </div>
 
     <!-- Timeline -->
     <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-2 min-h-0" ref="scrollEl">
-      <div v-if="!messages.length && !store.agentSelectedSlug && store.agentListLoaded && !agents.length" class="flex-1 grid place-items-center monaco-line-fg p-4 text-[0.85rem]">
+      <div v-if="!messages.length && !store.agentSelectedSlug && store.agentListLoaded && !agents.length" class="flex-1 grid place-items-center monaco-line-fg p-4 text-ui-lg">
         No agents seeded. Run <code>rails db:seed</code>.
       </div>
-      <div v-else-if="!messages.length && !store.agentSelectedSlug" class="flex-1 grid place-items-center monaco-line-fg p-4 text-[0.85rem]">
+      <div v-else-if="!messages.length && !store.agentSelectedSlug" class="flex-1 grid place-items-center monaco-line-fg p-4 text-ui-lg">
         Loading agents…
       </div>
-      <div v-else-if="!messages.length" class="flex-1 grid place-items-center monaco-line-fg p-4 text-[0.85rem]">
+      <div v-else-if="!messages.length" class="flex-1 grid place-items-center monaco-line-fg p-4 text-ui-lg">
         Ask {{ activeAgentName }} something.
       </div>
 
       <template v-for="(m, i) in messages" :key="i">
         <!-- User -->
         <div v-if="m.kind === 'user'" class="flex flex-col gap-[0.15rem] max-w-[80ch] self-end">
-          <span class="text-[0.72rem] opacity-60 self-end">you</span>
+          <span class="text-ui-xs opacity-60 self-end">you</span>
           <div
             v-if="m.images && m.images.length"
             class="flex flex-wrap gap-1 self-end max-w-full"
@@ -85,63 +85,63 @@
               v-for="(img, ii) in m.images"
               :key="ii"
               :src="`data:${img.mime};base64,${img.base64}`"
-              class="max-h-40 max-w-[16rem] rounded-[0.25rem] border monaco-panel-border"
+              class="max-h-40 max-w-[16rem] rounded-ui-xs border monaco-panel-border"
               :alt="`attachment ${ii + 1}`"
             />
           </div>
           <span
             v-if="m.text"
-            class="text-[0.86rem] leading-[1.35] break-words whitespace-pre-wrap px-[0.6rem] py-[0.35rem] rounded-[0.35rem] border monaco-panel-border monaco-input-bg"
+            class="text-ui-lg leading-[1.35] break-words whitespace-pre-wrap px-[0.6rem] py-[0.35rem] rounded-ui-md border monaco-panel-border monaco-input-bg"
           >{{ m.text }}</span>
         </div>
 
         <!-- Assistant -->
         <div v-else-if="m.kind === 'assistant'" class="flex flex-col gap-[0.15rem] max-w-[80ch]">
-          <span class="text-[0.72rem] opacity-60 flex items-center gap-2">
+          <span class="text-ui-xs opacity-60 flex items-center gap-2">
             {{ activeAgentName }}
             <span
               v-if="m.truncated"
-              class="text-[0.65rem] uppercase tracking-wider px-[0.35rem] py-[0.05rem] rounded-[0.2rem] border border-amber-600/60 text-amber-400 font-semibold"
+              class="text-ui-2xs uppercase tracking-wider px-[0.35rem] py-[0.05rem] rounded-ui-xs border border-amber-600/60 text-amber-400 font-semibold"
               title="Model hit its max_tokens / context limit before finishing. Increase the model's context window or max_tokens in your provider."
             >truncated</span>
           </span>
           <details
             v-if="m.reasoning"
-            class="text-[0.78rem] border monaco-panel-border rounded-[0.3rem] px-[0.5rem] py-[0.25rem] opacity-80"
+            class="text-ui-sm border monaco-panel-border rounded-ui-sm px-[0.5rem] py-[0.25rem] opacity-80"
           >
             <summary class="cursor-pointer select-none opacity-70">reasoning ({{ m.reasoning.length }} chars)</summary>
-            <div class="markdown-body text-[0.8rem] mt-1 opacity-90" v-html="renderMarkdown(m.reasoning)"></div>
+            <div class="markdown-body text-ui-md mt-1 opacity-90" v-html="renderMarkdown(m.reasoning)"></div>
           </details>
           <div
-            class="markdown-body text-[0.86rem] leading-[1.4] break-words"
+            class="markdown-body text-ui-lg leading-[1.4] break-words"
             :class="m.muted ? 'opacity-60 italic' : ''"
             v-html="renderMarkdown(m.text)"
           ></div>
         </div>
 
         <!-- Tool call/result pair — render as collapsible -->
-        <details v-else-if="m.kind === 'tool_call'" class="text-[0.78rem] border monaco-panel-border rounded-[0.3rem] px-[0.5rem] py-[0.25rem] opacity-90">
+        <details v-else-if="m.kind === 'tool_call'" class="text-ui-sm border monaco-panel-border rounded-ui-sm px-[0.5rem] py-[0.25rem] opacity-90">
           <summary class="cursor-pointer select-none">
             <span class="opacity-70">tool →</span>
             <code class="font-mono">{{ m.name }}({{ shortArgs(m.args) }})</code>
           </summary>
-          <pre class="text-[0.72rem] mt-1 whitespace-pre-wrap break-words opacity-80">{{ pretty(m.args) }}</pre>
+          <pre class="text-ui-xs mt-1 whitespace-pre-wrap break-words opacity-80">{{ pretty(m.args) }}</pre>
         </details>
 
-        <details v-else-if="m.kind === 'tool_result'" class="text-[0.78rem] border monaco-panel-border rounded-[0.3rem] px-[0.5rem] py-[0.25rem] opacity-80">
+        <details v-else-if="m.kind === 'tool_result'" class="text-ui-sm border monaco-panel-border rounded-ui-sm px-[0.5rem] py-[0.25rem] opacity-80">
           <summary class="cursor-pointer select-none">
             <span class="opacity-60">result ←</span>
             <code class="font-mono">{{ m.name }}</code>
             <span class="opacity-60">{{ resultSummary(m.result) }}</span>
           </summary>
-          <pre class="text-[0.72rem] mt-1 whitespace-pre-wrap break-words opacity-80">{{ pretty(m.result) }}</pre>
+          <pre class="text-ui-xs mt-1 whitespace-pre-wrap break-words opacity-80">{{ pretty(m.result) }}</pre>
         </details>
 
         <!-- System / error -->
-        <div v-else-if="m.kind === 'error'" class="text-[0.78rem] text-red-400 italic">
+        <div v-else-if="m.kind === 'error'" class="text-ui-sm text-red-400 italic">
           {{ m.text }}
         </div>
-        <div v-else class="text-[0.78rem] opacity-60 italic">{{ m.text }}</div>
+        <div v-else class="text-ui-sm opacity-60 italic">{{ m.text }}</div>
       </template>
     </div>
 
@@ -162,11 +162,11 @@
         >
           <img
             :src="`data:${img.mime};base64,${img.base64}`"
-            class="h-16 w-16 object-cover rounded-[0.25rem] border monaco-panel-border"
+            class="h-16 w-16 object-cover rounded-ui-xs border monaco-panel-border"
             :alt="`pending ${idx + 1}`"
           />
           <button
-            class="absolute -top-1 -right-1 w-4 h-4 leading-[0.85rem] text-[0.7rem] rounded-full bg-black/80 text-white opacity-80 hover:opacity-100"
+            class="absolute -top-1 -right-1 w-4 h-4 leading-[0.85rem] text-ui-xs rounded-full bg-black/80 text-white opacity-80 hover:opacity-100"
             @click="removePending(idx)"
             title="Remove"
           >×</button>
@@ -175,7 +175,7 @@
 
       <div class="flex gap-2">
         <button
-          class="px-[0.6rem] py-[0.45rem] text-[0.85rem] rounded-[0.3rem] border monaco-panel-border opacity-80 hover:opacity-100 disabled:opacity-30 disabled:cursor-default"
+          class="px-[0.6rem] py-[0.45rem] text-ui-lg rounded-ui-sm border monaco-panel-border opacity-80 hover:opacity-100 disabled:opacity-30 disabled:cursor-default"
           @click="fileInputEl?.click()"
           :disabled="!canSend"
           title="Attach image(s) (or paste / drag-drop)"
@@ -195,10 +195,10 @@
           :placeholder="placeholder"
           :disabled="!canSend"
           rows="1"
-          class="flex-1 px-[0.65rem] py-[0.45rem] text-[0.85rem] rounded-[0.3rem] outline-none font-[inherit] border monaco-input-bg monaco-input-fg monaco-input-border focus:monaco-focus-border placeholder:monaco-line-fg resize-none"
+          class="flex-1 px-[0.65rem] py-[0.45rem] text-ui-lg rounded-ui-sm outline-none font-[inherit] border monaco-input-bg monaco-input-fg monaco-input-border focus:monaco-focus-border placeholder:monaco-line-fg resize-none"
         ></textarea>
         <button
-          class="px-[0.9rem] py-[0.45rem] text-[0.85rem] text-white rounded-[0.3rem] cursor-pointer font-[inherit] border-0 monaco-focus-bg hover:brightness-115 disabled:opacity-40 disabled:cursor-default"
+          class="px-[0.9rem] py-[0.45rem] text-ui-lg text-white rounded-ui-sm cursor-pointer font-[inherit] border-0 monaco-focus-bg hover:brightness-115 disabled:opacity-40 disabled:cursor-default"
           @click="onSend"
           :disabled="!canSend || (!draft.trim() && !pendingImages.length)"
         >Send</button>

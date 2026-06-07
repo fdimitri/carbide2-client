@@ -1,19 +1,19 @@
 <template>
   <aside id="pane-explorer" class="border-r border-line bg-gradient-to-b from-bg-2/95 to-bg-1/95 flex flex-col min-h-0 min-w-0">
-    <div class="flex items-center justify-between px-3 py-[0.65rem] border-b border-line text-[0.84rem] font-bold uppercase tracking-[0.08em]">
+    <div class="flex items-center justify-between px-3 py-[0.65rem] border-b border-line text-ui-md font-bold uppercase tracking-[0.08em]">
       <span>Explorer</span>
     </div>
-    <input v-model="explorerSearch" class="mx-[0.6rem] mt-[0.6rem] mb-[0.4rem] px-[0.55rem] py-[0.45rem] text-[0.82rem] bg-bg-1 border border-line text-text rounded-[0.35rem] focus:outline-none focus:border-accent-bright" placeholder="Filter explorer..." />
+    <input v-model="explorerSearch" class="mx-[0.6rem] mt-[0.6rem] mb-[0.4rem] px-[0.55rem] py-[0.45rem] text-ui-md bg-bg-1 border border-line text-text rounded-ui-md focus:outline-none focus:border-accent-bright" placeholder="Filter explorer..." />
 
     <!-- Empty-project banner: project has no files yet -> offer git clone.
          Hidden as soon as the tree has any entry. -->
-    <div v-if="fileTree.length === 0 && !gitImportRunning" class="mx-[0.6rem] mb-[0.5rem] p-[0.55rem] border border-dashed border-dim rounded-[0.35rem] bg-bg-1">
-      <div class="text-[0.78rem] text-muted mb-[0.35rem]">This project is empty.</div>
-      <button class="w-full px-[0.55rem] py-[0.34rem] bg-transparent border border-muted text-text text-[0.8rem] rounded-[0.35rem] hover:border-accent-bright hover:text-accent-fg" @click="showGitImportDialog = true">
+    <div v-if="fileTree.length === 0 && !gitImportRunning" class="mx-[0.6rem] mb-[0.5rem] p-[0.55rem] border border-dashed border-dim rounded-ui-md bg-bg-1">
+      <div class="text-ui-sm text-muted mb-[0.35rem]">This project is empty.</div>
+      <button class="w-full px-[0.55rem] py-[0.34rem] bg-transparent border border-muted text-text text-ui-md rounded-ui-md hover:border-accent-bright hover:text-accent-fg" @click="showGitImportDialog = true">
         <i class="pi pi-github mr-[0.35rem]"></i>Clone from git URL
       </button>
     </div>
-    <div v-else-if="gitImportRunning" class="mx-[0.6rem] mb-[0.5rem] p-[0.55rem] border border-muted rounded-[0.35rem] bg-bg-1 text-[0.78rem] text-accent-fg">
+    <div v-else-if="gitImportRunning" class="mx-[0.6rem] mb-[0.5rem] p-[0.55rem] border border-muted rounded-ui-md bg-bg-1 text-ui-sm text-accent-fg">
       <i class="pi pi-spin pi-spinner mr-[0.35rem]"></i>Cloning {{ gitImportUrl }}…
     </div>
 
@@ -49,7 +49,7 @@
                  project_settings.agent_shell_busy_timeout_s). -->
             <span
               v-if="slotProps.node.data?.kind === 'terminal' && slotProps.node.data?.agentAccessible"
-              class="ml-1 px-[0.35rem] py-[0.05rem] text-[0.6rem] font-bold tracking-wide rounded border"
+              class="ml-1 px-[0.35rem] py-[0.05rem] text-ui-3xs font-bold tracking-wide rounded border"
               :class="slotProps.node.data?.agentBusy
                 ? 'bg-warn/15 border-warn text-warn'
                 : 'bg-sel border-accent-bright text-accent-fg'"
@@ -57,7 +57,7 @@
             >{{ slotProps.node.data?.agentBusy ? 'AGENT ●' : 'AGENT' }}</span>
             <i
               v-if="slotProps.node.data?.isOpen"
-              class="pi pi-circle-fill ml-auto text-accent-bright text-[0.52rem] opacity-90"
+              class="pi pi-circle-fill ml-auto text-accent-bright text-ui-3xs opacity-90"
               title="Open in this browser context"
               aria-hidden="true"
             ></i>
@@ -70,26 +70,26 @@
     <!-- Create File Dialog -->
     <Dialog v-model:visible="showCreateFileDialog" modal header="New File" :style="{ width: '22rem' }">
       <div class="flex flex-col gap-[0.35rem] mb-[0.7rem]">
-        <label class="text-muted text-[0.78rem] font-semibold">File Name</label>
+        <label class="text-muted text-ui-sm font-semibold">File Name</label>
         <InputText v-model="createFileName" class="w-full" @keydown.enter="confirmCreateFile" autofocus />
-        <span class="text-muted text-[0.75rem]">in {{ createDialogParentPath }}</span>
+        <span class="text-muted text-ui-sm">in {{ createDialogParentPath }}</span>
       </div>
       <template #footer>
-        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-muted text-text text-[0.85rem] rounded-[0.35rem] cursor-pointer hover:border-accent-bright hover:text-accent-fg" @click="showCreateFileDialog = false">Cancel</button>
-        <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-sel border border-accent text-accent-fg rounded-[0.35rem] cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" :disabled="!createFileName.trim()" @click="confirmCreateFile">Create</button>
+        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-muted text-text text-ui-lg rounded-ui-md cursor-pointer hover:border-accent-bright hover:text-accent-fg" @click="showCreateFileDialog = false">Cancel</button>
+        <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-sel border border-accent text-accent-fg rounded-ui-md cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" :disabled="!createFileName.trim()" @click="confirmCreateFile">Create</button>
       </template>
     </Dialog>
 
     <!-- Create Folder Dialog -->
     <Dialog v-model:visible="showCreateFolderDialog" modal header="New Folder" :style="{ width: '22rem' }">
       <div class="flex flex-col gap-[0.35rem] mb-[0.7rem]">
-        <label class="text-muted text-[0.78rem] font-semibold">Folder Name</label>
+        <label class="text-muted text-ui-sm font-semibold">Folder Name</label>
         <InputText v-model="createFolderName" class="w-full" @keydown.enter="confirmCreateFolder" autofocus />
-        <span class="text-muted text-[0.75rem]">in {{ createDialogParentPath }}</span>
+        <span class="text-muted text-ui-sm">in {{ createDialogParentPath }}</span>
       </div>
       <template #footer>
-        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-muted text-text text-[0.85rem] rounded-[0.35rem] cursor-pointer hover:border-accent-bright hover:text-accent-fg" @click="showCreateFolderDialog = false">Cancel</button>
-        <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-sel border border-accent text-accent-fg rounded-[0.35rem] cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" :disabled="!createFolderName.trim()" @click="confirmCreateFolder">Create</button>
+        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-muted text-text text-ui-lg rounded-ui-md cursor-pointer hover:border-accent-bright hover:text-accent-fg" @click="showCreateFolderDialog = false">Cancel</button>
+        <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-sel border border-accent text-accent-fg rounded-ui-md cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" :disabled="!createFolderName.trim()" @click="confirmCreateFolder">Create</button>
       </template>
     </Dialog>
 
@@ -98,15 +98,15 @@
          a UX gate, not a security boundary. -->
     <Dialog v-model:visible="showGitImportDialog" modal header="Clone from git URL" :style="{ width: '28rem' }">
       <div class="flex flex-col gap-[0.35rem] mb-[0.7rem]">
-        <label class="text-muted text-[0.78rem] font-semibold">Repository URL</label>
+        <label class="text-muted text-ui-sm font-semibold">Repository URL</label>
         <InputText v-model="gitImportUrl" class="w-full" placeholder="https://github.com/user/repo.git" autofocus />
-        <label class="text-muted text-[0.78rem] font-semibold mt-[0.4rem]">Branch / ref <span class="font-normal opacity-70">(blank = default branch)</span></label>
+        <label class="text-muted text-ui-sm font-semibold mt-[0.4rem]">Branch / ref <span class="font-normal opacity-70">(blank = default branch)</span></label>
         <InputText v-model="gitImportRef" class="w-full" placeholder="default branch" />
-        <span v-if="gitImportError" class="text-warn text-[0.78rem] mt-[0.3rem]">{{ gitImportError }}</span>
+        <span v-if="gitImportError" class="text-warn text-ui-sm mt-[0.3rem]">{{ gitImportError }}</span>
       </div>
       <template #footer>
-        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-muted text-text text-[0.85rem] rounded-[0.35rem] cursor-pointer hover:border-accent-bright hover:text-accent-fg" @click="showGitImportDialog = false" :disabled="gitImportSubmitting">Cancel</button>
-        <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-sel border border-accent text-accent-fg rounded-[0.35rem] cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" :disabled="!gitImportUrl.trim() || gitImportSubmitting" @click="confirmGitImport">
+        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-muted text-text text-ui-lg rounded-ui-md cursor-pointer hover:border-accent-bright hover:text-accent-fg" @click="showGitImportDialog = false" :disabled="gitImportSubmitting">Cancel</button>
+        <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-sel border border-accent text-accent-fg rounded-ui-md cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" :disabled="!gitImportUrl.trim() || gitImportSubmitting" @click="confirmGitImport">
           {{ gitImportSubmitting ? 'Starting…' : 'Clone' }}
         </button>
       </template>
@@ -114,9 +114,9 @@
 
     <!-- Properties Dialog (#5 stat-style file info) -->
     <Dialog v-model:visible="showPropertiesDialog" modal header="Properties" :style="{ width: '28rem' }">
-      <div v-if="propertiesLoading" class="text-muted text-[0.82rem]">Loading…</div>
-      <div v-else-if="propertiesError" class="text-warn text-[0.82rem]">{{ propertiesError }}</div>
-      <table v-else-if="propertiesData" class="w-full text-[0.82rem]">
+      <div v-if="propertiesLoading" class="text-muted text-ui-md">Loading…</div>
+      <div v-else-if="propertiesError" class="text-warn text-ui-md">{{ propertiesError }}</div>
+      <table v-else-if="propertiesData" class="w-full text-ui-md">
         <tbody>
           <tr v-for="row in propertiesRows" :key="row.label" class="align-top">
             <td class="py-[0.18rem] pr-2 text-muted whitespace-nowrap w-[10rem]">{{ row.label }}</td>
@@ -125,7 +125,7 @@
         </tbody>
       </table>
       <template #footer>
-        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-muted text-text text-[0.85rem] rounded-[0.35rem] cursor-pointer hover:border-accent-bright hover:text-accent-fg" @click="showPropertiesDialog = false">Close</button>
+        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-muted text-text text-ui-lg rounded-ui-md cursor-pointer hover:border-accent-bright hover:text-accent-fg" @click="showPropertiesDialog = false">Close</button>
       </template>
     </Dialog>
   </aside>

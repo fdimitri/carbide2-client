@@ -7,7 +7,7 @@
     <div class="max-w-2xl w-full mx-auto px-8 py-8">
 
       <h2 class="text-base font-bold text-text mb-1 tracking-tight">Agent Configuration</h2>
-      <p class="text-muted text-[0.8rem] mb-6">
+      <p class="text-muted text-ui-md mb-6">
         Workspace-global LLM personas. Changes take effect on the next agent
         request — no redeploy needed.
       </p>
@@ -21,7 +21,7 @@
           <button
             v-for="a in agents"
             :key="a.id"
-            class="px-3 py-1.5 rounded-lg border text-[0.8rem] cursor-pointer transition-colors"
+            class="px-3 py-1.5 rounded-lg border text-ui-md cursor-pointer transition-colors"
             :class="a.id === selectedId
               ? 'border-accent bg-sel text-accent-fg'
               : 'border-line bg-bg-2/60 text-muted hover:border-accent-bright hover:text-text'"
@@ -35,11 +35,11 @@
         <template v-if="form">
           <!-- ── Identity ───────────────────────────────────────────────── -->
           <section class="mb-7">
-            <h3 class="text-[0.72rem] font-semibold text-muted uppercase tracking-widest mb-3">Identity</h3>
+            <h3 class="text-ui-xs font-semibold text-muted uppercase tracking-widest mb-3">Identity</h3>
 
             <div class="flex gap-4">
               <div class="flex-1">
-                <label class="block text-[0.82rem] text-text mb-1">Name</label>
+                <label class="block text-ui-md text-text mb-1">Name</label>
                 <input
                   v-model="form.name"
                   class="w-full px-3 py-2 rounded-lg bg-bg-input border border-line text-text text-sm
@@ -47,7 +47,7 @@
                 />
               </div>
               <div class="w-40">
-                <label class="block text-[0.82rem] text-text mb-1">Role</label>
+                <label class="block text-ui-md text-text mb-1">Role</label>
                 <select
                   v-model="form.role"
                   class="w-full px-3 py-2 rounded-lg bg-bg-input border border-line text-text text-sm
@@ -59,10 +59,10 @@
             </div>
 
             <div class="mt-1">
-              <span class="text-[0.72rem] text-dim font-mono">slug: {{ selectedAgent?.slug }}</span>
+              <span class="text-ui-xs text-dim font-mono">slug: {{ selectedAgent?.slug }}</span>
             </div>
 
-            <label class="block text-[0.82rem] text-text mb-1 mt-3">Description</label>
+            <label class="block text-ui-md text-text mb-1 mt-3">Description</label>
             <input
               v-model="form.description"
               class="w-full px-3 py-2 rounded-lg bg-bg-input border border-line text-text text-sm
@@ -73,28 +73,28 @@
 
           <!-- ── Connection ─────────────────────────────────────────────── -->
           <section class="mb-7">
-            <h3 class="text-[0.72rem] font-semibold text-muted uppercase tracking-widest mb-3">Connection</h3>
+            <h3 class="text-ui-xs font-semibold text-muted uppercase tracking-widest mb-3">Connection</h3>
 
-            <label class="block text-[0.82rem] text-text mb-1">Provider URL</label>
+            <label class="block text-ui-md text-text mb-1">Provider URL</label>
             <input
               v-model="form.provider_url"
               class="w-full px-3 py-2 rounded-lg bg-bg-input border border-line text-text font-mono text-sm
                      placeholder:text-dim focus:outline-none focus:border-accent transition-all"
               placeholder="http://host.k3d.internal:11234/v1"
             />
-            <p class="text-[0.72rem] text-muted mt-1">
+            <p class="text-ui-xs text-muted mt-1">
               OpenAI-compatible base URL. The worker appends
               <code class="font-mono text-accent">/chat/completions</code>.
             </p>
 
-            <label class="block text-[0.82rem] text-text mb-1 mt-3">Model</label>
+            <label class="block text-ui-md text-text mb-1 mt-3">Model</label>
             <input
               v-model="form.model"
               class="w-full px-3 py-2 rounded-lg bg-bg-input border border-line text-text font-mono text-sm
                      focus:outline-none focus:border-accent transition-all"
             />
 
-            <label class="block text-[0.82rem] text-text mb-1 mt-3">
+            <label class="block text-ui-md text-text mb-1 mt-3">
               API key
               <span class="text-dim">({{ selectedAgent?.api_key_set ? 'set' : 'none' }})</span>
             </label>
@@ -110,34 +110,34 @@
 
           <!-- ── System prompt ──────────────────────────────────────────── -->
           <section class="mb-7">
-            <h3 class="text-[0.72rem] font-semibold text-muted uppercase tracking-widest mb-3">System Prompt</h3>
+            <h3 class="text-ui-xs font-semibold text-muted uppercase tracking-widest mb-3">System Prompt</h3>
             <textarea
               v-model="form.system_prompt"
               rows="6"
-              class="w-full px-3 py-2 rounded-lg bg-bg-input border border-line text-text font-mono text-[0.8rem] leading-relaxed
+              class="w-full px-3 py-2 rounded-lg bg-bg-input border border-line text-text font-mono text-ui-md leading-relaxed
                      focus:outline-none focus:border-accent transition-all resize-y"
             ></textarea>
           </section>
 
           <!-- ── Tools ──────────────────────────────────────────────────── -->
           <section class="mb-7">
-            <h3 class="text-[0.72rem] font-semibold text-muted uppercase tracking-widest mb-3">Tools</h3>
+            <h3 class="text-ui-xs font-semibold text-muted uppercase tracking-widest mb-3">Tools</h3>
             <div class="flex flex-col gap-2">
               <label
                 v-for="t in TOOL_SLUGS"
                 :key="t"
-                class="flex items-center gap-2 text-[0.82rem] text-text cursor-pointer select-none w-fit"
+                class="flex items-center gap-2 text-ui-md text-text cursor-pointer select-none w-fit"
               >
                 <input type="checkbox" :value="t" v-model="form.allowed_tools" class="accent-accent" />
                 <code class="font-mono">{{ t }}</code>
               </label>
             </div>
 
-            <label class="flex items-center gap-2 text-[0.82rem] text-text cursor-pointer select-none w-fit mt-3">
+            <label class="flex items-center gap-2 text-ui-md text-text cursor-pointer select-none w-fit mt-3">
               <input type="checkbox" v-model="form.shell_exec_enabled" class="accent-warn" />
               <span>Allow <code class="font-mono text-warn">shell_exec</code> capability</span>
             </label>
-            <p class="text-[0.72rem] text-muted mt-1">
+            <p class="text-ui-xs text-muted mt-1">
               Two-layer gate: shell_exec runs only when this is on
               <em>and</em> <code class="font-mono">shell_exec</code> is in the tool list above,
               and only in terminals the user marked agent-accessible.
@@ -146,10 +146,10 @@
 
           <!-- ── Sampling ───────────────────────────────────────────────── -->
           <section class="mb-7">
-            <h3 class="text-[0.72rem] font-semibold text-muted uppercase tracking-widest mb-3">Sampling</h3>
+            <h3 class="text-ui-xs font-semibold text-muted uppercase tracking-widest mb-3">Sampling</h3>
             <div class="flex gap-4">
               <div class="flex-1">
-                <label class="block text-[0.82rem] text-text mb-1">Temperature</label>
+                <label class="block text-ui-md text-text mb-1">Temperature</label>
                 <input
                   v-model.number="form.temperature"
                   type="number" min="0" max="2" step="0.05"
@@ -158,7 +158,7 @@
                 />
               </div>
               <div class="flex-1">
-                <label class="block text-[0.82rem] text-text mb-1">Max tokens</label>
+                <label class="block text-ui-md text-text mb-1">Max tokens</label>
                 <input
                   v-model.number="form.max_tokens"
                   type="number" min="1" step="1"
@@ -171,7 +171,7 @@
 
           <!-- ── Status + actions ───────────────────────────────────────── -->
           <section class="mb-7">
-            <label class="flex items-center gap-2 text-[0.82rem] text-text cursor-pointer select-none w-fit">
+            <label class="flex items-center gap-2 text-ui-md text-text cursor-pointer select-none w-fit">
               <input type="checkbox" v-model="form.enabled" class="accent-accent" />
               Enabled (selectable in the agent picker)
             </label>

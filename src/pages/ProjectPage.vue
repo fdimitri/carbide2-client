@@ -106,7 +106,7 @@
 
         <nav class="flex items-center justify-center gap-1 px-2 py-1 border-t border-line/70 bg-bg-1/90 shrink-0">
             <button v-for="item in dockItems" :key="item.label"
-            class="inline-flex items-center justify-center w-8 h-8 rounded-lg border-0 bg-transparent text-muted cursor-pointer text-[0.95rem] transition-colors hover:bg-accent/15 hover:text-accent"
+            class="inline-flex items-center justify-center w-8 h-8 rounded-lg border-0 bg-transparent text-muted cursor-pointer text-ui-xl transition-colors hover:bg-accent/15 hover:text-accent"
             :title="item.label" @click="item.command">
             <i class="pi" :class="item.icon"></i>
           </button>
@@ -114,11 +114,11 @@
       </section>
     </div>
 
-    <div v-if="error" class="px-3 py-2 bg-warn/15 text-warn border-t border-warn/50 text-[0.84rem]">{{ error }}</div>
+    <div v-if="error" class="px-3 py-2 bg-warn/15 text-warn border-t border-warn/50 text-ui-md">{{ error }}</div>
 
     <Dialog v-model:visible="showCreateTerminalDialog" modal header="Create Terminal" :style="{ width: '28rem' }">
       <div class="flex flex-col gap-[0.35rem] mb-[0.7rem]">
-        <label class="text-muted text-[0.78rem] font-semibold" for="terminal-name">Name</label>
+        <label class="text-muted text-ui-sm font-semibold" for="terminal-name">Name</label>
         <InputText id="terminal-name" v-model="terminalCreateName" class="w-full" @keydown.enter="confirmCreateTerminal" />
       </div>
       <div class="flex items-start gap-[0.5rem] mb-[0.7rem]">
@@ -129,9 +129,9 @@
           class="mt-[0.25rem]"
           @change="onAgentAccessibleToggleFromUi"
         />
-        <label for="terminal-agent-accessible" class="text-[0.82rem] text-text leading-[1.2]">
+        <label for="terminal-agent-accessible" class="text-ui-md text-text leading-[1.2]">
           <span class="font-semibold text-accent-fg">Agent-accessible</span>
-          <span class="block text-muted text-[0.74rem]">
+          <span class="block text-muted text-ui-xs">
             Allow the LLM agent to drive this terminal via shell_exec.
             The agent's commands will appear here live; while it is
             running a command, your keystrokes are dropped until it
@@ -140,34 +140,34 @@
         </label>
       </div>
       <template #footer>
-        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-muted text-text text-[0.85rem] rounded-[0.35rem] cursor-pointer hover:border-accent-bright hover:text-accent-fg" @click="showCreateTerminalDialog = false">Cancel</button>
-        <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-sel border border-accent text-accent-fg rounded-[0.35rem] cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" @click="confirmCreateTerminal">Create</button>
+        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-muted text-text text-ui-lg rounded-ui-md cursor-pointer hover:border-accent-bright hover:text-accent-fg" @click="showCreateTerminalDialog = false">Cancel</button>
+        <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-sel border border-accent text-accent-fg rounded-ui-md cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" @click="confirmCreateTerminal">Create</button>
       </template>
     </Dialog>
 
     <Dialog v-model:visible="showCreateChannelDialog" modal header="Create Channel" :style="{ width: '24rem' }">
       <div class="flex flex-col gap-[0.35rem] mb-[0.7rem]">
-        <label class="text-muted text-[0.78rem] font-semibold" for="channel-name">Channel Name</label>
+        <label class="text-muted text-ui-sm font-semibold" for="channel-name">Channel Name</label>
         <InputText id="channel-name" v-model="channelCreateName" class="w-full" @keydown.enter="confirmCreateChannel" />
       </div>
       <template #footer>
-        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-muted text-text text-[0.85rem] rounded-[0.35rem] cursor-pointer hover:border-accent-bright hover:text-accent-fg" @click="showCreateChannelDialog = false">Cancel</button>
-        <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-sel border border-accent text-accent-fg rounded-[0.35rem] cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" @click="confirmCreateChannel">Create</button>
+        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-muted text-text text-ui-lg rounded-ui-md cursor-pointer hover:border-accent-bright hover:text-accent-fg" @click="showCreateChannelDialog = false">Cancel</button>
+        <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-sel border border-accent text-accent-fg rounded-ui-md cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" @click="confirmCreateChannel">Create</button>
       </template>
     </Dialog>
 
     <Dialog v-model:visible="showUploadDialog" modal :header="uploadMode === 'archive' ? 'Upload & Extract Archive' : 'Upload File / Archive'" :style="{ width: '28rem' }">
       <div class="flex flex-col gap-[0.6rem] mb-[0.7rem]">
-        <label class="text-muted text-[0.78rem] font-semibold" for="upload-file">File (any file, .zip, .tar, .tar.gz)</label>
+        <label class="text-muted text-ui-sm font-semibold" for="upload-file">File (any file, .zip, .tar, .tar.gz)</label>
         <input id="upload-file" type="file" @change="uploadFile = $event.target.files?.[0] || null"
-               class="text-[0.85rem] text-text" />
-        <label class="text-muted text-[0.78rem] font-semibold mt-[0.4rem]" for="upload-dest">Destination Path</label>
+               class="text-ui-lg text-text" />
+        <label class="text-muted text-ui-sm font-semibold mt-[0.4rem]" for="upload-dest">Destination Path</label>
         <InputText id="upload-dest" v-model="uploadDest" class="w-full" placeholder="/" />
-        <div v-if="uploadResult" class="text-muted text-[0.75rem] mt-[0.3rem] whitespace-pre-wrap">{{ uploadResult }}</div>
+        <div v-if="uploadResult" class="text-muted text-ui-sm mt-[0.3rem] whitespace-pre-wrap">{{ uploadResult }}</div>
       </div>
       <template #footer>
-        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-muted text-text text-[0.85rem] rounded-[0.35rem] cursor-pointer hover:border-accent-bright hover:text-accent-fg" @click="showUploadDialog = false">Cancel</button>
-        <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-sel border border-accent text-accent-fg rounded-[0.35rem] cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" :disabled="!uploadFile || uploading" @click="confirmUpload">{{ uploading ? 'Uploading…' : 'Upload' }}</button>
+        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-muted text-text text-ui-lg rounded-ui-md cursor-pointer hover:border-accent-bright hover:text-accent-fg" @click="showUploadDialog = false">Cancel</button>
+        <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-sel border border-accent text-accent-fg rounded-ui-md cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" :disabled="!uploadFile || uploading" @click="confirmUpload">{{ uploading ? 'Uploading…' : 'Upload' }}</button>
       </template>
     </Dialog>
 

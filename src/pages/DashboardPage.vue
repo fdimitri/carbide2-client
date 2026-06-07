@@ -4,11 +4,11 @@
     <div id="dash-hero" class="relative border-b border-line/70 bg-gradient-to-b from-bg-1/50 to-transparent px-8 py-6">
       <div class="max-w-5xl mx-auto flex items-end justify-between gap-6 flex-wrap">
         <div class="min-w-0">
-          <p class="flex items-center gap-2 text-muted text-[0.7rem] font-mono uppercase tracking-[0.2em] mb-1.5">
+          <p class="flex items-center gap-2 text-muted text-ui-xs font-mono uppercase tracking-[0.2em] mb-1.5">
             <span class="inline-block w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_8px_rgba(90,176,255,0.85)]"></span>
             {{ scopeLabel }}
           </p>
-          <h1 class="text-text text-[1.7rem] font-bold tracking-tight leading-none">{{ pluralTitle }}</h1>
+          <h1 class="text-text text-ui-3xl font-bold tracking-tight leading-none">{{ pluralTitle }}</h1>
         </div>
         <div class="flex items-center gap-2">
           <a href="/about" target="_blank" class="btn-ghost no-underline">About</a>
@@ -114,7 +114,7 @@
             </span>
           </div>
           <p class="text-muted text-xs mb-4 line-clamp-2 leading-relaxed">{{ p.description || 'No description' }}</p>
-          <span class="text-[0.65rem] text-dim font-mono">{{ formatDate(p.created_at) }}</span>
+          <span class="text-ui-2xs text-dim font-mono">{{ formatDate(p.created_at) }}</span>
         </div>
       </div>
 

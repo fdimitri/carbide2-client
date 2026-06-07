@@ -48,13 +48,13 @@
           <p class="text-dim text-label font-mono tracking-wide">
             demo · test@example.com · password123
           </p>
-          <p v-if="acronym" class="mt-4 text-dim/60 text-[0.7rem] italic leading-snug">
+          <p v-if="acronym" class="mt-4 text-dim/60 text-ui-xs italic leading-snug">
             CARBIDE is&hellip; {{ acronym }}
           </p>
         </div>
       </div>
 
-      <p class="mt-6 text-center text-dim text-[0.7rem] font-mono tracking-wide">{{ VERSION_LABEL }}</p>
+      <p class="mt-6 text-center text-dim text-ui-xs font-mono tracking-wide">{{ VERSION_LABEL }}</p>
     </div>
   </div>
 </template>

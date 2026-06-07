@@ -11,7 +11,7 @@
 
       <!-- Featured -->
       <div v-if="featured" class="rounded-xl border border-accent/25 bg-accent/5 px-5 py-4 mb-10">
-        <div class="text-accent text-[0.65rem] font-semibold tracking-[0.15em] uppercase mb-1">
+        <div class="text-accent text-ui-2xs font-semibold tracking-[0.15em] uppercase mb-1">
           Today's answer
         </div>
         <div class="text-text/80 italic text-base leading-relaxed">
@@ -20,7 +20,7 @@
       </div>
 
       <!-- Full list -->
-      <h2 class="text-dim text-[0.65rem] font-semibold tracking-[0.15em] uppercase mb-4">
+      <h2 class="text-dim text-ui-2xs font-semibold tracking-[0.15em] uppercase mb-4">
         All known definitions
       </h2>
       <ul v-if="acronyms.length" class="flex flex-col gap-2">

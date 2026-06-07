@@ -12,7 +12,7 @@
          agent releases (or the worker auto-releases on timeout). -->
     <div
       v-if="terminalId && agentBusy"
-      class="absolute top-[0.35rem] right-[0.6rem] flex items-center gap-[0.35rem] px-[0.55rem] py-[0.25rem] text-[0.74rem] font-semibold bg-warn/15 border border-warn text-warn rounded-[0.35rem] pointer-events-none"
+      class="absolute top-[0.35rem] right-[0.6rem] flex items-center gap-[0.35rem] px-[0.55rem] py-[0.25rem] text-ui-xs font-semibold bg-warn/15 border border-warn text-warn rounded-ui-md pointer-events-none"
       :title="agentBusyUntilMs ? `Agent lock auto-releases in ${Math.max(0, Math.round((agentBusyUntilMs - nowMs) / 1000))}s` : 'Agent is running a command'"
     >
       <i class="pi pi-lock" aria-hidden="true"></i>
