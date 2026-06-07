@@ -20,9 +20,9 @@
   >
     <div class="flex gap-[0.8rem] min-h-[24rem]">
       <!-- Left: list -->
-      <div class="w-[18rem] shrink-0 border-r border-[#243246] pr-[0.6rem] overflow-y-auto">
+      <div class="w-[18rem] shrink-0 border-r border-dim pr-[0.6rem] overflow-y-auto">
         <div v-if="loading" class="text-muted text-[0.82rem]">Loading…</div>
-        <div v-else-if="loadError" class="text-[#f38ba8] text-[0.82rem]">{{ loadError }}</div>
+        <div v-else-if="loadError" class="text-warn text-[0.82rem]">{{ loadError }}</div>
         <div v-else-if="recordings.length === 0" class="text-muted text-[0.82rem]">
           No recordings yet. Right-click a terminal → Start Recording.
         </div>
@@ -32,12 +32,12 @@
             :key="r.id"
             class="cursor-pointer px-[0.45rem] py-[0.35rem] rounded-[0.3rem] text-[0.82rem] border border-transparent"
             :class="selected && selected.id === r.id
-              ? 'bg-[#10243a] border-[#587296] text-[#e6f3ff]'
-              : 'text-[#c5d4ea] hover:bg-[#0e1e2e]'"
+              ? 'bg-sel border-muted text-accent-fg'
+              : 'text-text hover:bg-sel'"
             @click="selectRecording(r)"
           >
             <div class="font-semibold flex items-center gap-[0.35rem]">
-              <span v-if="r.status === 'recording'" class="inline-block w-[0.5rem] h-[0.5rem] rounded-full bg-[#f38ba8] animate-pulse" />
+              <span v-if="r.status === 'recording'" class="inline-block w-[0.5rem] h-[0.5rem] rounded-full bg-warn animate-pulse" />
               {{ r.terminal_name || `terminal #${r.terminal_id}` }}
             </div>
             <div class="text-muted text-[0.72rem]">{{ formatDate(r.started_at) }}</div>
@@ -56,17 +56,17 @@
         <template v-else>
           <div class="flex items-center gap-[0.4rem] text-[0.78rem]">
             <button
-              class="px-2 py-[0.25rem] border border-[#587296] rounded-[0.3rem] cursor-pointer hover:border-[#8fcaff]"
+              class="px-2 py-[0.25rem] border border-muted rounded-[0.3rem] cursor-pointer hover:border-accent-bright"
               :disabled="playerBusy"
               @click="playSelected"
             >{{ playing ? 'Restart' : 'Play' }}</button>
             <button
-              class="px-2 py-[0.25rem] border border-[#587296] rounded-[0.3rem] cursor-pointer hover:border-[#8fcaff]"
+              class="px-2 py-[0.25rem] border border-muted rounded-[0.3rem] cursor-pointer hover:border-accent-bright"
               :disabled="!playing"
               @click="stopPlayback"
             >Stop</button>
             <label class="text-muted ml-[0.4rem]">Speed</label>
-            <select v-model.number="speed" class="bg-[#0e1e2e] border border-[#243246] text-[#c5d4ea] rounded-[0.25rem] px-1 py-[0.1rem]">
+            <select v-model.number="speed" class="bg-sel border border-dim text-text rounded-[0.25rem] px-1 py-[0.1rem]">
               <option :value="0.5">0.5×</option>
               <option :value="1">1×</option>
               <option :value="2">2×</option>
@@ -79,11 +79,11 @@
           <div ref="termEl" class="flex-1 min-h-[18rem] bg-black rounded-[0.35rem]" />
           <div class="flex items-center gap-[0.4rem] text-[0.78rem] mt-[0.2rem]">
             <a
-              class="text-[#8fcaff] hover:underline cursor-pointer"
+              class="text-accent-bright hover:underline cursor-pointer"
               @click="downloadCast"
             >Download .cast</a>
             <button
-              class="ml-auto px-2 py-[0.25rem] border border-[#f38ba8] text-[#f38ba8] rounded-[0.3rem] cursor-pointer hover:bg-[#2a1422]"
+              class="ml-auto px-2 py-[0.25rem] border border-warn text-warn rounded-[0.3rem] cursor-pointer hover:bg-warn/10"
               :disabled="selected.status === 'recording'"
               @click="deleteSelected"
               :title="selected.status === 'recording' ? 'Stop recording first' : 'Delete this recording'"

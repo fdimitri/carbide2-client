@@ -12,9 +12,6 @@
         </div>
         <div class="flex items-center gap-2">
           <a href="/about" target="_blank" class="btn-ghost no-underline">About</a>
-          <button @click="router.push('/preferences')" title="User Preferences" class="btn-ghost">
-            <i class="pi pi-cog text-[0.8rem]"></i> Preferences
-          </button>
           <button @click="showNewForm = !showNewForm" class="btn-primary">
             <span class="text-base leading-none font-bold">+</span> New {{ singularTitle }}
           </button>
@@ -117,7 +114,7 @@
             </span>
           </div>
           <p class="text-muted text-xs mb-4 line-clamp-2 leading-relaxed">{{ p.description || 'No description' }}</p>
-          <span class="text-[0.65rem] text-[#3a4d64] font-mono">{{ formatDate(p.created_at) }}</span>
+          <span class="text-[0.65rem] text-dim font-mono">{{ formatDate(p.created_at) }}</span>
         </div>
       </div>
 

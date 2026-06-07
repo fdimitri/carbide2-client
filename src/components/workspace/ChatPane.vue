@@ -10,7 +10,7 @@
         <template v-if="!callActive">
           <button
             class="inline-flex items-center gap-[0.35rem] px-[0.7rem] py-[0.32rem] text-[0.78rem] rounded-[0.3rem] cursor-pointer border monaco-input-border monaco-input-bg monaco-fg hover:monaco-focus-border disabled:opacity-40 disabled:cursor-default"
-            :class="callAvailable ? 'bg-[#2d7d46] text-white border-0 hover:brightness-110' : ''"
+            :class="callAvailable ? 'bg-success text-white border-0 hover:brightness-110' : ''"
             :disabled="!canSend"
             :title="callAvailable ? 'Join the call in progress in this channel' : 'Start a video call in this channel'"
             @click="emit('start-call')"
@@ -29,7 +29,7 @@
             @click="emit('toggle-cam')"
           >{{ camEnabled ? 'Camera off' : 'Camera on' }}</button>
           <button
-            class="px-[0.6rem] py-[0.3rem] text-[0.76rem] text-white rounded-[0.3rem] cursor-pointer border-0 bg-[#c0392b] hover:brightness-110"
+            class="px-[0.6rem] py-[0.3rem] text-[0.76rem] text-white rounded-[0.3rem] cursor-pointer border-0 bg-warn hover:brightness-110"
             @click="emit('leave-call')"
           >Leave</button>
           <span class="text-[0.72rem] monaco-line-fg ml-auto">{{ participants.length + 1 }} in call</span>
@@ -47,17 +47,34 @@
         />
       </div>
 
-      <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-2 min-h-0" ref="chatEl">
+      <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-3 min-h-0" ref="chatEl">
         <div v-for="(msg, i) in messages" :key="i"
-          class="flex flex-col gap-[0.1rem] max-w-[80ch]"
           :class="msg.system ? 'opacity-50 italic' : ''"
         >
           <template v-if="!msg.system">
-            <span class="text-[0.8rem] font-semibold opacity-75"
-              :class="msg.user_id === currentUserId ? 'text-[var(--vscode-focusBorder,#007acc)]' : ''"
-            >{{ msg.name }}</span>
-            <span class="text-[0.86rem] leading-[1.3] break-words">{{ msg.text }}</span>
-            <span class="text-[0.72rem] monaco-line-fg">{{ formatTime(msg.timestamp) }}</span>
+            <div class="flex items-start gap-2 max-w-[80ch]">
+              <!-- Avatar -->
+              <img
+                v-if="msg.avatar_url"
+                :src="msg.avatar_url"
+                :alt="msg.name"
+                class="shrink-0 w-8 h-8 rounded-md object-cover mt-[0.1rem]"
+              />
+              <span
+                v-else
+                class="shrink-0 grid place-items-center w-8 h-8 rounded-md text-[0.72rem] font-semibold text-white mt-[0.1rem] select-none"
+                :style="{ background: avatarColor(msg.user_id) }"
+              >{{ initials(msg.name) }}</span>
+              <div class="flex flex-col min-w-0 gap-[0.1rem]">
+                <div class="flex items-baseline gap-2">
+                  <span class="text-[0.82rem] font-semibold"
+                    :class="msg.user_id === currentUserId ? 'text-[var(--vscode-focusBorder,#007acc)]' : ''"
+                  >{{ msg.name }}</span>
+                  <span class="text-[0.68rem] monaco-line-fg opacity-70">{{ formatTime(msg.timestamp) }}</span>
+                </div>
+                <span class="text-[0.86rem] leading-[1.35] break-words">{{ msg.text }}</span>
+              </div>
+            </div>
           </template>
           <template v-else>
             <span class="text-[0.78rem] monaco-line-fg">{{ msg.text }}</span>
@@ -201,6 +218,29 @@ function onKeydown(e) {
 function formatTime(ts) {
   if (!ts) return ''
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
+// ── Avatar (Slack-style) ──────────────────────────────────────────────────────
+// Initials fallback when a user has no configured avatar image. Colour is
+// derived deterministically from the user id so a given user is always the
+// same colour across sessions.
+const AVATAR_COLORS = [
+  '#5ab0ff', '#a6e3a1', '#f9e2af', '#f38ba8', '#cba6f7',
+  '#94e2d5', '#fab387', '#89b4fa', '#f5c2e7', '#74c7ec',
+]
+
+function avatarColor(userId) {
+  const key = String(userId ?? '')
+  let hash = 0
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) | 0
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
+}
+
+function initials(name) {
+  const parts = String(name || '?').trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return '?'
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
 }
 </script>
 

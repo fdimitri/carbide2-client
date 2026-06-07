@@ -2,7 +2,7 @@
   <div class="relative flex min-h-screen items-center justify-center px-4 workspace-bg overflow-hidden">
     <!-- ambient glows -->
     <div class="pointer-events-none absolute -top-60 -left-60 w-[500px] h-[500px] rounded-full bg-accent/8 blur-[120px]"></div>
-    <div class="pointer-events-none absolute -bottom-60 -right-40 w-[400px] h-[400px] rounded-full bg-[rgba(85,130,255,0.08)] blur-[100px]"></div>
+    <div class="pointer-events-none absolute -bottom-60 -right-40 w-[400px] h-[400px] rounded-full bg-accent/10 blur-[100px]"></div>
 
     <div class="relative w-full max-w-[360px]">
       <!-- Brand -->

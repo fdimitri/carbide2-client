@@ -1,6 +1,13 @@
 <template>
   <div id="workspace-root" class="flex flex-col flex-1 h-full min-h-0 text-text font-ui workspace-bg">
-    <Menubar :model="menuItems" class="workspace-menubar" />
+    <Menubar :model="menuItems" class="workspace-menubar">
+      <template #start>
+        <BrandMark :size="18" :wordmark="false" class="ml-1 mr-3 shrink-0" />
+      </template>
+      <template #end>
+        <ConnectionStatus class="mr-2" />
+      </template>
+    </Menubar>
 
     <div class="grid flex-1 min-h-0 overflow-hidden [grid-template-columns:300px_minmax(0,1fr)] max-[980px]:[grid-template-columns:1fr] max-[980px]:[grid-template-rows:42vh_minmax(0,1fr)]">
       <ExplorerPane
@@ -28,7 +35,7 @@
         @open-debug="openDebugPane"
       />
 
-      <section class="flex flex-col flex-1 w-full h-full min-w-0 min-h-0 gap-0 px-[0.4rem] pt-[0.4rem]">
+      <section class="flex flex-col flex-1 w-full h-full min-w-0 min-h-0 gap-0">
         <Splitter :key="paneLayout" :layout="layoutConfig.outer" class="workspace-splitter flex-1 min-h-0 min-w-0">
           <SplitterPanel
             v-for="(row, rowIdx) in layoutConfig.rows"
@@ -40,6 +47,7 @@
               :pane="panes[row[0]]"
               :pane-index="row[0]"
               :active-pane-index="activePaneIndex"
+              :pane-count="totalPaneCount"
               @pane-drop="onPaneDrop"
               @set-active-pane="setActivePane($event)"
               @activate-tab="activatePaneTab"
@@ -72,6 +80,7 @@
                   :pane="panes[paneIdx]"
                   :pane-index="paneIdx"
                   :active-pane-index="activePaneIndex"
+                  :pane-count="totalPaneCount"
                   @pane-drop="onPaneDrop"
                   @set-active-pane="setActivePane($event)"
                   @activate-tab="activatePaneTab"
@@ -95,7 +104,7 @@
           </SplitterPanel>
         </Splitter>
 
-        <nav class="flex items-center justify-center gap-1 px-2 py-1 border-t border-[rgba(43,61,88,0.7)] bg-[rgba(10,18,30,0.9)] shrink-0">
+        <nav class="flex items-center justify-center gap-1 px-2 py-1 border-t border-line/70 bg-bg-1/90 shrink-0">
             <button v-for="item in dockItems" :key="item.label"
             class="inline-flex items-center justify-center w-8 h-8 rounded-lg border-0 bg-transparent text-muted cursor-pointer text-[0.95rem] transition-colors hover:bg-accent/15 hover:text-accent"
             :title="item.label" @click="item.command">
@@ -105,7 +114,7 @@
       </section>
     </div>
 
-    <div v-if="error" class="px-3 py-2 bg-[#4d1b27] text-[#ffb9c8] border-t border-[#7f3243] text-[0.84rem]">{{ error }}</div>
+    <div v-if="error" class="px-3 py-2 bg-warn/15 text-warn border-t border-warn/50 text-[0.84rem]">{{ error }}</div>
 
     <Dialog v-model:visible="showCreateTerminalDialog" modal header="Create Terminal" :style="{ width: '28rem' }">
       <div class="flex flex-col gap-[0.35rem] mb-[0.7rem]">
@@ -121,7 +130,7 @@
           @change="onAgentAccessibleToggleFromUi"
         />
         <label for="terminal-agent-accessible" class="text-[0.82rem] text-text leading-[1.2]">
-          <span class="font-semibold text-[#cfe8ff]">Agent-accessible</span>
+          <span class="font-semibold text-accent-fg">Agent-accessible</span>
           <span class="block text-muted text-[0.74rem]">
             Allow the LLM agent to drive this terminal via shell_exec.
             The agent's commands will appear here live; while it is
@@ -131,8 +140,8 @@
         </label>
       </div>
       <template #footer>
-        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-[#587296] text-[#c5d4ea] text-[0.85rem] rounded-[0.35rem] cursor-pointer hover:border-[#8fcaff] hover:text-[#e6f3ff]" @click="showCreateTerminalDialog = false">Cancel</button>
-        <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-[#10243a] border border-accent text-[#cfe8ff] rounded-[0.35rem] cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" @click="confirmCreateTerminal">Create</button>
+        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-muted text-text text-[0.85rem] rounded-[0.35rem] cursor-pointer hover:border-accent-bright hover:text-accent-fg" @click="showCreateTerminalDialog = false">Cancel</button>
+        <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-sel border border-accent text-accent-fg rounded-[0.35rem] cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" @click="confirmCreateTerminal">Create</button>
       </template>
     </Dialog>
 
@@ -142,8 +151,8 @@
         <InputText id="channel-name" v-model="channelCreateName" class="w-full" @keydown.enter="confirmCreateChannel" />
       </div>
       <template #footer>
-        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-[#587296] text-[#c5d4ea] text-[0.85rem] rounded-[0.35rem] cursor-pointer hover:border-[#8fcaff] hover:text-[#e6f3ff]" @click="showCreateChannelDialog = false">Cancel</button>
-        <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-[#10243a] border border-accent text-[#cfe8ff] rounded-[0.35rem] cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" @click="confirmCreateChannel">Create</button>
+        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-muted text-text text-[0.85rem] rounded-[0.35rem] cursor-pointer hover:border-accent-bright hover:text-accent-fg" @click="showCreateChannelDialog = false">Cancel</button>
+        <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-sel border border-accent text-accent-fg rounded-[0.35rem] cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" @click="confirmCreateChannel">Create</button>
       </template>
     </Dialog>
 
@@ -151,14 +160,14 @@
       <div class="flex flex-col gap-[0.6rem] mb-[0.7rem]">
         <label class="text-muted text-[0.78rem] font-semibold" for="upload-file">File (any file, .zip, .tar, .tar.gz)</label>
         <input id="upload-file" type="file" @change="uploadFile = $event.target.files?.[0] || null"
-               class="text-[0.85rem] text-[#c5d4ea]" />
+               class="text-[0.85rem] text-text" />
         <label class="text-muted text-[0.78rem] font-semibold mt-[0.4rem]" for="upload-dest">Destination Path</label>
         <InputText id="upload-dest" v-model="uploadDest" class="w-full" placeholder="/" />
         <div v-if="uploadResult" class="text-muted text-[0.75rem] mt-[0.3rem] whitespace-pre-wrap">{{ uploadResult }}</div>
       </div>
       <template #footer>
-        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-[#587296] text-[#c5d4ea] text-[0.85rem] rounded-[0.35rem] cursor-pointer hover:border-[#8fcaff] hover:text-[#e6f3ff]" @click="showUploadDialog = false">Cancel</button>
-        <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-[#10243a] border border-accent text-[#cfe8ff] rounded-[0.35rem] cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" :disabled="!uploadFile || uploading" @click="confirmUpload">{{ uploading ? 'Uploading…' : 'Upload' }}</button>
+        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-muted text-text text-[0.85rem] rounded-[0.35rem] cursor-pointer hover:border-accent-bright hover:text-accent-fg" @click="showUploadDialog = false">Cancel</button>
+        <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-sel border border-accent text-accent-fg rounded-[0.35rem] cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" :disabled="!uploadFile || uploading" @click="confirmUpload">{{ uploading ? 'Uploading…' : 'Upload' }}</button>
       </template>
     </Dialog>
 
@@ -181,6 +190,8 @@ import InputText from 'primevue/inputtext'
 import WorkspacePaneShell from '../components/workspace/WorkspacePaneShell.vue'
 import ExplorerPane from '../components/workspace/ExplorerPane.vue'
 import RecordingsDialog from '../components/workspace/RecordingsDialog.vue'
+import BrandMark from '../components/BrandMark.vue'
+import ConnectionStatus from '../components/ConnectionStatus.vue'
 import workerSocket from '../services/workerSocket'
 import authService from '../services/authService'
 import { listProjects, getWsToken, uploadProjectFile, importProjectFromDisk } from '../services/projectService'
@@ -351,6 +362,7 @@ watch(error, (msg) => {
 
 // ── Menus ─────────────────────────────────────────────────────────────────────
 const layoutConfig = computed(() => LAYOUT_CONFIGS[paneLayout.value] ?? LAYOUT_CONFIGS['one'])
+const totalPaneCount = computed(() => layoutConfig.value.rows.reduce((n, row) => n + row.length, 0))
 
 const menuItems = computed(() => ([
   {
