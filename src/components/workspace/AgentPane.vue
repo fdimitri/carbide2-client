@@ -6,13 +6,13 @@
   <div class="flex flex-col flex-1 min-h-0 monaco-bg monaco-fg overflow-hidden">
 
     <!-- Toolbar: agent picker + new conversation -->
-    <div class="flex items-center gap-2 px-3 py-[0.4rem] border-b monaco-panel-border monaco-tabs-bg text-ui-md">
+    <div class="flex items-center gap-2 px-3 py-1.5 border-b monaco-panel-border monaco-tabs-bg text-ui-md">
       <label class="opacity-70">Agent:</label>
       <select
         :value="store.agentSelectedSlug || ''"
         @change="onPickAgent($event.target.value)"
         :disabled="!agents.length"
-        class="px-[0.4rem] py-[0.2rem] rounded-ui-xs border monaco-input-bg monaco-input-fg monaco-input-border outline-none"
+        class="px-1.5 py-1 rounded-ui-xs border monaco-input-bg monaco-input-fg monaco-input-border outline-none"
       >
         <option value="" disabled>{{ agents.length ? 'Select…' : 'None available' }}</option>
         <option v-for="a in agents" :key="a.slug" :value="a.slug">
@@ -24,36 +24,36 @@
       </span>
       <span class="ml-auto flex items-center gap-2">
         <span v-if="store.agentStatus === 'thinking'" class="text-ui-xs opacity-70 italic">thinking…</span>
-        <button
-          class="px-[0.55rem] py-[0.2rem] text-ui-xs rounded-ui-xs border monaco-panel-border opacity-80 hover:opacity-100"
+        <UiButton
+          size="xs"
           @click="onReset"
           :disabled="store.agentStatus === 'thinking'"
           title="Start a fresh conversation"
-        >New</button>
+        >New</UiButton>
       </span>
     </div>
 
     <!-- Conversation picker + visibility -->
-    <div class="flex items-center gap-2 px-3 py-[0.35rem] border-b monaco-panel-border text-ui-sm">
+    <div class="flex items-center gap-2 px-3 py-1.5 border-b monaco-panel-border text-ui-sm">
       <label class="opacity-70">Conversation:</label>
       <select
         :value="store.agentConversationId || ''"
         @change="onPickConversation($event.target.value)"
-        class="flex-1 min-w-0 px-[0.4rem] py-[0.15rem] rounded-ui-xs border monaco-input-bg monaco-input-fg monaco-input-border outline-none"
+        class="flex-1 min-w-0 px-1.5 py-0.5 rounded-ui-xs border monaco-input-bg monaco-input-fg monaco-input-border outline-none"
       >
         <option value="">— current (new) —</option>
         <option v-for="c in store.agentRecent" :key="c.conversation_id" :value="c.conversation_id">
           {{ conversationLabel(c) }}
         </option>
       </select>
-      <button
+      <UiButton
         v-if="store.agentConversationId && store.agentOwnerIsSelf"
-        class="px-[0.5rem] py-[0.15rem] text-ui-xs rounded-ui-xs border monaco-panel-border opacity-80 hover:opacity-100"
+        size="xs"
         @click="onToggleVisibility"
         :title="store.agentVisibility === 'project' ? 'Click to make private' : 'Click to share with project'"
       >
         {{ store.agentVisibility === 'project' ? '🌐 shared' : '🔒 private' }}
-      </button>
+      </UiButton>
       <span
         v-else-if="store.agentConversationId && !store.agentOwnerIsSelf"
         class="text-ui-xs opacity-60 italic"
@@ -73,68 +73,65 @@
         Ask {{ activeAgentName }} something.
       </div>
 
-      <template v-for="(m, i) in messages" :key="i">
-        <!-- User -->
-        <div v-if="m.kind === 'user'" class="flex flex-col gap-[0.15rem] max-w-[80ch] self-end">
-          <span class="text-ui-xs opacity-60 self-end">you</span>
-          <div
-            v-if="m.images && m.images.length"
-            class="flex flex-wrap gap-1 self-end max-w-full"
-          >
-            <img
-              v-for="(img, ii) in m.images"
-              :key="ii"
-              :src="`data:${img.mime};base64,${img.base64}`"
-              class="max-h-40 max-w-[16rem] rounded-ui-xs border monaco-panel-border"
-              :alt="`attachment ${ii + 1}`"
-            />
-          </div>
-          <span
-            v-if="m.text"
-            class="text-ui-lg leading-[1.35] break-words whitespace-pre-wrap px-[0.6rem] py-[0.35rem] rounded-ui-md border monaco-panel-border monaco-input-bg"
-          >{{ m.text }}</span>
-        </div>
-
-        <!-- Assistant -->
-        <div v-else-if="m.kind === 'assistant'" class="flex flex-col gap-[0.15rem] max-w-[80ch]">
-          <span class="text-ui-xs opacity-60 flex items-center gap-2">
-            {{ activeAgentName }}
+      <template v-for="(m, i) in timeline" :key="i">
+        <!-- User — left-aligned, avatar + name, same language as ChatPane -->
+        <div v-if="m.kind === 'user'" class="flex items-start gap-2">
+          <Avatar :id="selfLabel" :name="selfLabel" />
+          <div class="flex flex-col min-w-0 gap-1">
+            <span class="text-ui-md font-semibold">{{ selfLabel }}</span>
+            <div
+              v-if="m.images && m.images.length"
+              class="flex flex-wrap gap-1 max-w-full"
+            >
+              <img
+                v-for="(img, ii) in m.images"
+                :key="ii"
+                :src="`data:${img.mime};base64,${img.base64}`"
+                class="max-h-40 max-w-[16rem] rounded-ui-xs border monaco-panel-border"
+                :alt="`attachment ${ii + 1}`"
+              />
+            </div>
             <span
-              v-if="m.truncated"
-              class="text-ui-2xs uppercase tracking-wider px-[0.35rem] py-[0.05rem] rounded-ui-xs border border-amber-600/60 text-amber-400 font-semibold"
-              title="Model hit its max_tokens / context limit before finishing. Increase the model's context window or max_tokens in your provider."
-            >truncated</span>
-          </span>
-          <details
-            v-if="m.reasoning"
-            class="text-ui-sm border monaco-panel-border rounded-ui-sm px-[0.5rem] py-[0.25rem] opacity-80"
-          >
-            <summary class="cursor-pointer select-none opacity-70">reasoning ({{ m.reasoning.length }} chars)</summary>
-            <div class="markdown-body text-ui-md mt-1 opacity-90" v-html="renderMarkdown(m.reasoning)"></div>
-          </details>
-          <div
-            class="markdown-body text-ui-lg leading-[1.4] break-words"
-            :class="m.muted ? 'opacity-60 italic' : ''"
-            v-html="renderMarkdown(m.text)"
-          ></div>
+              v-if="m.text"
+              class="text-ui-lg leading-snug break-words whitespace-pre-wrap"
+            >{{ m.text }}</span>
+          </div>
         </div>
 
-        <!-- Tool call/result pair — render as collapsible -->
-        <details v-else-if="m.kind === 'tool_call'" class="text-ui-sm border monaco-panel-border rounded-ui-sm px-[0.5rem] py-[0.25rem] opacity-90">
-          <summary class="cursor-pointer select-none">
-            <span class="opacity-70">tool →</span>
-            <code class="font-mono">{{ m.name }}({{ shortArgs(m.args) }})</code>
-          </summary>
-          <pre class="text-ui-xs mt-1 whitespace-pre-wrap break-words opacity-80">{{ pretty(m.args) }}</pre>
-        </details>
+        <!-- Assistant — avatar + role header, shared with ChatPane -->
+        <div v-else-if="m.kind === 'assistant'" class="flex items-start gap-2">
+          <Avatar :id="store.agentSelectedSlug || activeAgentName" :name="activeAgentName" />
+          <div class="flex flex-col min-w-0 gap-1">
+            <div class="flex items-baseline gap-2">
+              <span class="text-ui-md font-semibold">{{ activeAgentName }}</span>
+              <span
+                v-if="m.truncated"
+                class="text-ui-2xs uppercase tracking-wider px-1.5 py-0 rounded-ui-xs border border-amber-600/60 text-amber-400 font-semibold"
+                title="Model hit its max_tokens / context limit before finishing. Increase the model's context window or max_tokens in your provider."
+              >truncated</span>
+            </div>
+            <details
+              v-if="m.reasoning"
+              class="text-ui-sm border monaco-panel-border rounded-ui-sm px-2 py-1 opacity-80"
+            >
+              <summary class="cursor-pointer select-none opacity-70">reasoning ({{ m.reasoning.length }} chars)</summary>
+              <div class="markdown-body text-ui-md mt-1 opacity-90" v-html="renderMarkdown(m.reasoning)"></div>
+            </details>
+            <div
+              class="markdown-body text-ui-lg leading-normal break-words"
+              :class="m.muted ? 'opacity-60 italic' : ''"
+              v-html="renderMarkdown(m.text)"
+            ></div>
+          </div>
+        </div>
 
-        <details v-else-if="m.kind === 'tool_result'" class="text-ui-sm border monaco-panel-border rounded-ui-sm px-[0.5rem] py-[0.25rem] opacity-80">
-          <summary class="cursor-pointer select-none">
-            <span class="opacity-60">result ←</span>
-            <code class="font-mono">{{ m.name }}</code>
-            <span class="opacity-60">{{ resultSummary(m.result) }}</span>
+        <!-- Tool invocation — one quiet row: call + its result merged -->
+        <details v-else-if="m.kind === 'tool'" class="group text-ui-xs rounded-ui-xs px-2 py-0.5 -my-0.5 hover:monaco-tabs-bg ml-10">
+          <summary class="cursor-pointer select-none font-mono opacity-55 group-hover:opacity-90 marker:opacity-40 truncate">
+            {{ m.name }}({{ shortArgs(m.args) }})<template v-if="m.done"><span class="opacity-40"> → </span><span class="opacity-80">{{ resultSummary(m.result).trim() }}</span></template><span v-else class="opacity-50 italic"> …</span>
           </summary>
-          <pre class="text-ui-xs mt-1 whitespace-pre-wrap break-words opacity-80">{{ pretty(m.result) }}</pre>
+          <pre v-if="m.args !== undefined" class="text-ui-2xs mt-1 whitespace-pre-wrap break-words opacity-70">{{ pretty(m.args) }}</pre>
+          <pre v-if="m.done" class="text-ui-2xs mt-1 whitespace-pre-wrap break-words opacity-60">{{ pretty(m.result) }}</pre>
         </details>
 
         <!-- System / error -->
@@ -147,13 +144,13 @@
 
     <!-- Composer -->
     <div
-      class="flex flex-col gap-[0.4rem] p-[0.55rem] border-t monaco-panel-border monaco-tabs-bg"
+      class="flex flex-col gap-1.5 p-2 border-t monaco-panel-border monaco-tabs-bg"
       :class="dragOver ? 'ring-2 ring-blue-500/60 ring-inset' : ''"
       @dragover.prevent="dragOver = true"
       @dragleave.prevent="dragOver = false"
       @drop.prevent="onDrop"
     >
-      <div v-if="pendingImages.length" class="flex flex-wrap gap-[0.4rem]">
+      <div v-if="pendingImages.length" class="flex flex-wrap gap-1.5">
         <div
           v-for="(img, idx) in pendingImages"
           :key="idx"
@@ -174,12 +171,12 @@
       </div>
 
       <div class="flex gap-2">
-        <button
-          class="px-[0.6rem] py-[0.45rem] text-ui-lg rounded-ui-sm border monaco-panel-border opacity-80 hover:opacity-100 disabled:opacity-30 disabled:cursor-default"
+        <UiButton
+          size="md"
           @click="fileInputEl?.click()"
           :disabled="!canSend"
           title="Attach image(s) (or paste / drag-drop)"
-        >📎</button>
+        >📎</UiButton>
         <input
           ref="fileInputEl"
           type="file"
@@ -195,13 +192,14 @@
           :placeholder="placeholder"
           :disabled="!canSend"
           rows="1"
-          class="flex-1 px-[0.65rem] py-[0.45rem] text-ui-lg rounded-ui-sm outline-none font-[inherit] border monaco-input-bg monaco-input-fg monaco-input-border focus:monaco-focus-border placeholder:monaco-line-fg resize-none"
+          class="flex-1 px-2.5 py-2 text-ui-lg rounded-ui-sm outline-none font-[inherit] border monaco-input-bg monaco-input-fg monaco-input-border focus:monaco-focus-border placeholder:monaco-line-fg resize-none"
         ></textarea>
-        <button
-          class="px-[0.9rem] py-[0.45rem] text-ui-lg text-white rounded-ui-sm cursor-pointer font-[inherit] border-0 monaco-focus-bg hover:brightness-115 disabled:opacity-40 disabled:cursor-default"
+        <UiButton
+          size="md"
+          variant="primary"
           @click="onSend"
           :disabled="!canSend || (!draft.trim() && !pendingImages.length)"
-        >Send</button>
+        >Send</UiButton>
       </div>
     </div>
   </div>
@@ -211,6 +209,9 @@
 import { ref, computed, watch, nextTick } from 'vue'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { renderMarkdown } from '../../utils/markdown'
+import UiButton from '../ui/UiButton.vue'
+import Avatar from '../ui/Avatar.vue'
+import authService from '../../services/authService'
 
 const props = defineProps({
   connected: { type: Boolean, default: false },
@@ -296,6 +297,33 @@ function onDrop(ev) {
 
 const agents   = computed(() => store.agentList || [])
 const messages = computed(() => store.agentMessages || [])
+
+// Merge each tool_call with its matching tool_result (same call id) into a
+// single row, so a tool invocation reads as one line — name(args) → summary —
+// instead of two stacked boxes.
+const timeline = computed(() => {
+  const out = []
+  const byId = new Map()
+  for (const m of messages.value) {
+    if (m.kind === 'tool_call') {
+      const row = { kind: 'tool', id: m.id, name: m.name, args: m.args, result: undefined, done: false }
+      if (m.id != null) byId.set(m.id, row)
+      out.push(row)
+    } else if (m.kind === 'tool_result') {
+      const row = m.id != null ? byId.get(m.id) : null
+      if (row) { row.result = m.result; row.done = true }
+      else out.push({ kind: 'tool', id: m.id, name: m.name, result: m.result, done: true })
+    } else {
+      out.push(m)
+    }
+  }
+  return out
+})
+
+// Signed-in user, for the user-message avatar. Mirrors ChatPane's colour-from-id
+// + initials fallback; no avatar image is actually wired anywhere yet.
+const selfUser  = computed(() => authService.currentUser || null)
+const selfLabel = computed(() => selfUser.value?.name || selfUser.value?.email || 'you')
 
 const activeAgent = computed(() =>
   agents.value.find(a => a.slug === store.agentSelectedSlug) || null

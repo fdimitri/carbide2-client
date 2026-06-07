@@ -54,17 +54,7 @@
           <template v-if="!msg.system">
             <div class="flex items-start gap-2 max-w-[80ch]">
               <!-- Avatar -->
-              <img
-                v-if="msg.avatar_url"
-                :src="msg.avatar_url"
-                :alt="msg.name"
-                class="shrink-0 w-8 h-8 rounded-md object-cover mt-[0.1rem]"
-              />
-              <span
-                v-else
-                class="shrink-0 grid place-items-center w-8 h-8 rounded-md text-ui-xs font-semibold text-white mt-[0.1rem] select-none"
-                :style="{ background: avatarColor(msg.user_id) }"
-              >{{ initials(msg.name) }}</span>
+              <Avatar :id="msg.user_id" :name="msg.name" :src="msg.avatar_url" />
               <div class="flex flex-col min-w-0 gap-[0.1rem]">
                 <div class="flex items-baseline gap-2">
                   <span class="text-ui-md font-semibold"
@@ -130,6 +120,7 @@
 import { ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import workerSocket from '../../services/workerSocket'
 import CallTile from './CallTile.vue'
+import Avatar from '../ui/Avatar.vue'
 
 const props = defineProps({
   messages:      { type: Array,   default: () => [] },
@@ -218,29 +209,6 @@ function onKeydown(e) {
 function formatTime(ts) {
   if (!ts) return ''
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-}
-
-// ── Avatar (Slack-style) ──────────────────────────────────────────────────────
-// Initials fallback when a user has no configured avatar image. Colour is
-// derived deterministically from the user id so a given user is always the
-// same colour across sessions.
-const AVATAR_COLORS = [
-  '#5ab0ff', '#a6e3a1', '#f9e2af', '#f38ba8', '#cba6f7',
-  '#94e2d5', '#fab387', '#89b4fa', '#f5c2e7', '#74c7ec',
-]
-
-function avatarColor(userId) {
-  const key = String(userId ?? '')
-  let hash = 0
-  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) | 0
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
-}
-
-function initials(name) {
-  const parts = String(name || '?').trim().split(/\s+/).filter(Boolean)
-  if (parts.length === 0) return '?'
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
 }
 </script>
 
