@@ -19,18 +19,14 @@
 
           <div class="flex flex-col gap-2">
             <label class="text-muted text-label font-semibold uppercase tracking-widest mb-1" for="email">Email</label>
-            <input v-model="email" type="email" id="email" placeholder="test@example.com" required
-              class="px-4 py-3 rounded-lg bg-bg-input border border-line text-text text-sm
-                     placeholder:text-dim focus:outline-none focus:border-accent
-                     focus:shadow-[0_0_0_3px_rgba(90,176,255,0.12)] transition-all" />
+            <UiInput v-model="email" type="email" id="email" placeholder="test@example.com" required size="lg"
+              class="focus:shadow-[0_0_0_3px_rgba(90,176,255,0.12)]" />
           </div>
 
           <div class="flex flex-col gap-2">
             <label class="text-muted text-label font-semibold uppercase tracking-widest mb-1" for="password">Password</label>
-            <input v-model="password" type="password" id="password" placeholder="••••••••" required
-              class="px-4 py-3 rounded-lg bg-bg-input border border-line text-text text-sm
-                     placeholder:text-dim focus:outline-none focus:border-accent
-                     focus:shadow-[0_0_0_3px_rgba(90,176,255,0.12)] transition-all" />
+            <UiInput v-model="password" type="password" id="password" placeholder="••••••••" required size="lg"
+              class="focus:shadow-[0_0_0_3px_rgba(90,176,255,0.12)]" />
           </div>
 
           <button type="submit" :disabled="loading"
@@ -64,6 +60,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import BrandMark from '../components/BrandMark.vue'
 import { VERSION_LABEL } from '../version'
+import UiInput from '../components/ui/UiInput.vue'
 import authService from '../services/authService'
 
 const email = ref('test@example.com')

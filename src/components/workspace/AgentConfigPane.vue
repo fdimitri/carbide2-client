@@ -40,21 +40,13 @@
             <div class="flex gap-4">
               <div class="flex-1">
                 <label class="block text-ui-md text-text mb-1">Name</label>
-                <input
-                  v-model="form.name"
-                  class="w-full px-3 py-2 rounded-lg bg-bg-input border border-line text-text text-sm
-                         focus:outline-none focus:border-accent transition-all"
-                />
+                <UiInput v-model="form.name" class="w-full" />
               </div>
               <div class="w-40">
                 <label class="block text-ui-md text-text mb-1">Role</label>
-                <select
-                  v-model="form.role"
-                  class="w-full px-3 py-2 rounded-lg bg-bg-input border border-line text-text text-sm
-                         focus:outline-none focus:border-accent transition-all"
-                >
+                <UiInput as="select" v-model="form.role" class="w-full">
                   <option v-for="r in ROLES" :key="r" :value="r">{{ r }}</option>
-                </select>
+                </UiInput>
               </div>
             </div>
 
@@ -63,10 +55,9 @@
             </div>
 
             <label class="block text-ui-md text-text mb-1 mt-3">Description</label>
-            <input
+            <UiInput
               v-model="form.description"
-              class="w-full px-3 py-2 rounded-lg bg-bg-input border border-line text-text text-sm
-                     placeholder:text-dim focus:outline-none focus:border-accent transition-all"
+              class="w-full"
               placeholder="Short description"
             />
           </section>
@@ -76,10 +67,10 @@
             <h3 class="text-ui-xs font-semibold text-muted uppercase tracking-widest mb-3">Connection</h3>
 
             <label class="block text-ui-md text-text mb-1">Provider URL</label>
-            <input
+            <UiInput
               v-model="form.provider_url"
-              class="w-full px-3 py-2 rounded-lg bg-bg-input border border-line text-text font-mono text-sm
-                     placeholder:text-dim focus:outline-none focus:border-accent transition-all"
+              mono
+              class="w-full"
               placeholder="http://host.k3d.internal:11234/v1"
             />
             <p class="text-ui-xs text-muted mt-1">
@@ -88,22 +79,22 @@
             </p>
 
             <label class="block text-ui-md text-text mb-1 mt-3">Model</label>
-            <input
+            <UiInput
               v-model="form.model"
-              class="w-full px-3 py-2 rounded-lg bg-bg-input border border-line text-text font-mono text-sm
-                     focus:outline-none focus:border-accent transition-all"
+              mono
+              class="w-full"
             />
 
             <label class="block text-ui-md text-text mb-1 mt-3">
               API key
               <span class="text-dim">({{ selectedAgent?.api_key_set ? 'set' : 'none' }})</span>
             </label>
-            <input
+            <UiInput
               v-model="form.api_key"
               type="password"
               autocomplete="off"
-              class="w-full px-3 py-2 rounded-lg bg-bg-input border border-line text-text font-mono text-sm
-                     placeholder:text-dim focus:outline-none focus:border-accent transition-all"
+              mono
+              class="w-full"
               :placeholder="selectedAgent?.api_key_set ? '•••••• (leave blank to keep)' : 'Leave blank for local servers'"
             />
           </section>
@@ -111,12 +102,14 @@
           <!-- ── System prompt ──────────────────────────────────────────── -->
           <section class="mb-7">
             <h3 class="text-ui-xs font-semibold text-muted uppercase tracking-widest mb-3">System Prompt</h3>
-            <textarea
+            <UiInput
+              as="textarea"
               v-model="form.system_prompt"
               rows="6"
-              class="w-full px-3 py-2 rounded-lg bg-bg-input border border-line text-text font-mono text-ui-md leading-relaxed
-                     focus:outline-none focus:border-accent transition-all resize-y"
-            ></textarea>
+              mono
+              text="text-ui-md leading-relaxed"
+              class="w-full"
+            />
           </section>
 
           <!-- ── Tools ──────────────────────────────────────────────────── -->
@@ -150,20 +143,18 @@
             <div class="flex gap-4">
               <div class="flex-1">
                 <label class="block text-ui-md text-text mb-1">Temperature</label>
-                <input
+                <UiInput
                   v-model.number="form.temperature"
                   type="number" min="0" max="2" step="0.05"
-                  class="w-full px-3 py-2 rounded-lg bg-bg-input border border-line text-text text-sm
-                         focus:outline-none focus:border-accent transition-all"
+                  class="w-full"
                 />
               </div>
               <div class="flex-1">
                 <label class="block text-ui-md text-text mb-1">Max tokens</label>
-                <input
+                <UiInput
                   v-model.number="form.max_tokens"
                   type="number" min="1" step="1"
-                  class="w-full px-3 py-2 rounded-lg bg-bg-input border border-line text-text text-sm
-                         focus:outline-none focus:border-accent transition-all"
+                  class="w-full"
                 />
               </div>
             </div>
@@ -197,6 +188,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { listAgents, updateAgent } from '../../services/agentService'
+import UiInput from '../ui/UiInput.vue'
 
 // Mirrors Agent::ROLES (server) and the worker AgentTools registry. Kept as
 // plain constants — small, stable capability lists.

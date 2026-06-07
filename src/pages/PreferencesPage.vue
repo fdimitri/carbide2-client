@@ -31,22 +31,16 @@
           <div class="grid grid-cols-2 gap-4">
             <div class="flex flex-col gap-1.5">
               <label class="text-muted text-label font-semibold uppercase tracking-widest">First Name</label>
-              <input v-model="form.first_name" placeholder="Ada"
-                class="px-3 py-2 rounded-lg bg-bg-input border border-line text-text text-sm
-                       placeholder:text-dim focus:outline-none focus:border-accent transition-all" />
+              <UiInput v-model="form.first_name" placeholder="Ada" />
             </div>
             <div class="flex flex-col gap-1.5">
               <label class="text-muted text-label font-semibold uppercase tracking-widest">Last Name</label>
-              <input v-model="form.last_name" placeholder="Lovelace"
-                class="px-3 py-2 rounded-lg bg-bg-input border border-line text-text text-sm
-                       placeholder:text-dim focus:outline-none focus:border-accent transition-all" />
+              <UiInput v-model="form.last_name" placeholder="Lovelace" />
             </div>
           </div>
           <div class="flex flex-col gap-1.5">
             <label class="text-muted text-label font-semibold uppercase tracking-widest">Username</label>
-            <input v-model="form.username" placeholder="ada_dev" maxlength="32"
-              class="px-3 py-2 rounded-lg bg-bg-input border border-line text-text text-sm
-                     placeholder:text-dim focus:outline-none focus:border-accent transition-all" />
+            <UiInput v-model="form.username" placeholder="ada_dev" maxlength="32" />
             <p class="text-dim text-xs font-mono">Shown in chat and other collaborative features. Max 32 chars.</p>
           </div>
         </section>
@@ -121,9 +115,7 @@
           <div class="grid grid-cols-2 gap-4">
             <div class="flex flex-col gap-1.5">
               <label class="text-muted text-label font-semibold uppercase tracking-widest">Font Size</label>
-              <input v-model.number="form.editor_font_size" type="number" min="8" max="32" placeholder="13 (default)"
-                class="px-3 py-2 rounded-lg bg-bg-input border border-line text-text text-sm
-                       placeholder:text-dim focus:outline-none focus:border-accent transition-all" />
+              <UiInput v-model.number="form.editor_font_size" type="number" min="8" max="32" placeholder="13 (default)" />
             </div>
             <div class="flex flex-col gap-1.5">
               <label class="text-muted text-label font-semibold uppercase tracking-widest">Tab Width</label>
@@ -179,6 +171,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getPreferences, updatePreferences } from '../services/preferencesService'
+import UiInput from '../components/ui/UiInput.vue'
 
 const router    = useRouter()
 const loading   = ref(true)

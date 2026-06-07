@@ -17,10 +17,10 @@
             The directory on the server whose contents are imported into the in-database virtual filesystem.
             The worker reads from and writes to this path on disk.
           </HelpText>
-          <input
+          <UiInput
             v-model="form.root_path"
-            class="w-full px-3 py-2 rounded-lg bg-bg-input border border-line text-text font-mono text-sm
-                   placeholder:text-dim focus:outline-none focus:border-accent transition-all"
+            mono
+            class="w-full"
             placeholder="/home/user/project"
           />
 
@@ -53,11 +53,10 @@
                 <strong class="text-text">{{ form.flush_interval_s }}s</strong> if there are any,
                 unless the byte threshold is crossed first and triggers an earlier flush.
               </HelpText>
-              <input
+              <UiInput
                 v-model.number="form.flush_interval_s"
                 type="number" min="0.1" step="0.1"
-                class="w-full px-3 py-2 rounded-lg bg-bg-input border border-line text-text text-sm
-                       focus:outline-none focus:border-accent transition-all"
+                class="w-full"
               />
             </div>
             <div class="flex-1">
@@ -68,11 +67,10 @@
                 are waiting, the file is flushed to disk immediately — without waiting for the
                 interval timer.
               </HelpText>
-              <input
+              <UiInput
                 v-model.number="form.flush_bytes"
                 type="number" min="1" step="1"
-                class="w-full px-3 py-2 rounded-lg bg-bg-input border border-line text-text text-sm
-                       focus:outline-none focus:border-accent transition-all"
+                class="w-full"
               />
             </div>
           </div>
@@ -88,10 +86,10 @@
             Leave blank to use the server default (<code class="font-mono text-accent">ubuntu:24.04</code>).
             The image must be accessible to the Docker daemon on the server.
           </HelpText>
-          <input
+          <UiInput
             v-model="form.shell_image"
-            class="w-full px-3 py-2 rounded-lg bg-bg-input border border-line text-text font-mono text-sm
-                   placeholder:text-dim focus:outline-none focus:border-accent transition-all"
+            mono
+            class="w-full"
             placeholder="ubuntu:24.04 (default)"
           />
         </section>
@@ -153,6 +151,7 @@
 import { ref, onMounted, defineComponent, h } from 'vue'
 import Dialog from 'primevue/dialog'
 import { getProjectSettings, updateProjectSettings, setProjectRoot, listProjects } from '../../services/projectService'
+import UiInput from '../ui/UiInput.vue'
 
 // ── Inline helper components ──────────────────────────────────────────────────
 

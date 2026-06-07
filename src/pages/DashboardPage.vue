@@ -26,15 +26,11 @@
         class="mb-8 p-5 rounded-xl border border-accent/25 bg-bg-1/70 backdrop-blur flex flex-wrap gap-4 items-end">
         <div class="flex flex-col gap-1.5 flex-1 min-w-[180px]">
           <label class="text-muted text-label font-semibold uppercase tracking-widest">Name</label>
-          <input v-model="newName" :placeholder="`my-${singularSlug}`" autofocus
-            class="px-3 py-2 rounded-lg bg-bg-input border border-line text-text text-sm
-                   placeholder:text-dim focus:outline-none focus:border-accent transition-all" />
+          <UiInput v-model="newName" :placeholder="`my-${singularSlug}`" autofocus />
         </div>
         <div class="flex flex-col gap-1.5 flex-1 min-w-[180px]">
           <label class="text-muted text-label font-semibold uppercase tracking-widest">Description</label>
-          <input v-model="newDesc" placeholder="optional"
-            class="px-3 py-2 rounded-lg bg-bg-input border border-line text-text text-sm
-                   placeholder:text-dim focus:outline-none focus:border-accent transition-all" />
+          <UiInput v-model="newDesc" placeholder="optional" />
         </div>
 
         <!-- Seed method: how the new workspace's project starts out. "Empty"
@@ -60,15 +56,11 @@
         <div v-if="seedMethod === 'git'" class="flex flex-wrap gap-4 w-full">
           <div class="flex flex-col gap-1.5 flex-1 min-w-[220px]">
             <label class="text-muted text-label font-semibold uppercase tracking-widest">Repository URL</label>
-            <input v-model="seedGitUrl" placeholder="https://github.com/user/repo.git"
-              class="px-3 py-2 rounded-lg bg-bg-input border border-line text-text text-sm
-                     placeholder:text-dim focus:outline-none focus:border-accent transition-all" />
+            <UiInput v-model="seedGitUrl" placeholder="https://github.com/user/repo.git" />
           </div>
           <div class="flex flex-col gap-1.5 min-w-[160px]">
             <label class="text-muted text-label font-semibold uppercase tracking-widest">Branch / ref</label>
-            <input v-model="seedGitRef" placeholder="default branch"
-              class="px-3 py-2 rounded-lg bg-bg-input border border-line text-text text-sm
-                     placeholder:text-dim focus:outline-none focus:border-accent transition-all" />
+            <UiInput v-model="seedGitRef" placeholder="default branch" />
           </div>
         </div>
 
@@ -128,6 +120,7 @@ import { ref, computed, onMounted, onBeforeUnmount, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { listWorkspaces, createWorkspace, getWorkspaceHealth } from '../services/workspaceService'
 import { setPendingSeed } from '../services/pendingSeed'
+import UiInput from '../components/ui/UiInput.vue'
 
 // Model B: this Dashboard is the CONTROL-PLANE dashboard. It lists the
 // user's Workspaces (one isolated pod each). Workspace pods themselves have
