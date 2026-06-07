@@ -98,41 +98,51 @@
           </div>
         </div>
 
-        <!-- Assistant — avatar + role header, shared with ChatPane -->
-        <div v-else-if="m.kind === 'assistant'" class="flex items-start gap-2">
+        <!-- Assistant turn — one Coder header, then its tool calls + reply -->
+        <div v-else-if="m.kind === 'assistant_turn'" class="flex items-start gap-2">
           <Avatar :id="store.agentSelectedSlug || activeAgentName" :name="activeAgentName" />
           <div class="flex flex-col min-w-0 gap-1">
-            <div class="flex items-baseline gap-2">
-              <span class="text-ui-md font-semibold">{{ activeAgentName }}</span>
-              <span
-                v-if="m.truncated"
-                class="text-ui-2xs uppercase tracking-wider px-1.5 py-0 rounded-ui-xs border border-amber-600/60 text-amber-400 font-semibold"
-                title="Model hit its max_tokens / context limit before finishing. Increase the model's context window or max_tokens in your provider."
-              >truncated</span>
-            </div>
-            <details
-              v-if="m.reasoning"
-              class="text-ui-sm border monaco-panel-border rounded-ui-sm px-2 py-1 opacity-80"
-            >
-              <summary class="cursor-pointer select-none opacity-70">reasoning ({{ m.reasoning.length }} chars)</summary>
-              <div class="markdown-body text-ui-md mt-1 opacity-90" v-html="renderMarkdown(m.reasoning)"></div>
-            </details>
-            <div
-              class="markdown-body text-ui-lg leading-normal break-words"
-              :class="m.muted ? 'opacity-60 italic' : ''"
-              v-html="renderMarkdown(m.text)"
-            ></div>
+            <span class="text-ui-md font-semibold">{{ activeAgentName }}</span>
+            <template v-for="(item, ii) in m.items" :key="ii">
+              <!-- Tool calls — grouped; same disclosure language as reasoning -->
+              <details v-if="item.type === 'tools'" class="text-ui-xs rounded-ui-sm bg-white/[0.03]">
+                <summary class="cursor-pointer select-none font-mono opacity-45 hover:opacity-75 marker:opacity-30 px-2 py-0.5 truncate">
+                  {{ item.tools.length }} tool {{ item.tools.length === 1 ? 'call' : 'calls' }}<span class="opacity-70"> · {{ toolNames(item.tools) }}</span>
+                </summary>
+                <div class="flex flex-col pl-2 pb-0.5">
+                  <details v-for="(t, ti) in item.tools" :key="ti" class="group text-ui-xs rounded-ui-xs px-2 py-0.5 hover:bg-white/[0.04]">
+                    <summary class="cursor-pointer select-none font-mono opacity-45 group-hover:opacity-80 marker:opacity-30 truncate">
+                      {{ t.name }}({{ shortArgs(t.args) }})<template v-if="t.done"><span class="opacity-40"> → </span><span class="opacity-70">{{ resultSummary(t.result).trim() }}</span></template><span v-else class="opacity-40 italic"> …</span>
+                    </summary>
+                    <pre v-if="t.args !== undefined" class="text-ui-2xs mt-1 whitespace-pre-wrap break-words opacity-60">{{ pretty(t.args) }}</pre>
+                    <pre v-if="t.done" class="text-ui-2xs mt-1 whitespace-pre-wrap break-words opacity-50">{{ pretty(t.result) }}</pre>
+                  </details>
+                </div>
+              </details>
+
+              <!-- Reply text (+ optional reasoning / truncated badge) -->
+              <template v-else>
+                <span
+                  v-if="item.truncated"
+                  class="self-start text-ui-2xs uppercase tracking-wider px-1.5 py-0 rounded-ui-xs border border-amber-600/60 text-amber-400 font-semibold"
+                  title="Model hit its max_tokens / context limit before finishing. Increase the model's context window or max_tokens in your provider."
+                >truncated</span>
+                <details
+                  v-if="item.reasoning"
+                  class="text-ui-xs rounded-ui-sm bg-white/[0.05]"
+                >
+                  <summary class="cursor-pointer select-none font-mono opacity-45 hover:opacity-75 marker:opacity-30 px-2 py-0.5 truncate">reasoning · {{ item.reasoning.length }} chars</summary>
+                  <div class="markdown-body text-ui-md px-2 pb-1 opacity-90" v-html="renderMarkdown(item.reasoning)"></div>
+                </details>
+                <div
+                  class="markdown-body text-ui-lg leading-normal break-words"
+                  :class="item.muted ? 'opacity-60 italic' : ''"
+                  v-html="renderMarkdown(item.text)"
+                ></div>
+              </template>
+            </template>
           </div>
         </div>
-
-        <!-- Tool invocation — one quiet row: call + its result merged -->
-        <details v-else-if="m.kind === 'tool'" class="group text-ui-xs rounded-ui-xs px-2 py-0.5 -my-0.5 hover:monaco-tabs-bg ml-10">
-          <summary class="cursor-pointer select-none font-mono opacity-55 group-hover:opacity-90 marker:opacity-40 truncate">
-            {{ m.name }}({{ shortArgs(m.args) }})<template v-if="m.done"><span class="opacity-40"> → </span><span class="opacity-80">{{ resultSummary(m.result).trim() }}</span></template><span v-else class="opacity-50 italic"> …</span>
-          </summary>
-          <pre v-if="m.args !== undefined" class="text-ui-2xs mt-1 whitespace-pre-wrap break-words opacity-70">{{ pretty(m.args) }}</pre>
-          <pre v-if="m.done" class="text-ui-2xs mt-1 whitespace-pre-wrap break-words opacity-60">{{ pretty(m.result) }}</pre>
-        </details>
 
         <!-- System / error -->
         <div v-else-if="m.kind === 'error'" class="text-ui-sm text-red-400 italic">
@@ -300,20 +310,42 @@ const messages = computed(() => store.agentMessages || [])
 
 // Merge each tool_call with its matching tool_result (same call id) into a
 // single row, so a tool invocation reads as one line — name(args) → summary —
-// instead of two stacked boxes.
+// instead of two stacked boxes. Then everything the agent emits in one turn
+// (its tool calls + its reply) is grouped under a single Coder turn, so tool
+// calls are attributed to the agent — not left dangling under the user message.
+// Within a turn, consecutive tool rows coalesce into one collapsible group.
 const timeline = computed(() => {
-  const out = []
+  // Pass 1: merge tool_call + tool_result by id into one `tool` row.
+  const merged = []
   const byId = new Map()
   for (const m of messages.value) {
     if (m.kind === 'tool_call') {
       const row = { kind: 'tool', id: m.id, name: m.name, args: m.args, result: undefined, done: false }
       if (m.id != null) byId.set(m.id, row)
-      out.push(row)
+      merged.push(row)
     } else if (m.kind === 'tool_result') {
       const row = m.id != null ? byId.get(m.id) : null
       if (row) { row.result = m.result; row.done = true }
-      else out.push({ kind: 'tool', id: m.id, name: m.name, result: m.result, done: true })
+      else merged.push({ kind: 'tool', id: m.id, name: m.name, result: m.result, done: true })
     } else {
+      merged.push(m)
+    }
+  }
+  // Pass 2: fold agent-side entries (tools + assistant text) into Coder turns.
+  const out = []
+  let turn = null
+  for (const m of merged) {
+    if (m.kind === 'tool' || m.kind === 'assistant') {
+      if (!turn) { turn = { kind: 'assistant_turn', items: [] }; out.push(turn) }
+      if (m.kind === 'tool') {
+        const last = turn.items[turn.items.length - 1]
+        if (last && last.type === 'tools') last.tools.push(m)
+        else turn.items.push({ type: 'tools', tools: [m] })
+      } else {
+        turn.items.push({ type: 'text', text: m.text, reasoning: m.reasoning, truncated: m.truncated, muted: m.muted })
+      }
+    } else {
+      turn = null
       out.push(m)
     }
   }
@@ -418,6 +450,20 @@ function resultSummary(r) {
     return ` ${n} bytes${r.truncated ? ' (truncated)' : ''}`
   }
   return ''
+}
+
+// Compact name preview for a grouped run of tool calls, collapsing consecutive
+// duplicates ("read_file ×3") and truncating long bursts.
+function toolNames(tools) {
+  const out = []
+  for (const t of tools) {
+    const last = out[out.length - 1]
+    if (last && last.name === t.name) last.count++
+    else out.push({ name: t.name, count: 1 })
+  }
+  const parts = out.map(e => e.count > 1 ? `${e.name} ×${e.count}` : e.name)
+  if (parts.length > 4) return parts.slice(0, 4).join(', ') + `, +${parts.length - 4} more`
+  return parts.join(', ')
 }
 
 // Auto-scroll on new message
