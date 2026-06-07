@@ -135,7 +135,7 @@
     <template #footer>
       <div class="flex items-center gap-3 w-full">
         <button
-          class="flex-1 px-4 py-2 rounded-lg bg-[#123549] border-2 border-accent text-[#9efdf3] font-bold text-sm cursor-pointer hover:brightness-110 transition-all"
+          class="flex-1 px-4 py-2 rounded-lg bg-[#10243a] border-2 border-accent text-[#cfe8ff] font-bold text-sm cursor-pointer hover:brightness-110 transition-all"
           @click="cancelWipe"
         >CANCEL — GO BACK</button>
         <button

@@ -16,7 +16,6 @@ export function useTerminals({ error, bindTabToActivePane, activePane }) {
   const terminalLoading          = ref(false)
   const showCreateTerminalDialog = ref(false)
   const terminalCreateName       = ref('')
-  const terminalCreateOptions    = ref('')
   const terminalCreateAgentAccessible = ref(false)
 
   let createTerminalTimeout = null
@@ -39,7 +38,6 @@ export function useTerminals({ error, bindTabToActivePane, activePane }) {
   function openCreateTerminalDialog() {
     terminalCreateAgentAccessible.value = false
     terminalCreateName.value    = suggestedTerminalName(false)
-    terminalCreateOptions.value = ''
     showCreateTerminalDialog.value = true
   }
 
@@ -245,7 +243,6 @@ export function useTerminals({ error, bindTabToActivePane, activePane }) {
     selectedTerminalId,
     showCreateTerminalDialog,
     terminalCreateName,
-    terminalCreateOptions,
     terminalCreateAgentAccessible,
     suggestedTerminalName,
     onAgentAccessibleToggle,

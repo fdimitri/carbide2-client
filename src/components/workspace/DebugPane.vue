@@ -4,7 +4,7 @@
       <span class="font-semibold uppercase tracking-[0.08em] text-muted">Debug Channel</span>
       <div class="flex items-center gap-2">
         <span class="text-muted">{{ events.length }} event{{ events.length === 1 ? '' : 's' }}</span>
-        <button class="px-2 py-[0.2rem] bg-transparent border border-[#587296] text-[#c5d4ea] rounded-[0.3rem] cursor-pointer hover:border-[#7ce9de] hover:text-[#dffffa]"
+        <button class="px-2 py-[0.2rem] bg-transparent border border-[#587296] text-[#c5d4ea] rounded-[0.3rem] cursor-pointer hover:border-[#8fcaff] hover:text-[#e6f3ff]"
                 @click="debugLog.clear()">Clear</button>
       </div>
     </div>
@@ -17,7 +17,7 @@
         <span class="text-muted shrink-0">{{ fmtTime(ev.ts) }}</span>
         <span class="shrink-0 px-[0.35rem] rounded text-[0.7rem] uppercase"
               :class="severityClass(ev.severity)">{{ ev.severity }}</span>
-        <span class="shrink-0 text-[#9efdf3]">{{ ev.source }}</span>
+        <span class="shrink-0 text-[#cfe8ff]">{{ ev.source }}</span>
         <span class="shrink-0 text-[#c5d4ea]">{{ ev.action }}</span>
         <span class="text-[#dfe7f3] break-all whitespace-pre-wrap">{{ ev.detail }}</span>
       </div>

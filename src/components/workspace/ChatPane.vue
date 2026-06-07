@@ -166,8 +166,8 @@ function dotStyle(userId) {
   const typing = until && Date.now() < until
   if (typing) {
     return {
-      background: '#2ec4b6',
-      boxShadow: '0 0 5px 2px rgba(46,196,182,0.7)',
+      background: '#5ab0ff',
+      boxShadow: '0 0 5px 2px rgba(90,176,255,0.7)',
       opacity: '1',
     }
   }

@@ -20,7 +20,7 @@
           <i class="pi pi-file text-4xl text-[#6c7086]"></i>
           <span class="text-[#cdd6f4] text-[0.9rem]">{{ filename }}</span>
           <a :href="blobUrl" :download="filename"
-             class="px-3 py-[0.34rem] bg-transparent border border-[#587296] text-[#c5d4ea] text-[0.85rem] rounded-[0.35rem] hover:border-[#7ce9de] hover:text-[#dffffa]">Download</a>
+             class="px-3 py-[0.34rem] bg-transparent border border-[#587296] text-[#c5d4ea] text-[0.85rem] rounded-[0.35rem] hover:border-[#8fcaff] hover:text-[#e6f3ff]">Download</a>
         </div>
       </div>
       <MonacoEditor

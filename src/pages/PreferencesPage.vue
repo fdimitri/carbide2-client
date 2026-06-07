@@ -161,7 +161,7 @@
           <button @click="save" :disabled="saving || tzInvalid"
             class="px-6 py-2.5 rounded-lg bg-accent text-accent-text text-sm font-bold border-0 cursor-pointer
                    hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed
-                   shadow-[0_4px_20px_rgba(46,196,182,0.3)]">
+                   shadow-[0_4px_20px_rgba(90,176,255,0.3)]">
             {{ saving ? 'Saving…' : 'Save Preferences' }}
           </button>
           <Transition name="fade">

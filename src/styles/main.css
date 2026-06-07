@@ -1,31 +1,41 @@
 @import "tailwindcss";
 
-/* ── Design tokens ──────────────────────────────────────────────────────── */
+/* ── Design tokens ──────────────────────────────────────────────────────────
+   CARB/IDE2 brand palette — terminal/cyberpunk, mirrors carbide2-site
+   (tailwind.config.mjs `carbide` palette). Accent is brand blue #5ab0ff.
+   Token NAMES are stable so existing `text-accent` / `bg-accent` / `border-line`
+   utilities re-skin automatically. */
 @theme {
-  /* Dark IDE backgrounds */
-  --color-bg-0: #0d1219;
-  --color-bg-1: #111a26;
-  --color-bg-2: #162233;
-  --color-bg-3: #1f2f45;
+  /* Dark IDE backgrounds (bg-0 deepest → bg-3 raised) */
+  --color-bg-0: #08090d;
+  --color-bg-1: #0d1016;
+  --color-bg-2: #12161e;
+  --color-bg-3: #1c2230;
 
   /* UI colours */
-  --color-line:       #2b3d58;
-  --color-text:       #dce6f7;
-  --color-muted:      #91a2bc;
-  --color-accent:      #2ec4b6;
-  --color-accent-fg:   #d7fff6;
-  --color-accent-text: #051210;   /* Dark text on accent-coloured surfaces */
-  --color-warn:        #f07167;
+  --color-line:       #1c2230;
+  --color-text:       #c8d8e8;
+  --color-muted:      #5c7888;
+  --color-accent:      #5ab0ff;   /* brand blue */
+  --color-accent-dark: #2e8fd4;
+  --color-accent-fg:   #d7ecff;   /* brand-lit text on dark surfaces */
+  --color-accent-text: #04121f;   /* dark text on accent-coloured surfaces */
+  --color-warn:        #ff6b6b;
+  --color-amber:       #ffb454;
+  --color-cyan:        #5cf6ff;
 
   /* Supplemental text shades */
-  --color-dim:         #3a4d64;   /* Placeholder / helper / very subdued text */
+  --color-dim:         #2b3445;   /* Placeholder / helper / very subdued text */
 
   /* Input / deepest surface */
-  --color-bg-input:    #080f18;
+  --color-bg-input:    #05080d;
 
-  /* Typography */
-  --font-ui:   "IBM Plex Sans", "Manrope", "Segoe UI", sans-serif;
-  --font-mono: "IBM Plex Mono", "Fira Code", monospace;
+  /* Accent as raw RGB channels — for rgb(var(--accent-rgb) / <a>) glows. */
+  --accent-rgb: 90 176 255;
+
+  /* Typography — JetBrains Mono brand face, matches the site. */
+  --font-ui:   "Inter", "IBM Plex Sans", "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "IBM Plex Mono", "Fira Code", ui-monospace, monospace;
 
   /* Font-size scale additions */
   --text-label: 0.7rem;           /* Small uppercase form/column labels */
@@ -40,12 +50,51 @@ html, body, #app {
   font-family: var(--font-ui);
 }
 
+/* ── Brand utilities ──────────────────────────────────────────────────────── */
+
+/* Phosphor glow for brand wordmarks / headings. */
+@utility glow-text {
+  text-shadow: 0 0 8px rgb(var(--accent-rgb) / 0.55);
+}
+
+/* Primary action button — brand-blue fill, dark text. */
+@utility btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1rem;
+  border: 0;
+  border-radius: 0.5rem;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--color-accent-text);
+  background: var(--color-accent);
+  cursor: pointer;
+  transition: filter 0.15s, transform 0.1s, box-shadow 0.15s;
+  box-shadow: 0 4px 20px rgb(var(--accent-rgb) / 0.3);
+}
+@utility btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--color-line);
+  border-radius: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--color-muted);
+  background: transparent;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
 /* ── Custom utilities ─────────────────────────────────────────────────────── */
 
 /* Workspace radial-gradient background */
 @utility workspace-bg {
   background:
-    radial-gradient(circle at 0% 0%,   rgba(46, 196, 182, 0.08) 0, transparent 30%),
+    radial-gradient(circle at 0% 0%,   rgb(var(--accent-rgb) / 0.08) 0, transparent 30%),
     radial-gradient(circle at 100% 100%, rgba(85, 130, 255, 0.1) 0, transparent 35%),
     var(--color-bg-0);
 }
@@ -63,6 +112,13 @@ html, body, #app {
 @utility monaco-line-fg      { color:        var(--vscode-editorLineNumber-foreground, #858585); }
 
 /* ── PrimeVue global overrides ────────────────────────────────────────────── */
+
+/* Self-contained hover states for the brand button utilities. The class names
+   exist in the DOM, so plain selectors style them regardless of @utility. */
+.btn-primary:hover { filter: brightness(1.1); box-shadow: 0 6px 26px rgb(var(--accent-rgb) / 0.45); }
+.btn-primary:active { transform: scale(0.98); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+.btn-ghost:hover { color: var(--color-text); border-color: var(--color-accent); }
 
 /* Workspace Menubar */
 .workspace-menubar.p-menubar {
@@ -101,7 +157,7 @@ html, body, #app {
 }
 .explorer-file-tree .p-tree-node-selectable.p-tree-node-selected > .p-tree-node-content,
 .explorer-file-tree .p-tree-node-content.p-tree-node-selectable.p-tree-node-selected {
-  background: rgba(46, 196, 182, 0.17);
+  background: rgb(var(--accent-rgb) / 0.17);
   box-shadow: inset 2px 0 0 var(--color-accent);
   color: var(--color-accent-fg);
 }

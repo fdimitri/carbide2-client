@@ -7,9 +7,8 @@
     <div class="relative w-full max-w-[360px]">
       <!-- Brand -->
       <div class="text-center mb-8">
-        <div class="inline-flex items-center gap-2 mb-4">
-          <span class="text-accent text-2xl">◈</span>
-          <span class="text-text font-bold text-xl tracking-wide">Carbide2 IDE</span>
+        <div class="inline-flex items-center justify-center mb-4">
+          <BrandMark :size="34" />
         </div>
         <p class="text-muted text-sm">Sign in to your workspace</p>
       </div>
@@ -23,7 +22,7 @@
             <input v-model="email" type="email" id="email" placeholder="test@example.com" required
               class="px-4 py-3 rounded-lg bg-bg-input border border-line text-text text-sm
                      placeholder:text-dim focus:outline-none focus:border-accent
-                     focus:shadow-[0_0_0_3px_rgba(46,196,182,0.12)] transition-all" />
+                     focus:shadow-[0_0_0_3px_rgba(90,176,255,0.12)] transition-all" />
           </div>
 
           <div class="flex flex-col gap-2">
@@ -31,7 +30,7 @@
             <input v-model="password" type="password" id="password" placeholder="••••••••" required
               class="px-4 py-3 rounded-lg bg-bg-input border border-line text-text text-sm
                      placeholder:text-dim focus:outline-none focus:border-accent
-                     focus:shadow-[0_0_0_3px_rgba(46,196,182,0.12)] transition-all" />
+                     focus:shadow-[0_0_0_3px_rgba(90,176,255,0.12)] transition-all" />
           </div>
 
           <button type="submit" :disabled="loading"
@@ -39,7 +38,7 @@
                    bg-accent border-0 cursor-pointer
                    hover:brightness-110 active:scale-[0.98] transition-all
                    disabled:opacity-50 disabled:cursor-not-allowed
-                   shadow-[0_4px_24px_rgba(46,196,182,0.35)]"
+                   shadow-[0_4px_24px_rgba(90,176,255,0.35)]"
           >{{ loading ? 'Signing in…' : 'Sign in' }}</button>
 
           <p v-if="error" class="text-warn text-xs text-center -mt-1">{{ error }}</p>
@@ -54,6 +53,8 @@
           </p>
         </div>
       </div>
+
+      <p class="mt-6 text-center text-dim text-[0.7rem] font-mono tracking-wide">{{ VERSION_LABEL }}</p>
     </div>
   </div>
 </template>
@@ -61,6 +62,8 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import BrandMark from '../components/BrandMark.vue'
+import { VERSION_LABEL } from '../version'
 import authService from '../services/authService'
 
 const email = ref('test@example.com')

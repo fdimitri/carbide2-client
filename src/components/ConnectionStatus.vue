@@ -18,7 +18,7 @@
     </template>
     <button
       v-else-if="status === 'offline' || status === 'reconnecting'"
-      class="px-1.5 py-0.5 rounded border border-[rgba(126,233,222,0.4)] text-[#7ce9de] hover:bg-[rgba(126,233,222,0.12)]"
+      class="px-1.5 py-0.5 rounded border border-[rgba(90,176,255,0.4)] text-[#8fcaff] hover:bg-[rgba(90,176,255,0.12)]"
       @click="retry"
     >Retry now</button>
   </div>

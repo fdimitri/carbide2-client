@@ -22,7 +22,7 @@
           <button @click="showNewForm = !showNewForm"
             class="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-accent text-accent-text text-sm font-bold
                    border-0 cursor-pointer hover:brightness-110 active:scale-[0.98] transition-all
-                   shadow-[0_4px_20px_rgba(46,196,182,0.3)]"
+                   shadow-[0_4px_20px_rgba(90,176,255,0.3)]"
           ><span class="text-base leading-none font-bold">+</span> New {{ singularTitle }}</button>
         </div>
       </div>
@@ -112,7 +112,7 @@
         <div v-for="p in items" :key="p.id"
           class="group relative rounded-xl border border-line bg-bg-1/60 p-7 cursor-pointer overflow-hidden
                  hover:border-accent/50 hover:bg-bg-2/85
-                 hover:shadow-[0_8px_32px_rgba(46,196,182,0.1)]
+                 hover:shadow-[0_8px_32px_rgba(90,176,255,0.1)]
                  transition-all duration-200"
           @click="openItem(p.id)">
           <div class="absolute inset-x-0 top-0 h-[2px] bg-accent origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-200"></div>

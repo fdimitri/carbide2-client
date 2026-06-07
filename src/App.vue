@@ -1,17 +1,17 @@
 <template>
-  <div class="flex flex-col h-[100dvh] overflow-hidden bg-[#0d1219]">
+  <div class="flex flex-col h-[100dvh] overflow-hidden bg-bg-0">
     <nav v-if="$route.path !== '/login'"
-      class="flex justify-between items-center shrink-0 px-6 py-0 h-11 bg-[rgba(11,18,28,0.95)] border-b border-[rgba(43,61,88,0.8)] backdrop-blur-sm"
+      class="flex justify-between items-center shrink-0 px-6 py-0 h-11 bg-[rgba(8,9,13,0.95)] border-b border-line/80 backdrop-blur-sm"
     >
       <div class="flex items-center gap-3">
-        <span class="text-accent font-mono text-xs tracking-[0.2em] uppercase opacity-70">◈</span>
-        <span class="text-text font-bold text-sm tracking-wide">Carbide2 IDE</span>
+        <BrandMark :size="22" />
       </div>
       <div v-if="authService.isAuthenticated" class="flex gap-3 items-center">
         <ConnectionStatus />
+        <span class="hidden sm:inline text-dim text-[0.7rem] font-mono tracking-wide">{{ VERSION_LABEL }}</span>
         <span class="text-muted text-xs font-mono">{{ authService.currentUser?.email }}</span>
         <button
-          class="px-3 py-1 text-xs rounded border border-[rgba(240,113,103,0.5)] text-[#f07167] bg-transparent cursor-pointer hover:bg-[rgba(240,113,103,0.12)] transition-colors"
+          class="px-3 py-1 text-xs rounded border border-warn/50 text-warn bg-transparent cursor-pointer hover:bg-warn/10 transition-colors"
           @click="logout">Logout</button>
       </div>
     </nav>
@@ -37,7 +37,7 @@
           your open workspace stays as it is.
         </p>
         <button
-          class="w-full px-3 py-2 text-sm rounded border border-accent text-[#9efdf3] bg-[#123549] cursor-pointer hover:bg-[#16415a] transition-colors"
+          class="w-full px-3 py-2 text-sm rounded border border-accent text-[#cfe8ff] bg-[#10243a] cursor-pointer hover:bg-[#163a5a] transition-colors"
           @click="reauthenticate"
         >Log in again</button>
       </div>
@@ -48,6 +48,8 @@
 <script setup>
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
+import BrandMark from './components/BrandMark.vue'
+import { VERSION_LABEL } from './version'
 import ConnectionStatus from './components/ConnectionStatus.vue'
 import authService from './services/authService'
 import workerSocket from './services/workerSocket'

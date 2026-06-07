@@ -2,7 +2,7 @@
   <div class="flex flex-col flex-1 h-full min-h-0 text-text font-ui workspace-bg">
     <header class="flex items-center justify-between px-4 py-[0.65rem] bg-gradient-to-r from-bg-2 to-[#132135] border-b border-line">
       <span class="text-[1.05rem] font-bold tracking-[0.01em]">{{ project?.name || 'Loading...' }}</span>
-      <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-[#587296] text-[#c5d4ea] text-[0.85rem] rounded-[0.35rem] cursor-pointer hover:border-[#7ce9de] hover:text-[#dffffa]" @click="$router.push('/dashboard')">← Dashboard</button>
+      <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-[#587296] text-[#c5d4ea] text-[0.85rem] rounded-[0.35rem] cursor-pointer hover:border-[#8fcaff] hover:text-[#e6f3ff]" @click="$router.push('/dashboard')">← Dashboard</button>
     </header>
 
     <Menubar :model="menuItems" class="workspace-menubar" />
@@ -126,7 +126,7 @@
           @change="onAgentAccessibleToggleFromUi"
         />
         <label for="terminal-agent-accessible" class="text-[0.82rem] text-text leading-[1.2]">
-          <span class="font-semibold text-[#9efdf3]">Agent-accessible</span>
+          <span class="font-semibold text-[#cfe8ff]">Agent-accessible</span>
           <span class="block text-muted text-[0.74rem]">
             Allow the LLM agent to drive this terminal via shell_exec.
             The agent's commands will appear here live; while it is
@@ -135,13 +135,9 @@
           </span>
         </label>
       </div>
-      <div class="flex flex-col gap-[0.35rem] mb-[0.7rem]">
-        <label class="text-muted text-[0.78rem] font-semibold" for="terminal-options">Options (placeholder)</label>
-        <InputText id="terminal-options" v-model="terminalCreateOptions" class="w-full" placeholder="Not implemented yet" disabled />
-      </div>
       <template #footer>
-        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-[#587296] text-[#c5d4ea] text-[0.85rem] rounded-[0.35rem] cursor-pointer hover:border-[#7ce9de] hover:text-[#dffffa]" @click="showCreateTerminalDialog = false">Cancel</button>
-        <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-[#123549] border border-accent text-[#9efdf3] rounded-[0.35rem] cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" @click="confirmCreateTerminal">Create</button>
+        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-[#587296] text-[#c5d4ea] text-[0.85rem] rounded-[0.35rem] cursor-pointer hover:border-[#8fcaff] hover:text-[#e6f3ff]" @click="showCreateTerminalDialog = false">Cancel</button>
+        <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-[#10243a] border border-accent text-[#cfe8ff] rounded-[0.35rem] cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" @click="confirmCreateTerminal">Create</button>
       </template>
     </Dialog>
 
@@ -151,8 +147,8 @@
         <InputText id="channel-name" v-model="channelCreateName" class="w-full" @keydown.enter="confirmCreateChannel" />
       </div>
       <template #footer>
-        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-[#587296] text-[#c5d4ea] text-[0.85rem] rounded-[0.35rem] cursor-pointer hover:border-[#7ce9de] hover:text-[#dffffa]" @click="showCreateChannelDialog = false">Cancel</button>
-        <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-[#123549] border border-accent text-[#9efdf3] rounded-[0.35rem] cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" @click="confirmCreateChannel">Create</button>
+        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-[#587296] text-[#c5d4ea] text-[0.85rem] rounded-[0.35rem] cursor-pointer hover:border-[#8fcaff] hover:text-[#e6f3ff]" @click="showCreateChannelDialog = false">Cancel</button>
+        <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-[#10243a] border border-accent text-[#cfe8ff] rounded-[0.35rem] cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" @click="confirmCreateChannel">Create</button>
       </template>
     </Dialog>
 
@@ -166,8 +162,8 @@
         <div v-if="uploadResult" class="text-muted text-[0.75rem] mt-[0.3rem] whitespace-pre-wrap">{{ uploadResult }}</div>
       </div>
       <template #footer>
-        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-[#587296] text-[#c5d4ea] text-[0.85rem] rounded-[0.35rem] cursor-pointer hover:border-[#7ce9de] hover:text-[#dffffa]" @click="showUploadDialog = false">Cancel</button>
-        <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-[#123549] border border-accent text-[#9efdf3] rounded-[0.35rem] cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" :disabled="!uploadFile || uploading" @click="confirmUpload">{{ uploading ? 'Uploading…' : 'Upload' }}</button>
+        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-[#587296] text-[#c5d4ea] text-[0.85rem] rounded-[0.35rem] cursor-pointer hover:border-[#8fcaff] hover:text-[#e6f3ff]" @click="showUploadDialog = false">Cancel</button>
+        <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-[#10243a] border border-accent text-[#cfe8ff] rounded-[0.35rem] cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" :disabled="!uploadFile || uploading" @click="confirmUpload">{{ uploading ? 'Uploading…' : 'Upload' }}</button>
       </template>
     </Dialog>
 
@@ -237,7 +233,7 @@ const {
 const terminals = useTerminals({ error, bindTabToActivePane, activePane })
 const {
   terminalLoading, terminalList, selectedTerminalId,
-  showCreateTerminalDialog, terminalCreateName, terminalCreateOptions,
+  showCreateTerminalDialog, terminalCreateName,
   terminalCreateAgentAccessible, suggestedTerminalName, onAgentAccessibleToggle,
   openCreateTerminalDialog, confirmCreateTerminal,
   openTerminal, renameTerminalById, renameSelectedTerminal, destroyTerminalById, terminalModeNoop,

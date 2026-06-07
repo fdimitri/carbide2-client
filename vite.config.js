@@ -1,6 +1,11 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
+import { readFileSync } from 'node:fs'
+
+// App version is read from package.json at config time and injected as the
+// compile-time constant __APP_VERSION__ (consumed by src/version.js).
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url)))
 
 // VITE_BASE lets the dev server (and built bundle) live under a path prefix
 // like '/w/1/' when the app is mounted behind an ingress that strips that
@@ -9,6 +14,9 @@ const base = process.env.VITE_BASE || '/'
 
 export default defineConfig({
   base,
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+  },
   plugins: [tailwindcss(), vue()],
   server: {
     port: Number(process.env.VITE_PORT) || 5173,

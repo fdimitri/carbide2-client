@@ -32,7 +32,7 @@
             :key="r.id"
             class="cursor-pointer px-[0.45rem] py-[0.35rem] rounded-[0.3rem] text-[0.82rem] border border-transparent"
             :class="selected && selected.id === r.id
-              ? 'bg-[#123549] border-[#587296] text-[#dffffa]'
+              ? 'bg-[#10243a] border-[#587296] text-[#e6f3ff]'
               : 'text-[#c5d4ea] hover:bg-[#0e1e2e]'"
             @click="selectRecording(r)"
           >
@@ -56,12 +56,12 @@
         <template v-else>
           <div class="flex items-center gap-[0.4rem] text-[0.78rem]">
             <button
-              class="px-2 py-[0.25rem] border border-[#587296] rounded-[0.3rem] cursor-pointer hover:border-[#7ce9de]"
+              class="px-2 py-[0.25rem] border border-[#587296] rounded-[0.3rem] cursor-pointer hover:border-[#8fcaff]"
               :disabled="playerBusy"
               @click="playSelected"
             >{{ playing ? 'Restart' : 'Play' }}</button>
             <button
-              class="px-2 py-[0.25rem] border border-[#587296] rounded-[0.3rem] cursor-pointer hover:border-[#7ce9de]"
+              class="px-2 py-[0.25rem] border border-[#587296] rounded-[0.3rem] cursor-pointer hover:border-[#8fcaff]"
               :disabled="!playing"
               @click="stopPlayback"
             >Stop</button>
@@ -79,7 +79,7 @@
           <div ref="termEl" class="flex-1 min-h-[18rem] bg-black rounded-[0.35rem]" />
           <div class="flex items-center gap-[0.4rem] text-[0.78rem] mt-[0.2rem]">
             <a
-              class="text-[#7ce9de] hover:underline cursor-pointer"
+              class="text-[#8fcaff] hover:underline cursor-pointer"
               @click="downloadCast"
             >Download .cast</a>
             <button
