@@ -1,10 +1,5 @@
 <template>
-  <div class="flex flex-col flex-1 h-full min-h-0 text-text font-ui workspace-bg">
-    <header class="flex items-center justify-between px-4 py-[0.65rem] bg-gradient-to-r from-bg-2 to-[#132135] border-b border-line">
-      <span class="text-[1.05rem] font-bold tracking-[0.01em]">{{ project?.name || 'Loading...' }}</span>
-      <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-[#587296] text-[#c5d4ea] text-[0.85rem] rounded-[0.35rem] cursor-pointer hover:border-[#8fcaff] hover:text-[#e6f3ff]" @click="$router.push('/dashboard')">← Dashboard</button>
-    </header>
-
+  <div id="workspace-root" class="flex flex-col flex-1 h-full min-h-0 text-text font-ui workspace-bg">
     <Menubar :model="menuItems" class="workspace-menubar" />
 
     <div class="grid flex-1 min-h-0 overflow-hidden [grid-template-columns:300px_minmax(0,1fr)] max-[980px]:[grid-template-columns:1fr] max-[980px]:[grid-template-rows:42vh_minmax(0,1fr)]">
@@ -504,6 +499,7 @@ onMounted(async () => {
   try {
     const projects = await listProjects()
     project.value = projects.find(p => p.id === projectId)
+    workspaceStore.projectName = project.value?.name || ''
 
     await initChat()
 
@@ -561,6 +557,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   offHandlers.forEach(off => off())
+  workspaceStore.projectName = ''
   cleanupChat()
   cleanupRtc()
   cleanupTerminals()

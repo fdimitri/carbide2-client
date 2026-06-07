@@ -1,12 +1,13 @@
 <template>
   <div
+    :id="'pane-' + paneIndex"
     class="flex flex-col h-full border border-[rgba(84,110,146,0.35)] bg-[rgba(13,20,32,0.7)] overflow-hidden"
     :class="paneIndex === activePaneIndex ? 'border-[rgba(90,176,255,0.65)]' : ''"
     @mousedown.capture="emit('set-active-pane', paneIndex)"
     @dragover.prevent
     @drop.prevent="onPaneDrop($event)"
   >
-    <div class="flex items-center gap-1 p-[0.3rem] border-b border-[rgba(43,61,88,0.9)] overflow-x-auto" @dragover.prevent @drop.prevent="onTabBarDrop($event)">
+    <div :id="'pane-tabs-' + paneIndex" class="flex items-center gap-1 p-[0.3rem] border-b border-[rgba(43,61,88,0.9)] overflow-x-auto" @dragover.prevent @drop.prevent="onTabBarDrop($event)">
       <button
         v-for="tab in pane.tabs"
         :key="tab.key"

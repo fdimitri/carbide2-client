@@ -1,5 +1,5 @@
 <template>
-  <aside class="border-r border-line bg-gradient-to-b from-[rgba(23,34,51,0.95)] to-[rgba(16,25,39,0.95)] flex flex-col min-h-0 min-w-0">
+  <aside id="pane-explorer" class="border-r border-line bg-gradient-to-b from-[rgba(23,34,51,0.95)] to-[rgba(16,25,39,0.95)] flex flex-col min-h-0 min-w-0">
     <div class="flex items-center justify-between px-3 py-[0.65rem] border-b border-line text-[0.84rem] font-bold uppercase tracking-[0.08em]">
       <span>Explorer</span>
     </div>

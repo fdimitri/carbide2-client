@@ -1,34 +1,28 @@
 <template>
-  <div class="min-h-full bg-bg-0 text-text font-ui">
+  <div id="dash-root" class="min-h-full bg-bg-0 text-text font-ui">
     <!-- Hero strip -->
-    <div class="border-b border-line/70 bg-bg-0/60 px-10 py-10">
+    <div id="dash-hero" class="relative border-b border-line/70 bg-gradient-to-b from-bg-1/50 to-transparent px-8 py-6">
       <div class="max-w-5xl mx-auto flex items-end justify-between gap-6 flex-wrap">
-        <div>
-          <p class="text-muted text-xs font-mono uppercase tracking-[0.15em] mb-2">{{ scopeLabel }}</p>
-          <h1 class="text-text text-2xl font-bold tracking-tight">{{ pluralTitle }}</h1>
+        <div class="min-w-0">
+          <p class="flex items-center gap-2 text-muted text-[0.7rem] font-mono uppercase tracking-[0.2em] mb-1.5">
+            <span class="inline-block w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_8px_rgba(90,176,255,0.85)]"></span>
+            {{ scopeLabel }}
+          </p>
+          <h1 class="text-text text-[1.7rem] font-bold tracking-tight leading-none">{{ pluralTitle }}</h1>
         </div>
-        <div class="flex items-center gap-3">
-          <a href="/about" target="_blank"
-            class="px-4 py-2.5 rounded-lg bg-transparent border border-line text-muted text-sm
-                   cursor-pointer hover:border-accent hover:text-text transition-all no-underline">
-            ◈ About
-          </a>
-          <button @click="router.push('/preferences')"
-            title="User Preferences"
-            class="px-4 py-2.5 rounded-lg bg-transparent border border-line text-muted text-sm
-                   cursor-pointer hover:border-accent hover:text-text transition-all">
-            ⚙ Preferences
+        <div class="flex items-center gap-2">
+          <a href="/about" target="_blank" class="btn-ghost no-underline">About</a>
+          <button @click="router.push('/preferences')" title="User Preferences" class="btn-ghost">
+            <i class="pi pi-cog text-[0.8rem]"></i> Preferences
           </button>
-          <button @click="showNewForm = !showNewForm"
-            class="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-accent text-accent-text text-sm font-bold
-                   border-0 cursor-pointer hover:brightness-110 active:scale-[0.98] transition-all
-                   shadow-[0_4px_20px_rgba(90,176,255,0.3)]"
-          ><span class="text-base leading-none font-bold">+</span> New {{ singularTitle }}</button>
+          <button @click="showNewForm = !showNewForm" class="btn-primary">
+            <span class="text-base leading-none font-bold">+</span> New {{ singularTitle }}
+          </button>
         </div>
       </div>
     </div>
 
-    <div class="max-w-5xl mx-auto px-10 py-10">
+    <div id="dash-list" class="max-w-5xl mx-auto px-8 py-8">
 
       <!-- New item inline form -->
       <div v-if="showNewForm"

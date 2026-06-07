@@ -1,6 +1,6 @@
 <!-- ChatPane — messages + right-side user list with typing indicators. -->
 <template>
-  <div class="flex flex-1 min-h-0 monaco-bg monaco-fg overflow-hidden">
+  <div id="pane-chat" class="flex flex-1 min-h-0 monaco-bg monaco-fg overflow-hidden">
 
     <!-- ── Messages column ────────────────────────────────────────── -->
     <div class="flex flex-col flex-1 min-w-0 min-h-0">
