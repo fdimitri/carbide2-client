@@ -406,6 +406,8 @@ const menuItems = computed(() => ([
     items: [
       { label: 'Open Agent Pane', icon: 'pi pi-sparkles', command: () => agents.openAgentPane() },
       { label: 'New Conversation', icon: 'pi pi-refresh',  command: () => agents.resetConversation() },
+      { separator: true },
+      { label: 'Configure Agents…', icon: 'pi pi-sliders-h', command: () => bindTabToActivePane('agent-config', 0, 'Agent Config') },
     ]
   },
 ]))

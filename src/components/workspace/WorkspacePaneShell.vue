@@ -94,6 +94,10 @@
       />
     </div>
 
+    <div class="flex flex-col flex-1 overflow-hidden" v-show="activeTabKind === 'agent-config'">
+      <AgentConfigPane v-if="activeTabKind === 'agent-config'" />
+    </div>
+
     <div v-if="pane.tabs.length === 0" class="flex flex-col flex-1 items-center justify-center text-muted">
       <div>No content. Select or create an item from the explorer.</div>
     </div>
@@ -109,6 +113,7 @@ import FilePane from './FilePane.vue'
 import ProjectSettingsPane from './ProjectSettingsPane.vue'
 import DebugPane from './DebugPane.vue'
 import AgentPane from './AgentPane.vue'
+import AgentConfigPane from './AgentConfigPane.vue'
 
 const store = useWorkspaceStore()
 
