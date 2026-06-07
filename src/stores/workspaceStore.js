@@ -59,6 +59,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const agentOwnerUserId     = ref(null)   // who started current convo
   const agentOwnerIsSelf     = ref(true)   // can we edit visibility / post?
 
+  // ── Identity ───────────────────────────────────────────────────────────────
+  // Name of the project currently open in the workspace. Set by ProjectPage on
+  // load and cleared on unmount, so the shared top nav (App.vue) can show the
+  // project label without a second header bar.
+  const projectName          = ref('')
+
   return {
     wsConnected,
     currentUserId,
@@ -88,5 +94,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     agentVisibility,
     agentOwnerUserId,
     agentOwnerIsSelf,
+    projectName,
   }
 })

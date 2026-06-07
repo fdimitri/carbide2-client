@@ -1,25 +1,33 @@
 <template>
   <div
-    class="flex flex-col h-full border border-[rgba(84,110,146,0.35)] bg-[rgba(13,20,32,0.7)] overflow-hidden"
-    :class="paneIndex === activePaneIndex ? 'border-[rgba(46,196,182,0.65)]' : ''"
+    :id="'pane-' + paneIndex"
+    class="flex flex-col h-full bg-bg-1/70 overflow-hidden"
+    :class="paneCount > 1
+      ? (paneIndex === activePaneIndex
+          ? 'border border-accent/60'
+          : 'border border-line')
+      : 'border-0'"
     @mousedown.capture="emit('set-active-pane', paneIndex)"
     @dragover.prevent
     @drop.prevent="onPaneDrop($event)"
   >
-    <div class="flex items-center gap-1 p-[0.3rem] border-b border-[rgba(43,61,88,0.9)] overflow-x-auto" @dragover.prevent @drop.prevent="onTabBarDrop($event)">
+    <div :id="'pane-tabs-' + paneIndex" class="pane-tab-bar" @dragover.prevent @drop.prevent="onTabBarDrop($event)">
       <button
         v-for="tab in pane.tabs"
         :key="tab.key"
-        class="border border-[rgba(87,114,150,0.6)] bg-[rgba(22,34,51,0.7)] text-text rounded-[0.3rem] px-[0.45rem] py-[0.22rem] text-[0.74rem] cursor-pointer whitespace-nowrap inline-flex items-center gap-[0.35rem]"
-        :class="pane.activeTab === tab.key ? 'border-accent text-accent-fg shadow-[inset_0_-2px_0_var(--color-accent)]' : ''"
+        class="pane-tab"
+        :class="{ 'is-active': pane.activeTab === tab.key }"
         draggable="true"
         @dragstart="emit('tab-drag-start', paneIndex, tab.key, $event)"
         @click="emit('activate-tab', paneIndex, tab.key)"
       >
+        <span class="pane-tab-body"></span>
         <span>{{ tab.label }}</span>
-        <span class="inline-grid place-items-center w-[0.95rem] h-[0.95rem] rounded-full text-[0.72rem] leading-none text-[#b7c7df] hover:bg-white/10 hover:text-white" @click.stop="emit('close-tab', paneIndex, tab.key)">x</span>
+        <span class="pane-tab-close" @click.stop="emit('close-tab', paneIndex, tab.key)">
+          <svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7" /></svg>
+        </span>
       </button>
-      <span v-if="pane.tabs.length === 0" class="text-muted text-[0.74rem] pl-[0.2rem]">Empty pane</span>
+      <span v-if="pane.tabs.length === 0" class="text-muted text-ui-xs pl-[0.2rem]">Empty pane</span>
     </div>
 
     <div class="flex flex-col flex-1 overflow-hidden" v-show="activeTabKind === 'file'">
@@ -86,6 +94,10 @@
       />
     </div>
 
+    <div class="flex flex-col flex-1 overflow-hidden" v-show="activeTabKind === 'agent-config'">
+      <AgentConfigPane v-if="activeTabKind === 'agent-config'" />
+    </div>
+
     <div v-if="pane.tabs.length === 0" class="flex flex-col flex-1 items-center justify-center text-muted">
       <div>No content. Select or create an item from the explorer.</div>
     </div>
@@ -101,6 +113,7 @@ import FilePane from './FilePane.vue'
 import ProjectSettingsPane from './ProjectSettingsPane.vue'
 import DebugPane from './DebugPane.vue'
 import AgentPane from './AgentPane.vue'
+import AgentConfigPane from './AgentConfigPane.vue'
 
 const store = useWorkspaceStore()
 
@@ -108,6 +121,7 @@ const props = defineProps({
   pane: { type: Object, required: true },
   paneIndex: { type: Number, required: true },
   activePaneIndex: { type: Number, required: true },
+  paneCount: { type: Number, default: 1 },
 })
 
 const effectiveActiveKey = computed(() => {

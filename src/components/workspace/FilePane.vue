@@ -4,23 +4,25 @@
       Open a file from the explorer.
     </div>
     <template v-else>
-      <div class="flex items-center gap-3 px-3 py-1 bg-[#1e1e1e] border-b border-[#333] text-[0.75rem] shrink-0">
-        <span class="text-[#cdd6f4] font-medium">{{ filename }}</span>
-        <span v-if="loading" class="text-[#6c7086] italic">Loading…</span>
-        <span v-if="loadError" class="text-[#f38ba8]">{{ loadError }}</span>
-        <span v-if="isBinary" class="text-[#a6adc8] italic">(binary)</span>
+      <!-- No filename header: the tab already shows it. This strip only
+           appears when there's a transient status to surface. -->
+      <div v-if="loading || loadError || isBinary"
+           class="flex items-center gap-3 px-3 py-1 bg-bg-2 border-b border-line text-ui-sm shrink-0">
+        <span v-if="loading" class="text-muted italic">Loading…</span>
+        <span v-if="loadError" class="text-warn">{{ loadError }}</span>
+        <span v-if="isBinary" class="text-muted italic">(binary)</span>
       </div>
       <!-- Binary preview — image inline if it looks like one, else a placeholder + download link. See #13. -->
-      <div v-if="isBinary" class="flex-1 min-h-0 overflow-auto bg-[#181a20] p-4 grid place-items-center text-center">
-        <div v-if="blobLoading" class="text-muted text-[0.85rem]">Fetching…</div>
-        <div v-else-if="blobError" class="text-[#f38ba8] text-[0.85rem]">{{ blobError }}</div>
+      <div v-if="isBinary" class="flex-1 min-h-0 overflow-auto bg-bg-2 p-4 grid place-items-center text-center">
+        <div v-if="blobLoading" class="text-muted text-ui-lg">Fetching…</div>
+        <div v-else-if="blobError" class="text-warn text-ui-lg">{{ blobError }}</div>
         <img v-else-if="blobUrl && isImage" :src="blobUrl" :alt="filename"
-             class="max-w-full max-h-full object-contain rounded border border-[#333]" />
+             class="max-w-full max-h-full object-contain rounded border border-line" />
         <div v-else-if="blobUrl" class="flex flex-col items-center gap-3">
-          <i class="pi pi-file text-4xl text-[#6c7086]"></i>
-          <span class="text-[#cdd6f4] text-[0.9rem]">{{ filename }}</span>
+          <i class="pi pi-file text-4xl text-muted"></i>
+          <span class="text-text text-ui-xl">{{ filename }}</span>
           <a :href="blobUrl" :download="filename"
-             class="px-3 py-[0.34rem] bg-transparent border border-[#587296] text-[#c5d4ea] text-[0.85rem] rounded-[0.35rem] hover:border-[#7ce9de] hover:text-[#dffffa]">Download</a>
+             class="px-3 py-[0.34rem] bg-transparent border border-muted text-text text-ui-lg rounded-ui-md hover:border-accent-bright hover:text-accent-fg">Download</a>
         </div>
       </div>
       <MonacoEditor

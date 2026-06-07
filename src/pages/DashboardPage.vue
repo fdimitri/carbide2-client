@@ -1,49 +1,36 @@
 <template>
-  <div class="min-h-full bg-bg-0 text-text font-ui">
+  <div id="dash-root" class="min-h-full bg-bg-0 text-text font-ui">
     <!-- Hero strip -->
-    <div class="border-b border-line/70 bg-bg-0/60 px-10 py-10">
+    <div id="dash-hero" class="relative border-b border-line/70 bg-gradient-to-b from-bg-1/50 to-transparent px-8 py-6">
       <div class="max-w-5xl mx-auto flex items-end justify-between gap-6 flex-wrap">
-        <div>
-          <p class="text-muted text-xs font-mono uppercase tracking-[0.15em] mb-2">{{ scopeLabel }}</p>
-          <h1 class="text-text text-2xl font-bold tracking-tight">{{ pluralTitle }}</h1>
+        <div class="min-w-0">
+          <p class="flex items-center gap-2 text-muted text-ui-xs font-mono uppercase tracking-[0.2em] mb-1.5">
+            <span class="inline-block w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_8px_rgba(90,176,255,0.85)]"></span>
+            {{ scopeLabel }}
+          </p>
+          <h1 class="text-text text-ui-3xl font-bold tracking-tight leading-none">{{ pluralTitle }}</h1>
         </div>
-        <div class="flex items-center gap-3">
-          <a href="/about" target="_blank"
-            class="px-4 py-2.5 rounded-lg bg-transparent border border-line text-muted text-sm
-                   cursor-pointer hover:border-accent hover:text-text transition-all no-underline">
-            ◈ About
-          </a>
-          <button @click="router.push('/preferences')"
-            title="User Preferences"
-            class="px-4 py-2.5 rounded-lg bg-transparent border border-line text-muted text-sm
-                   cursor-pointer hover:border-accent hover:text-text transition-all">
-            ⚙ Preferences
+        <div class="flex items-center gap-2">
+          <a href="/about" target="_blank" class="btn-ghost no-underline">About</a>
+          <button @click="showNewForm = !showNewForm" class="btn-primary">
+            <span class="text-base leading-none font-bold">+</span> New {{ singularTitle }}
           </button>
-          <button @click="showNewForm = !showNewForm"
-            class="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-accent text-accent-text text-sm font-bold
-                   border-0 cursor-pointer hover:brightness-110 active:scale-[0.98] transition-all
-                   shadow-[0_4px_20px_rgba(46,196,182,0.3)]"
-          ><span class="text-base leading-none font-bold">+</span> New {{ singularTitle }}</button>
         </div>
       </div>
     </div>
 
-    <div class="max-w-5xl mx-auto px-10 py-10">
+    <div id="dash-list" class="max-w-5xl mx-auto px-8 py-8">
 
       <!-- New item inline form -->
       <div v-if="showNewForm"
         class="mb-8 p-5 rounded-xl border border-accent/25 bg-bg-1/70 backdrop-blur flex flex-wrap gap-4 items-end">
         <div class="flex flex-col gap-1.5 flex-1 min-w-[180px]">
           <label class="text-muted text-label font-semibold uppercase tracking-widest">Name</label>
-          <input v-model="newName" :placeholder="`my-${singularSlug}`" autofocus
-            class="px-3 py-2 rounded-lg bg-bg-input border border-line text-text text-sm
-                   placeholder:text-dim focus:outline-none focus:border-accent transition-all" />
+          <UiInput v-model="newName" :placeholder="`my-${singularSlug}`" autofocus />
         </div>
         <div class="flex flex-col gap-1.5 flex-1 min-w-[180px]">
           <label class="text-muted text-label font-semibold uppercase tracking-widest">Description</label>
-          <input v-model="newDesc" placeholder="optional"
-            class="px-3 py-2 rounded-lg bg-bg-input border border-line text-text text-sm
-                   placeholder:text-dim focus:outline-none focus:border-accent transition-all" />
+          <UiInput v-model="newDesc" placeholder="optional" />
         </div>
 
         <!-- Seed method: how the new workspace's project starts out. "Empty"
@@ -69,15 +56,11 @@
         <div v-if="seedMethod === 'git'" class="flex flex-wrap gap-4 w-full">
           <div class="flex flex-col gap-1.5 flex-1 min-w-[220px]">
             <label class="text-muted text-label font-semibold uppercase tracking-widest">Repository URL</label>
-            <input v-model="seedGitUrl" placeholder="https://github.com/user/repo.git"
-              class="px-3 py-2 rounded-lg bg-bg-input border border-line text-text text-sm
-                     placeholder:text-dim focus:outline-none focus:border-accent transition-all" />
+            <UiInput v-model="seedGitUrl" placeholder="https://github.com/user/repo.git" />
           </div>
           <div class="flex flex-col gap-1.5 min-w-[160px]">
             <label class="text-muted text-label font-semibold uppercase tracking-widest">Branch / ref</label>
-            <input v-model="seedGitRef" placeholder="default branch"
-              class="px-3 py-2 rounded-lg bg-bg-input border border-line text-text text-sm
-                     placeholder:text-dim focus:outline-none focus:border-accent transition-all" />
+            <UiInput v-model="seedGitRef" placeholder="default branch" />
           </div>
         </div>
 
@@ -112,7 +95,7 @@
         <div v-for="p in items" :key="p.id"
           class="group relative rounded-xl border border-line bg-bg-1/60 p-7 cursor-pointer overflow-hidden
                  hover:border-accent/50 hover:bg-bg-2/85
-                 hover:shadow-[0_8px_32px_rgba(46,196,182,0.1)]
+                 hover:shadow-[0_8px_32px_rgba(90,176,255,0.1)]
                  transition-all duration-200"
           @click="openItem(p.id)">
           <div class="absolute inset-x-0 top-0 h-[2px] bg-accent origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-200"></div>
@@ -123,7 +106,7 @@
             </span>
           </div>
           <p class="text-muted text-xs mb-4 line-clamp-2 leading-relaxed">{{ p.description || 'No description' }}</p>
-          <span class="text-[0.65rem] text-[#3a4d64] font-mono">{{ formatDate(p.created_at) }}</span>
+          <span class="text-ui-2xs text-dim font-mono">{{ formatDate(p.created_at) }}</span>
         </div>
       </div>
 
@@ -137,6 +120,7 @@ import { ref, computed, onMounted, onBeforeUnmount, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { listWorkspaces, createWorkspace, getWorkspaceHealth } from '../services/workspaceService'
 import { setPendingSeed } from '../services/pendingSeed'
+import UiInput from '../components/ui/UiInput.vue'
 
 // Model B: this Dashboard is the CONTROL-PLANE dashboard. It lists the
 // user's Workspaces (one isolated pod each). Workspace pods themselves have

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="10" fill="#08090d"/>
+  <rect x="6" y="6" width="52" height="52" rx="7" fill="none" stroke="#5ab0ff" stroke-width="2"/>
+  <text x="32" y="40" text-anchor="middle"
+        font-family="ui-monospace, 'JetBrains Mono', monospace"
+        font-size="22" font-weight="700" fill="#5ab0ff">C2</text>
+  <rect x="46" y="44" width="6" height="10" fill="#5ab0ff">
+    <animate attributeName="opacity" values="1;0;1" dur="1s" repeatCount="indefinite"/>
+  </rect>
+</svg>

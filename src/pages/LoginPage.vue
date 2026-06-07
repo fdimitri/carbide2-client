@@ -2,14 +2,13 @@
   <div class="relative flex min-h-screen items-center justify-center px-4 workspace-bg overflow-hidden">
     <!-- ambient glows -->
     <div class="pointer-events-none absolute -top-60 -left-60 w-[500px] h-[500px] rounded-full bg-accent/8 blur-[120px]"></div>
-    <div class="pointer-events-none absolute -bottom-60 -right-40 w-[400px] h-[400px] rounded-full bg-[rgba(85,130,255,0.08)] blur-[100px]"></div>
+    <div class="pointer-events-none absolute -bottom-60 -right-40 w-[400px] h-[400px] rounded-full bg-accent/10 blur-[100px]"></div>
 
     <div class="relative w-full max-w-[360px]">
       <!-- Brand -->
       <div class="text-center mb-8">
-        <div class="inline-flex items-center gap-2 mb-4">
-          <span class="text-accent text-2xl">◈</span>
-          <span class="text-text font-bold text-xl tracking-wide">Carbide2 IDE</span>
+        <div class="inline-flex items-center justify-center mb-4">
+          <BrandMark :size="34" />
         </div>
         <p class="text-muted text-sm">Sign in to your workspace</p>
       </div>
@@ -20,18 +19,14 @@
 
           <div class="flex flex-col gap-2">
             <label class="text-muted text-label font-semibold uppercase tracking-widest mb-1" for="email">Email</label>
-            <input v-model="email" type="email" id="email" placeholder="test@example.com" required
-              class="px-4 py-3 rounded-lg bg-bg-input border border-line text-text text-sm
-                     placeholder:text-dim focus:outline-none focus:border-accent
-                     focus:shadow-[0_0_0_3px_rgba(46,196,182,0.12)] transition-all" />
+            <UiInput v-model="email" type="email" id="email" placeholder="test@example.com" required size="lg"
+              class="focus:shadow-[0_0_0_3px_rgba(90,176,255,0.12)]" />
           </div>
 
           <div class="flex flex-col gap-2">
             <label class="text-muted text-label font-semibold uppercase tracking-widest mb-1" for="password">Password</label>
-            <input v-model="password" type="password" id="password" placeholder="••••••••" required
-              class="px-4 py-3 rounded-lg bg-bg-input border border-line text-text text-sm
-                     placeholder:text-dim focus:outline-none focus:border-accent
-                     focus:shadow-[0_0_0_3px_rgba(46,196,182,0.12)] transition-all" />
+            <UiInput v-model="password" type="password" id="password" placeholder="••••••••" required size="lg"
+              class="focus:shadow-[0_0_0_3px_rgba(90,176,255,0.12)]" />
           </div>
 
           <button type="submit" :disabled="loading"
@@ -39,7 +34,7 @@
                    bg-accent border-0 cursor-pointer
                    hover:brightness-110 active:scale-[0.98] transition-all
                    disabled:opacity-50 disabled:cursor-not-allowed
-                   shadow-[0_4px_24px_rgba(46,196,182,0.35)]"
+                   shadow-[0_4px_24px_rgba(90,176,255,0.35)]"
           >{{ loading ? 'Signing in…' : 'Sign in' }}</button>
 
           <p v-if="error" class="text-warn text-xs text-center -mt-1">{{ error }}</p>
@@ -49,11 +44,13 @@
           <p class="text-dim text-label font-mono tracking-wide">
             demo · test@example.com · password123
           </p>
-          <p v-if="acronym" class="mt-4 text-dim/60 text-[0.7rem] italic leading-snug">
+          <p v-if="acronym" class="mt-4 text-dim/60 text-ui-xs italic leading-snug">
             CARBIDE is&hellip; {{ acronym }}
           </p>
         </div>
       </div>
+
+      <p class="mt-6 text-center text-dim text-ui-xs font-mono tracking-wide">{{ VERSION_LABEL }}</p>
     </div>
   </div>
 </template>
@@ -61,6 +58,9 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import BrandMark from '../components/BrandMark.vue'
+import { VERSION_LABEL } from '../version'
+import UiInput from '../components/ui/UiInput.vue'
 import authService from '../services/authService'
 
 const email = ref('test@example.com')

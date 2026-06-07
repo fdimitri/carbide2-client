@@ -6,13 +6,13 @@
   <div class="flex flex-col flex-1 min-h-0 monaco-bg monaco-fg overflow-hidden">
 
     <!-- Toolbar: agent picker + new conversation -->
-    <div class="flex items-center gap-2 px-3 py-[0.4rem] border-b monaco-panel-border monaco-tabs-bg text-[0.8rem]">
+    <div class="flex items-center gap-2 px-3 py-1.5 border-b monaco-panel-border monaco-tabs-bg text-ui-md">
       <label class="opacity-70">Agent:</label>
       <select
         :value="store.agentSelectedSlug || ''"
         @change="onPickAgent($event.target.value)"
         :disabled="!agents.length"
-        class="px-[0.4rem] py-[0.2rem] rounded-[0.25rem] border monaco-input-bg monaco-input-fg monaco-input-border outline-none"
+        class="px-1.5 py-1 rounded-ui-xs border monaco-input-bg monaco-input-fg monaco-input-border outline-none"
       >
         <option value="" disabled>{{ agents.length ? 'Select…' : 'None available' }}</option>
         <option v-for="a in agents" :key="a.slug" :value="a.slug">
@@ -23,137 +23,144 @@
         {{ activeAgentMeta }}
       </span>
       <span class="ml-auto flex items-center gap-2">
-        <span v-if="store.agentStatus === 'thinking'" class="text-[0.72rem] opacity-70 italic">thinking…</span>
-        <button
-          class="px-[0.55rem] py-[0.2rem] text-[0.72rem] rounded-[0.25rem] border monaco-panel-border opacity-80 hover:opacity-100"
+        <span v-if="store.agentStatus === 'thinking'" class="text-ui-xs opacity-70 italic">thinking…</span>
+        <UiButton
+          size="xs"
           @click="onReset"
           :disabled="store.agentStatus === 'thinking'"
           title="Start a fresh conversation"
-        >New</button>
+        >New</UiButton>
       </span>
     </div>
 
     <!-- Conversation picker + visibility -->
-    <div class="flex items-center gap-2 px-3 py-[0.35rem] border-b monaco-panel-border text-[0.75rem]">
+    <div class="flex items-center gap-2 px-3 py-1.5 border-b monaco-panel-border text-ui-sm">
       <label class="opacity-70">Conversation:</label>
       <select
         :value="store.agentConversationId || ''"
         @change="onPickConversation($event.target.value)"
-        class="flex-1 min-w-0 px-[0.4rem] py-[0.15rem] rounded-[0.25rem] border monaco-input-bg monaco-input-fg monaco-input-border outline-none"
+        class="flex-1 min-w-0 px-1.5 py-0.5 rounded-ui-xs border monaco-input-bg monaco-input-fg monaco-input-border outline-none"
       >
         <option value="">— current (new) —</option>
         <option v-for="c in store.agentRecent" :key="c.conversation_id" :value="c.conversation_id">
           {{ conversationLabel(c) }}
         </option>
       </select>
-      <button
+      <UiButton
         v-if="store.agentConversationId && store.agentOwnerIsSelf"
-        class="px-[0.5rem] py-[0.15rem] text-[0.7rem] rounded-[0.25rem] border monaco-panel-border opacity-80 hover:opacity-100"
+        size="xs"
         @click="onToggleVisibility"
         :title="store.agentVisibility === 'project' ? 'Click to make private' : 'Click to share with project'"
       >
         {{ store.agentVisibility === 'project' ? '🌐 shared' : '🔒 private' }}
-      </button>
+      </UiButton>
       <span
         v-else-if="store.agentConversationId && !store.agentOwnerIsSelf"
-        class="text-[0.7rem] opacity-60 italic"
+        class="text-ui-xs opacity-60 italic"
         :title="'Owned by another user — read-only view'"
       >watching</span>
     </div>
 
     <!-- Timeline -->
     <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-2 min-h-0" ref="scrollEl">
-      <div v-if="!messages.length && !store.agentSelectedSlug && store.agentListLoaded && !agents.length" class="flex-1 grid place-items-center monaco-line-fg p-4 text-[0.85rem]">
+      <div v-if="!messages.length && !store.agentSelectedSlug && store.agentListLoaded && !agents.length" class="flex-1 grid place-items-center monaco-line-fg p-4 text-ui-lg">
         No agents seeded. Run <code>rails db:seed</code>.
       </div>
-      <div v-else-if="!messages.length && !store.agentSelectedSlug" class="flex-1 grid place-items-center monaco-line-fg p-4 text-[0.85rem]">
+      <div v-else-if="!messages.length && !store.agentSelectedSlug" class="flex-1 grid place-items-center monaco-line-fg p-4 text-ui-lg">
         Loading agents…
       </div>
-      <div v-else-if="!messages.length" class="flex-1 grid place-items-center monaco-line-fg p-4 text-[0.85rem]">
+      <div v-else-if="!messages.length" class="flex-1 grid place-items-center monaco-line-fg p-4 text-ui-lg">
         Ask {{ activeAgentName }} something.
       </div>
 
-      <template v-for="(m, i) in messages" :key="i">
-        <!-- User -->
-        <div v-if="m.kind === 'user'" class="flex flex-col gap-[0.15rem] max-w-[80ch] self-end">
-          <span class="text-[0.72rem] opacity-60 self-end">you</span>
-          <div
-            v-if="m.images && m.images.length"
-            class="flex flex-wrap gap-1 self-end max-w-full"
-          >
-            <img
-              v-for="(img, ii) in m.images"
-              :key="ii"
-              :src="`data:${img.mime};base64,${img.base64}`"
-              class="max-h-40 max-w-[16rem] rounded-[0.25rem] border monaco-panel-border"
-              :alt="`attachment ${ii + 1}`"
-            />
-          </div>
-          <span
-            v-if="m.text"
-            class="text-[0.86rem] leading-[1.35] break-words whitespace-pre-wrap px-[0.6rem] py-[0.35rem] rounded-[0.35rem] border monaco-panel-border monaco-input-bg"
-          >{{ m.text }}</span>
-        </div>
-
-        <!-- Assistant -->
-        <div v-else-if="m.kind === 'assistant'" class="flex flex-col gap-[0.15rem] max-w-[80ch]">
-          <span class="text-[0.72rem] opacity-60 flex items-center gap-2">
-            {{ activeAgentName }}
+      <template v-for="(m, i) in timeline" :key="i">
+        <!-- User — left-aligned, avatar + name, same language as ChatPane -->
+        <div v-if="m.kind === 'user'" class="flex items-start gap-2">
+          <Avatar :id="selfLabel" :name="selfLabel" />
+          <div class="flex flex-col min-w-0 gap-1">
+            <span class="text-ui-md font-semibold">{{ selfLabel }}</span>
+            <div
+              v-if="m.images && m.images.length"
+              class="flex flex-wrap gap-1 max-w-full"
+            >
+              <img
+                v-for="(img, ii) in m.images"
+                :key="ii"
+                :src="`data:${img.mime};base64,${img.base64}`"
+                class="max-h-40 max-w-[16rem] rounded-ui-xs border monaco-panel-border"
+                :alt="`attachment ${ii + 1}`"
+              />
+            </div>
             <span
-              v-if="m.truncated"
-              class="text-[0.65rem] uppercase tracking-wider px-[0.35rem] py-[0.05rem] rounded-[0.2rem] border border-amber-600/60 text-amber-400 font-semibold"
-              title="Model hit its max_tokens / context limit before finishing. Increase the model's context window or max_tokens in your provider."
-            >truncated</span>
-          </span>
-          <details
-            v-if="m.reasoning"
-            class="text-[0.78rem] border monaco-panel-border rounded-[0.3rem] px-[0.5rem] py-[0.25rem] opacity-80"
-          >
-            <summary class="cursor-pointer select-none opacity-70">reasoning ({{ m.reasoning.length }} chars)</summary>
-            <div class="markdown-body text-[0.8rem] mt-1 opacity-90" v-html="renderMarkdown(m.reasoning)"></div>
-          </details>
-          <div
-            class="markdown-body text-[0.86rem] leading-[1.4] break-words"
-            :class="m.muted ? 'opacity-60 italic' : ''"
-            v-html="renderMarkdown(m.text)"
-          ></div>
+              v-if="m.text"
+              class="text-ui-lg leading-snug break-words whitespace-pre-wrap"
+            >{{ m.text }}</span>
+          </div>
         </div>
 
-        <!-- Tool call/result pair — render as collapsible -->
-        <details v-else-if="m.kind === 'tool_call'" class="text-[0.78rem] border monaco-panel-border rounded-[0.3rem] px-[0.5rem] py-[0.25rem] opacity-90">
-          <summary class="cursor-pointer select-none">
-            <span class="opacity-70">tool →</span>
-            <code class="font-mono">{{ m.name }}({{ shortArgs(m.args) }})</code>
-          </summary>
-          <pre class="text-[0.72rem] mt-1 whitespace-pre-wrap break-words opacity-80">{{ pretty(m.args) }}</pre>
-        </details>
+        <!-- Assistant turn — one Coder header, then its tool calls + reply -->
+        <div v-else-if="m.kind === 'assistant_turn'" class="flex items-start gap-2">
+          <Avatar :id="store.agentSelectedSlug || activeAgentName" :name="activeAgentName" />
+          <div class="flex flex-col min-w-0 gap-1">
+            <span class="text-ui-md font-semibold">{{ activeAgentName }}</span>
+            <template v-for="(item, ii) in m.items" :key="ii">
+              <!-- Tool calls — grouped; same disclosure language as reasoning -->
+              <details v-if="item.type === 'tools'" class="text-ui-xs rounded-ui-sm bg-white/[0.03]">
+                <summary class="cursor-pointer select-none font-mono opacity-45 hover:opacity-75 marker:opacity-30 px-2 py-0.5 truncate">
+                  {{ item.tools.length }} tool {{ item.tools.length === 1 ? 'call' : 'calls' }}<span class="opacity-70"> · {{ toolNames(item.tools) }}</span>
+                </summary>
+                <div class="flex flex-col pl-2 pb-0.5">
+                  <details v-for="(t, ti) in item.tools" :key="ti" class="group text-ui-xs rounded-ui-xs px-2 py-0.5 hover:bg-white/[0.04]">
+                    <summary class="cursor-pointer select-none font-mono opacity-45 group-hover:opacity-80 marker:opacity-30 truncate">
+                      {{ t.name }}({{ shortArgs(t.args) }})<template v-if="t.done"><span class="opacity-40"> → </span><span class="opacity-70">{{ resultSummary(t.result).trim() }}</span></template><span v-else class="opacity-40 italic"> …</span>
+                    </summary>
+                    <pre v-if="t.args !== undefined" class="text-ui-2xs mt-1 whitespace-pre-wrap break-words opacity-60">{{ pretty(t.args) }}</pre>
+                    <pre v-if="t.done" class="text-ui-2xs mt-1 whitespace-pre-wrap break-words opacity-50">{{ pretty(t.result) }}</pre>
+                  </details>
+                </div>
+              </details>
 
-        <details v-else-if="m.kind === 'tool_result'" class="text-[0.78rem] border monaco-panel-border rounded-[0.3rem] px-[0.5rem] py-[0.25rem] opacity-80">
-          <summary class="cursor-pointer select-none">
-            <span class="opacity-60">result ←</span>
-            <code class="font-mono">{{ m.name }}</code>
-            <span class="opacity-60">{{ resultSummary(m.result) }}</span>
-          </summary>
-          <pre class="text-[0.72rem] mt-1 whitespace-pre-wrap break-words opacity-80">{{ pretty(m.result) }}</pre>
-        </details>
+              <!-- Reply text (+ optional reasoning / truncated badge) -->
+              <template v-else>
+                <span
+                  v-if="item.truncated"
+                  class="self-start text-ui-2xs uppercase tracking-wider px-1.5 py-0 rounded-ui-xs border border-amber-600/60 text-amber-400 font-semibold"
+                  title="Model hit its max_tokens / context limit before finishing. Increase the model's context window or max_tokens in your provider."
+                >truncated</span>
+                <details
+                  v-if="item.reasoning"
+                  class="text-ui-xs rounded-ui-sm bg-white/[0.05]"
+                >
+                  <summary class="cursor-pointer select-none font-mono opacity-45 hover:opacity-75 marker:opacity-30 px-2 py-0.5 truncate">reasoning · {{ item.reasoning.length }} chars</summary>
+                  <div class="markdown-body text-ui-md px-2 pb-1 opacity-90" v-html="renderMarkdown(item.reasoning)"></div>
+                </details>
+                <div
+                  class="markdown-body text-ui-lg leading-normal break-words"
+                  :class="item.muted ? 'opacity-60 italic' : ''"
+                  v-html="renderMarkdown(item.text)"
+                ></div>
+              </template>
+            </template>
+          </div>
+        </div>
 
         <!-- System / error -->
-        <div v-else-if="m.kind === 'error'" class="text-[0.78rem] text-red-400 italic">
+        <div v-else-if="m.kind === 'error'" class="text-ui-sm text-red-400 italic">
           {{ m.text }}
         </div>
-        <div v-else class="text-[0.78rem] opacity-60 italic">{{ m.text }}</div>
+        <div v-else class="text-ui-sm opacity-60 italic">{{ m.text }}</div>
       </template>
     </div>
 
     <!-- Composer -->
     <div
-      class="flex flex-col gap-[0.4rem] p-[0.55rem] border-t monaco-panel-border monaco-tabs-bg"
+      class="flex flex-col gap-1.5 p-2 border-t monaco-panel-border monaco-tabs-bg"
       :class="dragOver ? 'ring-2 ring-blue-500/60 ring-inset' : ''"
       @dragover.prevent="dragOver = true"
       @dragleave.prevent="dragOver = false"
       @drop.prevent="onDrop"
     >
-      <div v-if="pendingImages.length" class="flex flex-wrap gap-[0.4rem]">
+      <div v-if="pendingImages.length" class="flex flex-wrap gap-1.5">
         <div
           v-for="(img, idx) in pendingImages"
           :key="idx"
@@ -162,11 +169,11 @@
         >
           <img
             :src="`data:${img.mime};base64,${img.base64}`"
-            class="h-16 w-16 object-cover rounded-[0.25rem] border monaco-panel-border"
+            class="h-16 w-16 object-cover rounded-ui-xs border monaco-panel-border"
             :alt="`pending ${idx + 1}`"
           />
           <button
-            class="absolute -top-1 -right-1 w-4 h-4 leading-[0.85rem] text-[0.7rem] rounded-full bg-black/80 text-white opacity-80 hover:opacity-100"
+            class="absolute -top-1 -right-1 w-4 h-4 leading-[0.85rem] text-ui-xs rounded-full bg-black/80 text-white opacity-80 hover:opacity-100"
             @click="removePending(idx)"
             title="Remove"
           >×</button>
@@ -174,12 +181,12 @@
       </div>
 
       <div class="flex gap-2">
-        <button
-          class="px-[0.6rem] py-[0.45rem] text-[0.85rem] rounded-[0.3rem] border monaco-panel-border opacity-80 hover:opacity-100 disabled:opacity-30 disabled:cursor-default"
+        <UiButton
+          size="md"
           @click="fileInputEl?.click()"
           :disabled="!canSend"
           title="Attach image(s) (or paste / drag-drop)"
-        >📎</button>
+        >📎</UiButton>
         <input
           ref="fileInputEl"
           type="file"
@@ -195,13 +202,14 @@
           :placeholder="placeholder"
           :disabled="!canSend"
           rows="1"
-          class="flex-1 px-[0.65rem] py-[0.45rem] text-[0.85rem] rounded-[0.3rem] outline-none font-[inherit] border monaco-input-bg monaco-input-fg monaco-input-border focus:monaco-focus-border placeholder:monaco-line-fg resize-none"
+          class="flex-1 px-2.5 py-2 text-ui-lg rounded-ui-sm outline-none font-[inherit] border monaco-input-bg monaco-input-fg monaco-input-border focus:monaco-focus-border placeholder:monaco-line-fg resize-none"
         ></textarea>
-        <button
-          class="px-[0.9rem] py-[0.45rem] text-[0.85rem] text-white rounded-[0.3rem] cursor-pointer font-[inherit] border-0 monaco-focus-bg hover:brightness-115 disabled:opacity-40 disabled:cursor-default"
+        <UiButton
+          size="md"
+          variant="primary"
           @click="onSend"
           :disabled="!canSend || (!draft.trim() && !pendingImages.length)"
-        >Send</button>
+        >Send</UiButton>
       </div>
     </div>
   </div>
@@ -211,6 +219,9 @@
 import { ref, computed, watch, nextTick } from 'vue'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { renderMarkdown } from '../../utils/markdown'
+import UiButton from '../ui/UiButton.vue'
+import Avatar from '../ui/Avatar.vue'
+import authService from '../../services/authService'
 
 const props = defineProps({
   connected: { type: Boolean, default: false },
@@ -296,6 +307,55 @@ function onDrop(ev) {
 
 const agents   = computed(() => store.agentList || [])
 const messages = computed(() => store.agentMessages || [])
+
+// Merge each tool_call with its matching tool_result (same call id) into a
+// single row, so a tool invocation reads as one line — name(args) → summary —
+// instead of two stacked boxes. Then everything the agent emits in one turn
+// (its tool calls + its reply) is grouped under a single Coder turn, so tool
+// calls are attributed to the agent — not left dangling under the user message.
+// Within a turn, consecutive tool rows coalesce into one collapsible group.
+const timeline = computed(() => {
+  // Pass 1: merge tool_call + tool_result by id into one `tool` row.
+  const merged = []
+  const byId = new Map()
+  for (const m of messages.value) {
+    if (m.kind === 'tool_call') {
+      const row = { kind: 'tool', id: m.id, name: m.name, args: m.args, result: undefined, done: false }
+      if (m.id != null) byId.set(m.id, row)
+      merged.push(row)
+    } else if (m.kind === 'tool_result') {
+      const row = m.id != null ? byId.get(m.id) : null
+      if (row) { row.result = m.result; row.done = true }
+      else merged.push({ kind: 'tool', id: m.id, name: m.name, result: m.result, done: true })
+    } else {
+      merged.push(m)
+    }
+  }
+  // Pass 2: fold agent-side entries (tools + assistant text) into Coder turns.
+  const out = []
+  let turn = null
+  for (const m of merged) {
+    if (m.kind === 'tool' || m.kind === 'assistant') {
+      if (!turn) { turn = { kind: 'assistant_turn', items: [] }; out.push(turn) }
+      if (m.kind === 'tool') {
+        const last = turn.items[turn.items.length - 1]
+        if (last && last.type === 'tools') last.tools.push(m)
+        else turn.items.push({ type: 'tools', tools: [m] })
+      } else {
+        turn.items.push({ type: 'text', text: m.text, reasoning: m.reasoning, truncated: m.truncated, muted: m.muted })
+      }
+    } else {
+      turn = null
+      out.push(m)
+    }
+  }
+  return out
+})
+
+// Signed-in user, for the user-message avatar. Mirrors ChatPane's colour-from-id
+// + initials fallback; no avatar image is actually wired anywhere yet.
+const selfUser  = computed(() => authService.currentUser || null)
+const selfLabel = computed(() => selfUser.value?.name || selfUser.value?.email || 'you')
 
 const activeAgent = computed(() =>
   agents.value.find(a => a.slug === store.agentSelectedSlug) || null
@@ -392,6 +452,20 @@ function resultSummary(r) {
   return ''
 }
 
+// Compact name preview for a grouped run of tool calls, collapsing consecutive
+// duplicates ("read_file ×3") and truncating long bursts.
+function toolNames(tools) {
+  const out = []
+  for (const t of tools) {
+    const last = out[out.length - 1]
+    if (last && last.name === t.name) last.count++
+    else out.push({ name: t.name, count: 1 })
+  }
+  const parts = out.map(e => e.count > 1 ? `${e.name} ×${e.count}` : e.name)
+  if (parts.length > 4) return parts.slice(0, 4).join(', ') + `, +${parts.length - 4} more`
+  return parts.join(', ')
+}
+
 // Auto-scroll on new message
 watch(() => messages.value.length, async () => {
   await nextTick()
@@ -399,57 +473,3 @@ watch(() => messages.value.length, async () => {
 })
 </script>
 
-<!-- Minimal markdown styling — Tailwind utilities don't reach the v-html
-     output (no class hooks on generated tags), so a tiny scoped sheet
-     keeps code blocks, lists, and links legible inside the assistant
-     bubble without pulling in @tailwindcss/typography. -->
-<style scoped>
-.markdown-body :deep(p) { margin: 0.25rem 0; }
-.markdown-body :deep(p:first-child) { margin-top: 0; }
-.markdown-body :deep(p:last-child)  { margin-bottom: 0; }
-.markdown-body :deep(ul),
-.markdown-body :deep(ol) { margin: 0.25rem 0 0.25rem 1.2rem; }
-.markdown-body :deep(li) { margin: 0.1rem 0; }
-.markdown-body :deep(code) {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.85em;
-  padding: 0.05em 0.3em;
-  border-radius: 0.2em;
-  background: rgba(127,127,127,0.18);
-}
-.markdown-body :deep(pre) {
-  margin: 0.4rem 0;
-  padding: 0.55rem 0.7rem;
-  border-radius: 0.3rem;
-  overflow-x: auto;
-  background: rgba(127,127,127,0.12);
-  border: 1px solid rgba(127,127,127,0.25);
-}
-.markdown-body :deep(pre) code {
-  padding: 0;
-  background: transparent;
-  font-size: 0.8rem;
-  line-height: 1.4;
-}
-.markdown-body :deep(a) { text-decoration: underline; }
-.markdown-body :deep(a:hover) { opacity: 0.85; }
-.markdown-body :deep(blockquote) {
-  margin: 0.3rem 0;
-  padding: 0.1rem 0.7rem;
-  border-left: 3px solid rgba(127,127,127,0.4);
-  opacity: 0.85;
-}
-.markdown-body :deep(h1),
-.markdown-body :deep(h2),
-.markdown-body :deep(h3),
-.markdown-body :deep(h4) { font-weight: 600; margin: 0.5rem 0 0.25rem; }
-.markdown-body :deep(h1) { font-size: 1.15em; }
-.markdown-body :deep(h2) { font-size: 1.08em; }
-.markdown-body :deep(h3) { font-size: 1.02em; }
-.markdown-body :deep(table) { border-collapse: collapse; margin: 0.4rem 0; }
-.markdown-body :deep(th),
-.markdown-body :deep(td) {
-  border: 1px solid rgba(127,127,127,0.3);
-  padding: 0.2rem 0.5rem;
-}
-</style>

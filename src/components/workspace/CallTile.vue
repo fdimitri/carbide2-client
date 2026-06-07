@@ -1,7 +1,7 @@
 <!-- CallTile — one video tile in a channel call. Binds a MediaStream to a
      <video> imperatively (srcObject can't be set via a template binding). -->
 <template>
-  <div class="relative shrink-0 w-[150px] h-[112px] rounded-[0.35rem] overflow-hidden bg-black border monaco-panel-border">
+  <div class="relative shrink-0 w-[150px] h-[112px] rounded-ui-md overflow-hidden bg-black border monaco-panel-border">
     <video
       ref="videoEl"
       autoplay
@@ -10,10 +10,10 @@
       class="w-full h-full object-cover"
       :class="hasVideo ? '' : 'opacity-0'"
     ></video>
-    <div v-if="!hasVideo" class="absolute inset-0 flex items-center justify-center text-muted text-[1.4rem] font-semibold">
+    <div v-if="!hasVideo" class="absolute inset-0 flex items-center justify-center text-muted text-ui-2xl font-semibold">
       {{ initials }}
     </div>
-    <span class="absolute bottom-0 left-0 right-0 px-1 py-[0.1rem] text-[0.68rem] text-white bg-black/55 truncate">
+    <span class="absolute bottom-0 left-0 right-0 px-1 py-[0.1rem] text-ui-2xs text-white bg-black/55 truncate">
       {{ label }}
     </span>
   </div>
