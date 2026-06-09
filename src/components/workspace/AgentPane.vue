@@ -87,7 +87,7 @@
                 v-for="(img, ii) in m.images"
                 :key="ii"
                 :src="`data:${img.mime};base64,${img.base64}`"
-                class="max-h-40 max-w-[16rem] rounded-ui-xs border monaco-panel-border"
+                class="max-h-40 max-w-64 rounded-ui-xs border monaco-panel-border"
                 :alt="`attachment ${ii + 1}`"
               />
             </div>
@@ -173,7 +173,7 @@
             :alt="`pending ${idx + 1}`"
           />
           <button
-            class="absolute -top-1 -right-1 w-4 h-4 leading-[0.85rem] text-ui-xs rounded-full bg-black/80 text-white opacity-80 hover:opacity-100"
+            class="absolute -top-1 -right-1 w-4 h-4 leading-3.5 text-ui-xs rounded-full bg-black/80 text-white opacity-80 hover:opacity-100"
             @click="removePending(idx)"
             title="Remove"
           >×</button>

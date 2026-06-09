@@ -5,7 +5,7 @@
     <div class="border-b border-line/70 bg-bg-0/60 px-10 py-10">
       <div class="max-w-3xl mx-auto flex items-end justify-between gap-6">
         <div>
-          <p class="text-muted text-xs font-mono uppercase tracking-[0.15em] mb-2">Account</p>
+          <p class="text-muted text-xs font-mono uppercase tracking-widest mb-2">Account</p>
           <h1 class="text-text text-2xl font-bold tracking-tight">User Preferences</h1>
         </div>
         <button @click="router.push('/dashboard')"

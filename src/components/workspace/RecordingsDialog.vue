@@ -18,26 +18,24 @@
     :style="{ width: '60rem', maxWidth: '95vw' }"
     @hide="onClose"
   >
-    <div class="flex gap-[0.8rem] min-h-[24rem]">
+    <div class="flex gap-3 min-h-96">
       <!-- Left: list -->
-      <div class="w-[18rem] shrink-0 border-r border-dim pr-[0.6rem] overflow-y-auto">
+      <div class="w-72 shrink-0 border-r border-dim pr-2.5 overflow-y-auto">
         <div v-if="loading" class="text-muted text-ui-md">Loading…</div>
         <div v-else-if="loadError" class="text-warn text-ui-md">{{ loadError }}</div>
         <div v-else-if="recordings.length === 0" class="text-muted text-ui-md">
           No recordings yet. Right-click a terminal → Start Recording.
         </div>
-        <ul v-else class="list-none p-0 m-0 flex flex-col gap-[0.25rem]">
+        <ul v-else class="list-none p-0 m-0 flex flex-col gap-1">
           <li
             v-for="r in recordings"
             :key="r.id"
-            class="cursor-pointer px-[0.45rem] py-[0.35rem] rounded-ui-sm text-ui-md border border-transparent"
-            :class="selected && selected.id === r.id
-              ? 'bg-sel border-muted text-accent-fg'
-              : 'text-text hover:bg-sel'"
+            class="ui-list-row text-ui-md"
+            :class="{ 'is-active': selected && selected.id === r.id }"
             @click="selectRecording(r)"
           >
-            <div class="font-semibold flex items-center gap-[0.35rem]">
-              <span v-if="r.status === 'recording'" class="inline-block w-[0.5rem] h-[0.5rem] rounded-full bg-warn animate-pulse" />
+            <div class="font-semibold flex items-center gap-1.5">
+              <span v-if="r.status === 'recording'" class="inline-block w-2 h-2 rounded-full bg-warn animate-pulse" />
               {{ r.terminal_name || `terminal #${r.terminal_id}` }}
             </div>
             <div class="text-muted text-ui-xs">{{ formatDate(r.started_at) }}</div>
@@ -49,24 +47,24 @@
       </div>
 
       <!-- Right: player -->
-      <div class="flex-1 min-w-0 flex flex-col gap-[0.4rem]">
+      <div class="flex-1 min-w-0 flex flex-col gap-1.5">
         <div v-if="!selected" class="text-muted text-ui-md">
           Select a recording to play it back.
         </div>
         <template v-else>
-          <div class="flex items-center gap-[0.4rem] text-ui-sm">
+          <div class="flex items-center gap-1.5 text-ui-sm">
             <button
-              class="px-2 py-[0.25rem] border border-muted rounded-ui-sm cursor-pointer hover:border-accent-bright"
+              class="ui-btn ui-btn-sm ui-btn-ghost"
               :disabled="playerBusy"
               @click="playSelected"
             >{{ playing ? 'Restart' : 'Play' }}</button>
             <button
-              class="px-2 py-[0.25rem] border border-muted rounded-ui-sm cursor-pointer hover:border-accent-bright"
+              class="ui-btn ui-btn-sm ui-btn-ghost"
               :disabled="!playing"
               @click="stopPlayback"
             >Stop</button>
-            <label class="text-muted ml-[0.4rem]">Speed</label>
-            <select v-model.number="speed" class="bg-sel border border-dim text-text rounded-ui-xs px-1 py-[0.1rem]">
+            <label class="text-muted ml-1.5">Speed</label>
+            <select v-model.number="speed" class="bg-sel border border-dim text-text rounded-ui-xs px-1 py-0.5">
               <option :value="0.5">0.5×</option>
               <option :value="1">1×</option>
               <option :value="2">2×</option>
@@ -76,14 +74,14 @@
             </select>
             <span class="text-muted ml-auto">{{ playbackStatus }}</span>
           </div>
-          <div ref="termEl" class="flex-1 min-h-[18rem] bg-black rounded-ui-md" />
-          <div class="flex items-center gap-[0.4rem] text-ui-sm mt-[0.2rem]">
+          <div ref="termEl" class="flex-1 min-h-72 bg-black rounded-ui-md" />
+          <div class="flex items-center gap-1.5 text-ui-sm mt-0.5">
             <a
               class="text-accent-bright hover:underline cursor-pointer"
               @click="downloadCast"
             >Download .cast</a>
             <button
-              class="ml-auto px-2 py-[0.25rem] border border-warn text-warn rounded-ui-sm cursor-pointer hover:bg-warn/10"
+              class="ml-auto ui-btn ui-btn-sm ui-btn-ghost text-warn border-warn hover:bg-warn/10"
               :disabled="selected.status === 'recording'"
               @click="deleteSelected"
               :title="selected.status === 'recording' ? 'Stop recording first' : 'Delete this recording'"

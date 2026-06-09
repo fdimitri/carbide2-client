@@ -6,6 +6,154 @@ per-pane display state is read directly from the store by `WorkspacePaneShell`.
 
 ---
 
+## Styling strategy options (decision: Hybrid)
+
+Constraint from product direction: avoid arbitrary class values like
+`py-[0.33rem]`, `right-[0.50rem]`, and similar one-off bracket values. Use a
+fixed scale/tokens or reusable classes.
+
+Selected direction:
+- Use Hybrid styling (Tailwind layout/composition + semantic CSS classes for repeated UI objects).
+- Keep existing Tailwind tokens, but stop introducing arbitrary unit values in class strings.
+- Extract repeated controls into reusable components/classes before introducing new one-off class strings.
+
+### Common "before" example
+
+```vue
+<button
+  class="px-[0.85rem] py-[0.42rem] bg-sel border border-accent text-accent-fg rounded-ui-md"
+>
+  Create
+</button>
+```
+
+### Option A: Tailwind-first + Vue components
+
+Use scale classes in a component and reuse the component.
+
+```vue
+<!-- components/ui/UiButton.vue -->
+<button class="px-3.5 py-2 rounded-ui-md border border-accent bg-sel text-accent-fg">
+  <slot />
+</button>
+
+<!-- usage -->
+<UiButton>Create</UiButton>
+```
+
+Pros:
+- Fast iteration in templates.
+- Reuse enforced by component API.
+
+Cons:
+- Utility-heavy templates can be noisy.
+- Style intent can feel implicit.
+
+### Option B: Hybrid (Tailwind layout + semantic CSS classes)
+
+Keep utility classes for layout; move repeated control styles into semantic classes.
+
+```vue
+<button class="btn btn-primary">Create</button>
+```
+
+```css
+/* in component scoped style or shared stylesheet */
+.btn {
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
+  padding: 0.5rem 0.875rem; /* fixed scale choice */
+}
+
+.btn-primary {
+  background: var(--sel);
+  color: var(--accent-fg);
+  border-color: var(--accent);
+}
+```
+
+Pros:
+- Better readability for repeated UI objects.
+- Keeps Tailwind where it is strongest (layout/composition).
+
+Cons:
+- Two styling systems to govern.
+- Needs clear class naming standards.
+
+### Option C: CSS-first (minimal Tailwind)
+
+Use semantic/component CSS as the default, Tailwind only as helper utilities.
+
+```vue
+<button class="create-action">Create</button>
+```
+
+```css
+.create-action {
+  padding: var(--space-2) var(--space-3_5);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--sel);
+  color: var(--accent-fg);
+}
+```
+
+Pros:
+- Strong semantic markup.
+- Easy to enforce design language centrally.
+
+Cons:
+- Larger migration cost from current code.
+- More CSS authoring overhead.
+
+### Option D: Transition path (for enforcement)
+
+Keep current stack but enforce anti-drift rules now, postpone framework-level decision.
+
+```vue
+<!-- temporary rule: no arbitrary values, allow only scale classes -->
+<button class="px-3.5 py-2 rounded-ui-md border border-accent bg-sel text-accent-fg">
+  Create
+</button>
+```
+
+With CI guards (broad):
+
+```bash
+# 1) Catch arbitrary numeric-unit values (px/rem/em/%/vh/vw/...)
+rg -n --glob '*.vue' "\[[^\]]*[0-9.]+(px|rem|em|vh|vw|vmin|vmax|%|ch|ex|pt|pc|cm|mm|in)\]" src/components src/pages && exit 1
+
+# 2) Optional strict mode: catch any bracket arbitrary class value in templates
+rg -n --glob '*.vue' "class=\"[^\"]*\[[^\]]+\][^\"]*\"" src/components src/pages && exit 1
+```
+
+Pros:
+- Immediate quality improvement with low risk.
+- Buys time for an informed Tailwind-vs-CSS decision.
+
+Cons:
+- Does not by itself solve long-term style architecture.
+
+### Extractable component candidates (Hybrid roadmap)
+
+- `PaneHeader`
+- `DialogActions` (cancel + primary)
+- `ListRow` (selectable items)
+- `ComposerInput` (monaco variant)
+- `StatusPill` / badges
+- `EmptyStateBanner`
+
+These are option-agnostic because they reduce duplication in either utility-first or
+CSS-first styling.
+
+Priority order for next extraction pass:
+1. `DialogActions` (cancel + primary) used across Explorer/Page dialogs.
+2. `ListRow` used in recordings and explorer-like rows.
+3. `PaneHeader` for repeated pane heading structure.
+4. `ComposerInput` (monaco variant) for chat/agent composer controls.
+
+---
+
 ## File index
 
 | File | Role |

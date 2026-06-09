@@ -6,11 +6,11 @@
     <div class="flex flex-col flex-1 min-w-0 min-h-0">
 
       <!-- ── Call bar (video shares the channel's context) ───────────────── -->
-      <div class="flex items-center gap-2 px-3 py-[0.4rem] border-b monaco-panel-border monaco-tabs-bg">
+      <div class="flex items-center gap-2 px-3 py-1.5 border-b monaco-panel-border monaco-tabs-bg">
         <template v-if="!callActive">
           <button
-            class="inline-flex items-center gap-[0.35rem] px-[0.7rem] py-[0.32rem] text-ui-sm rounded-ui-sm cursor-pointer border monaco-input-border monaco-input-bg monaco-fg hover:monaco-focus-border disabled:opacity-40 disabled:cursor-default"
-            :class="callAvailable ? 'bg-success text-white border-0 hover:brightness-110' : ''"
+            class="ui-btn ui-btn-sm"
+            :class="callAvailable ? 'ui-btn-primary' : 'ui-btn-mono'"
             :disabled="!canSend"
             :title="callAvailable ? 'Join the call in progress in this channel' : 'Start a video call in this channel'"
             @click="emit('start-call')"
@@ -21,15 +21,15 @@
         </template>
         <template v-else>
           <button
-            class="px-[0.6rem] py-[0.3rem] text-ui-sm rounded-ui-sm cursor-pointer border monaco-input-border monaco-input-bg monaco-fg hover:monaco-focus-border"
+            class="ui-btn ui-btn-sm ui-btn-mono"
             @click="emit('toggle-mic')"
           >{{ micEnabled ? 'Mute' : 'Unmute' }}</button>
           <button
-            class="px-[0.6rem] py-[0.3rem] text-ui-sm rounded-ui-sm cursor-pointer border monaco-input-border monaco-input-bg monaco-fg hover:monaco-focus-border"
+            class="ui-btn ui-btn-sm ui-btn-mono"
             @click="emit('toggle-cam')"
           >{{ camEnabled ? 'Camera off' : 'Camera on' }}</button>
           <button
-            class="px-[0.6rem] py-[0.3rem] text-ui-sm text-white rounded-ui-sm cursor-pointer border-0 bg-warn hover:brightness-110"
+            class="ui-btn ui-btn-sm ui-btn-warn"
             @click="emit('leave-call')"
           >Leave</button>
           <span class="text-ui-xs monaco-line-fg ml-auto">{{ participants.length + 1 }} in call</span>
@@ -52,10 +52,10 @@
           :class="msg.system ? 'opacity-50 italic' : ''"
         >
           <template v-if="!msg.system">
-            <div class="flex items-start gap-2 max-w-[80ch]">
+            <div class="flex items-start gap-2 max-w-prose">
               <!-- Avatar -->
               <Avatar :id="msg.user_id" :name="msg.name" :src="msg.avatar_url" />
-              <div class="flex flex-col min-w-0 gap-[0.1rem]">
+              <div class="flex flex-col min-w-0 gap-0.5">
                 <div class="flex items-baseline gap-2">
                   <span class="text-ui-md font-semibold"
                     :class="msg.user_id === currentUserId ? 'text-[var(--vscode-focusBorder,#007acc)]' : ''"
@@ -75,17 +75,17 @@
         </div>
       </div>
 
-      <div class="flex gap-2 p-[0.55rem] border-t monaco-panel-border monaco-tabs-bg">
+      <div class="flex gap-2 p-2 border-t monaco-panel-border monaco-tabs-bg">
         <input
           v-model="localInput"
           @keydown.enter.prevent="emitSend"
           @keydown="onKeydown"
           :placeholder="joining ? 'Joining channel...' : 'Type a message...'"
           :disabled="!connected || joining"
-          class="flex-1 px-[0.65rem] py-[0.45rem] text-ui-lg rounded-ui-sm outline-none font-[inherit] border monaco-input-bg monaco-input-fg monaco-input-border focus:monaco-focus-border placeholder:monaco-line-fg"
+          class="flex-1 px-2.5 py-2 text-ui-lg rounded-ui-sm outline-none font-[inherit] border monaco-input-bg monaco-input-fg monaco-input-border focus:monaco-focus-border placeholder:monaco-line-fg"
         />
         <button
-          class="px-[0.9rem] py-[0.45rem] text-ui-lg text-white rounded-ui-sm cursor-pointer font-[inherit] border-0 monaco-focus-bg hover:brightness-115 disabled:opacity-40 disabled:cursor-default"
+          class="ui-btn ui-btn-focus"
           @click="emitSend"
           :disabled="!canSend"
         >Send</button>
@@ -93,20 +93,20 @@
     </div>
 
     <!-- ── User list ───────────────────────────────────────────────────────── -->
-    <aside class="w-[120px] shrink-0 border-l monaco-panel-border flex flex-col overflow-y-auto py-2">
+    <aside class="w-32 shrink-0 border-l monaco-panel-border flex flex-col overflow-y-auto py-2">
       <p class="text-ui-2xs font-semibold text-muted uppercase tracking-widest px-2 mb-1 opacity-60">
         Members · {{ users.length }}
       </p>
-      <ul class="flex flex-col gap-[0.15rem]">
+      <ul class="flex flex-col gap-0.5">
         <li
           v-for="u in users"
           :key="u.user_id"
-          class="flex items-center gap-[0.35rem] px-2 py-[0.2rem] text-ui-sm leading-snug"
+          class="flex items-center gap-1.5 px-2 py-1 text-ui-sm leading-snug"
           :class="u.user_id === currentUserId ? 'text-[var(--vscode-focusBorder,#007acc)]' : 'monaco-fg'"
         >
           <!-- Typing indicator dot -->
           <span
-            class="shrink-0 w-[7px] h-[7px] rounded-full transition-all duration-200"
+            class="shrink-0 w-2 h-2 rounded-full transition-all duration-200"
             :style="dotStyle(u.user_id)"
           ></span>
           <span class="truncate">{{ u.name }}</span>

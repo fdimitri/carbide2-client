@@ -4,7 +4,7 @@
     <div id="dash-hero" class="relative border-b border-line/70 bg-gradient-to-b from-bg-1/50 to-transparent px-8 py-6">
       <div class="max-w-5xl mx-auto flex items-end justify-between gap-6 flex-wrap">
         <div class="min-w-0">
-          <p class="flex items-center gap-2 text-muted text-ui-xs font-mono uppercase tracking-[0.2em] mb-1.5">
+          <p class="flex items-center gap-2 text-muted text-ui-xs font-mono uppercase tracking-widest mb-1.5">
             <span class="inline-block w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_8px_rgba(90,176,255,0.85)]"></span>
             {{ scopeLabel }}
           </p>
@@ -24,11 +24,11 @@
       <!-- New item inline form -->
       <div v-if="showNewForm"
         class="mb-8 p-5 rounded-xl border border-accent/25 bg-bg-1/70 backdrop-blur flex flex-wrap gap-4 items-end">
-        <div class="flex flex-col gap-1.5 flex-1 min-w-[180px]">
+        <div class="flex flex-col gap-1.5 flex-1 min-w-44">
           <label class="text-muted text-label font-semibold uppercase tracking-widest">Name</label>
           <UiInput v-model="newName" :placeholder="`my-${singularSlug}`" autofocus />
         </div>
-        <div class="flex flex-col gap-1.5 flex-1 min-w-[180px]">
+        <div class="flex flex-col gap-1.5 flex-1 min-w-44">
           <label class="text-muted text-label font-semibold uppercase tracking-widest">Description</label>
           <UiInput v-model="newDesc" placeholder="optional" />
         </div>
@@ -54,11 +54,11 @@
 
         <!-- Git seed inputs, only when "Clone from git" is selected. -->
         <div v-if="seedMethod === 'git'" class="flex flex-wrap gap-4 w-full">
-          <div class="flex flex-col gap-1.5 flex-1 min-w-[220px]">
+          <div class="flex flex-col gap-1.5 flex-1 min-w-56">
             <label class="text-muted text-label font-semibold uppercase tracking-widest">Repository URL</label>
             <UiInput v-model="seedGitUrl" placeholder="https://github.com/user/repo.git" />
           </div>
-          <div class="flex flex-col gap-1.5 min-w-[160px]">
+          <div class="flex flex-col gap-1.5 min-w-40">
             <label class="text-muted text-label font-semibold uppercase tracking-widest">Branch / ref</label>
             <UiInput v-model="seedGitRef" placeholder="default branch" />
           </div>
@@ -98,7 +98,7 @@
                  hover:shadow-[0_8px_32px_rgba(90,176,255,0.1)]
                  transition-all duration-200"
           @click="openItem(p.id)">
-          <div class="absolute inset-x-0 top-0 h-[2px] bg-accent origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-200"></div>
+          <div class="absolute inset-x-0 top-0 h-0.5 bg-accent origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-200"></div>
           <div class="flex items-start justify-between gap-2 mb-1">
             <h3 class="text-text font-semibold">{{ p.name }}</h3>
             <span class="shrink-0 flex items-center gap-1.5 mt-0.5" :title="healthTitle(p.id)">

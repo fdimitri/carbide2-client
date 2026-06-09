@@ -121,13 +121,13 @@
                 :key="t"
                 class="flex items-center gap-2 text-ui-md text-text cursor-pointer select-none w-fit"
               >
-                <input type="checkbox" :value="t" v-model="form.allowed_tools" class="accent-accent" />
+                <UiCheckbox :value="t" v-model="form.allowed_tools" />
                 <code class="font-mono">{{ t }}</code>
               </label>
             </div>
 
             <label class="flex items-center gap-2 text-ui-md text-text cursor-pointer select-none w-fit mt-3">
-              <input type="checkbox" v-model="form.shell_exec_enabled" class="accent-warn" />
+              <UiCheckbox v-model="form.shell_exec_enabled" tone="warn" />
               <span>Allow <code class="font-mono text-warn">shell_exec</code> capability</span>
             </label>
             <p class="text-ui-xs text-muted mt-1">
@@ -163,7 +163,7 @@
           <!-- ── Status + actions ───────────────────────────────────────── -->
           <section class="mb-7">
             <label class="flex items-center gap-2 text-ui-md text-text cursor-pointer select-none w-fit">
-              <input type="checkbox" v-model="form.enabled" class="accent-accent" />
+              <UiCheckbox v-model="form.enabled" />
               Enabled (selectable in the agent picker)
             </label>
           </section>
@@ -189,6 +189,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { listAgents, updateAgent } from '../../services/agentService'
 import UiInput from '../ui/UiInput.vue'
+import UiCheckbox from '../ui/UiCheckbox.vue'
 
 // Mirrors Agent::ROLES (server) and the worker AgentTools registry. Kept as
 // plain constants — small, stable capability lists.

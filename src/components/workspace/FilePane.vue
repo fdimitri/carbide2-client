@@ -21,8 +21,8 @@
         <div v-else-if="blobUrl" class="flex flex-col items-center gap-3">
           <i class="pi pi-file text-4xl text-muted"></i>
           <span class="text-text text-ui-xl">{{ filename }}</span>
-          <a :href="blobUrl" :download="filename"
-             class="px-3 py-[0.34rem] bg-transparent border border-muted text-text text-ui-lg rounded-ui-md hover:border-accent-bright hover:text-accent-fg">Download</a>
+            <a :href="blobUrl" :download="filename"
+           class="ui-btn ui-btn-ghost">Download</a>
         </div>
       </div>
       <MonacoEditor

@@ -1,10 +1,10 @@
 <template>
   <div class="relative flex min-h-screen items-center justify-center px-4 workspace-bg overflow-hidden">
     <!-- ambient glows -->
-    <div class="pointer-events-none absolute -top-60 -left-60 w-[500px] h-[500px] rounded-full bg-accent/8 blur-[120px]"></div>
-    <div class="pointer-events-none absolute -bottom-60 -right-40 w-[400px] h-[400px] rounded-full bg-accent/10 blur-[100px]"></div>
+    <div class="login-glow-a pointer-events-none absolute -top-60 -left-60 rounded-full bg-accent/8"></div>
+    <div class="login-glow-b pointer-events-none absolute -bottom-60 -right-40 rounded-full bg-accent/10"></div>
 
-    <div class="relative w-full max-w-[360px]">
+    <div class="relative w-full max-w-sm">
       <!-- Brand -->
       <div class="text-center mb-8">
         <div class="inline-flex items-center justify-center mb-4">

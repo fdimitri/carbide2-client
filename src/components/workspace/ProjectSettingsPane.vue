@@ -26,7 +26,7 @@
 
           <div class="mt-3">
             <label class="flex items-center gap-2 text-ui-md text-text cursor-pointer select-none w-fit" @click.prevent="onWipeCheckboxClick">
-              <input type="checkbox" :checked="form.clean_vfs" class="accent-accent pointer-events-none" readonly />
+              <UiCheckbox :modelValue="form.clean_vfs" class="pointer-events-none" readonly />
               Wipe VFS database before re-importing
               <span
                 class="inline-flex items-center justify-center w-4 h-4 rounded-full border border-muted text-ui-2xs text-muted cursor-pointer hover:border-accent hover:text-accent transition-colors leading-none"
@@ -126,7 +126,7 @@
     </p>
 
     <label class="flex items-start gap-2 cursor-pointer select-none text-sm text-text">
-      <input type="checkbox" v-model="wipeConfirmed" class="accent-warn mt-[0.15rem] shrink-0" />
+      <UiCheckbox v-model="wipeConfirmed" tone="warn" class="mt-0.5 shrink-0" />
       Yes, I really want to lose all my data.
     </label>
 
@@ -152,6 +152,7 @@ import { ref, onMounted, defineComponent, h } from 'vue'
 import Dialog from 'primevue/dialog'
 import { getProjectSettings, updateProjectSettings, setProjectRoot, listProjects } from '../../services/projectService'
 import UiInput from '../ui/UiInput.vue'
+import UiCheckbox from '../ui/UiCheckbox.vue'
 
 // ── Inline helper components ──────────────────────────────────────────────────
 
