@@ -53,16 +53,16 @@
         </div>
         <template v-else>
           <div class="flex items-center gap-1.5 text-ui-sm">
-            <button
-              class="ui-btn ui-btn-sm ui-btn-ghost"
+            <UiButton
+              size="sm"
               :disabled="playerBusy"
               @click="playSelected"
-            >{{ playing ? 'Restart' : 'Play' }}</button>
-            <button
-              class="ui-btn ui-btn-sm ui-btn-ghost"
+            >{{ playing ? 'Restart' : 'Play' }}</UiButton>
+            <UiButton
+              size="sm"
               :disabled="!playing"
               @click="stopPlayback"
-            >Stop</button>
+            >Stop</UiButton>
             <label class="text-muted ml-1.5">Speed</label>
             <select v-model.number="speed" class="bg-sel border border-dim text-text rounded-ui-xs px-1 py-0.5">
               <option :value="0.5">0.5×</option>
@@ -80,12 +80,13 @@
               class="text-accent-bright hover:underline cursor-pointer"
               @click="downloadCast"
             >Download .cast</a>
-            <button
-              class="ml-auto ui-btn ui-btn-sm ui-btn-ghost text-warn border-warn hover:bg-warn/10"
+            <UiButton
+              class="ml-auto text-warn border-warn hover:bg-warn/10"
+              size="sm"
               :disabled="selected.status === 'recording'"
               @click="deleteSelected"
               :title="selected.status === 'recording' ? 'Stop recording first' : 'Delete this recording'"
-            >Delete</button>
+            >Delete</UiButton>
           </div>
         </template>
       </div>
@@ -103,6 +104,7 @@ import {
   listRecordings, deleteRecording, fetchRecordingCast, recordingCastUrl,
 } from '../../services/recordingService'
 import authService from '../../services/authService'
+import UiButton from '../ui/UiButton.vue'
 
 const props = defineProps({
   visible:   { type: Boolean, required: true },

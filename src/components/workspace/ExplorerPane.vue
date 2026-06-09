@@ -7,9 +7,9 @@
          Hidden as soon as the tree has any entry. -->
     <div v-if="fileTree.length === 0 && !gitImportRunning" class="mx-2.5 mb-2 p-2.5 border border-dashed border-dim rounded-ui-md bg-bg-1">
       <div class="text-ui-sm text-muted mb-1.5">This project is empty.</div>
-      <button class="w-full ui-btn ui-btn-sm ui-btn-ghost" @click="showGitImportDialog = true">
+      <UiButton size="sm" class="w-full" @click="showGitImportDialog = true">
         <i class="pi pi-github mr-1.5"></i>Clone from git URL
-      </button>
+      </UiButton>
     </div>
     <div v-else-if="gitImportRunning" class="mx-2.5 mb-2 p-2.5 border border-muted rounded-ui-md bg-bg-1 text-ui-sm text-accent-fg">
       <i class="pi pi-spin pi-spinner mr-1.5"></i>Cloning {{ gitImportUrl }}…
@@ -67,30 +67,26 @@
 
     <!-- Create File Dialog -->
     <Dialog v-model:visible="showCreateFileDialog" modal header="New File" :style="{ width: '22rem' }">
-      <div class="flex flex-col gap-1.5 mb-3">
-        <label class="text-muted text-ui-sm font-semibold">File Name</label>
-        <InputText v-model="createFileName" class="w-full" @keydown.enter="confirmCreateFile" autofocus />
-        <span class="text-muted text-ui-sm">in {{ createDialogParentPath }}</span>
-      </div>
+      <UiField label="File Name" :hint="`in ${createDialogParentPath}`" class="mb-3">
+        <UiInput v-model="createFileName" class="w-full" @keydown.enter="confirmCreateFile" autofocus />
+      </UiField>
       <template #footer>
         <div class="ui-dialog-actions">
-          <button class="ui-btn ui-btn-ghost" @click="showCreateFileDialog = false">Cancel</button>
-          <button class="ui-btn ui-btn-primary" :disabled="!createFileName.trim()" @click="confirmCreateFile">Create</button>
+          <UiButton @click="showCreateFileDialog = false">Cancel</UiButton>
+          <UiButton variant="primary" :disabled="!createFileName.trim()" @click="confirmCreateFile">Create</UiButton>
         </div>
       </template>
     </Dialog>
 
     <!-- Create Folder Dialog -->
     <Dialog v-model:visible="showCreateFolderDialog" modal header="New Folder" :style="{ width: '22rem' }">
-      <div class="flex flex-col gap-1.5 mb-3">
-        <label class="text-muted text-ui-sm font-semibold">Folder Name</label>
-        <InputText v-model="createFolderName" class="w-full" @keydown.enter="confirmCreateFolder" autofocus />
-        <span class="text-muted text-ui-sm">in {{ createDialogParentPath }}</span>
-      </div>
+      <UiField label="Folder Name" :hint="`in ${createDialogParentPath}`" class="mb-3">
+        <UiInput v-model="createFolderName" class="w-full" @keydown.enter="confirmCreateFolder" autofocus />
+      </UiField>
       <template #footer>
         <div class="ui-dialog-actions">
-          <button class="ui-btn ui-btn-ghost" @click="showCreateFolderDialog = false">Cancel</button>
-          <button class="ui-btn ui-btn-primary" :disabled="!createFolderName.trim()" @click="confirmCreateFolder">Create</button>
+          <UiButton @click="showCreateFolderDialog = false">Cancel</UiButton>
+          <UiButton variant="primary" :disabled="!createFolderName.trim()" @click="confirmCreateFolder">Create</UiButton>
         </div>
       </template>
     </Dialog>
@@ -100,18 +96,21 @@
          a UX gate, not a security boundary. -->
     <Dialog v-model:visible="showGitImportDialog" modal header="Clone from git URL" :style="{ width: '28rem' }">
       <div class="flex flex-col gap-1.5 mb-3">
-        <label class="text-muted text-ui-sm font-semibold">Repository URL</label>
-        <InputText v-model="gitImportUrl" class="w-full" placeholder="https://github.com/user/repo.git" autofocus />
-        <label class="text-muted text-ui-sm font-semibold mt-1.5">Branch / ref <span class="font-normal opacity-70">(blank = default branch)</span></label>
-        <InputText v-model="gitImportRef" class="w-full" placeholder="default branch" />
+        <UiField label="Repository URL" compact>
+          <UiInput v-model="gitImportUrl" class="w-full" placeholder="https://github.com/user/repo.git" autofocus />
+        </UiField>
+        <UiField label="Branch / ref" class="mt-1.5" compact>
+          <template #label-extra><span class="font-normal opacity-70"> (blank = default branch)</span></template>
+          <UiInput v-model="gitImportRef" class="w-full" placeholder="default branch" />
+        </UiField>
         <span v-if="gitImportError" class="text-warn text-ui-sm mt-1">{{ gitImportError }}</span>
       </div>
       <template #footer>
         <div class="ui-dialog-actions">
-          <button class="ui-btn ui-btn-ghost" @click="showGitImportDialog = false" :disabled="gitImportSubmitting">Cancel</button>
-          <button class="ui-btn ui-btn-primary" :disabled="!gitImportUrl.trim() || gitImportSubmitting" @click="confirmGitImport">
+          <UiButton @click="showGitImportDialog = false" :disabled="gitImportSubmitting">Cancel</UiButton>
+          <UiButton variant="primary" :disabled="!gitImportUrl.trim() || gitImportSubmitting" @click="confirmGitImport">
             {{ gitImportSubmitting ? 'Starting…' : 'Clone' }}
-          </button>
+          </UiButton>
         </div>
       </template>
     </Dialog>
@@ -130,7 +129,7 @@
       </table>
       <template #footer>
         <div class="ui-dialog-actions">
-          <button class="ui-btn ui-btn-ghost" @click="showPropertiesDialog = false">Close</button>
+          <UiButton @click="showPropertiesDialog = false">Close</UiButton>
         </div>
       </template>
     </Dialog>
@@ -142,13 +141,15 @@ import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import Tree from 'primevue/tree'
 import ContextMenu from 'primevue/contextmenu'
 import Dialog from 'primevue/dialog'
-import InputText from 'primevue/inputtext'
 import { logInfo } from '../../services/log'
 import { PANE_COUNTS } from '../../composables/usePanes'
 import workerSocket from '../../services/workerSocket'
 import { useRoute } from 'vue-router'
 import { takePendingSeed, currentScope } from '../../services/pendingSeed'
 import PaneHeader from '../ui/PaneHeader.vue'
+import UiButton from '../ui/UiButton.vue'
+import UiInput from '../ui/UiInput.vue'
+import UiField from '../ui/UiField.vue'
 
 const _explorerRoute = useRoute()
 const _explorerProjectId = Number(_explorerRoute.params.id)

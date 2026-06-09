@@ -117,10 +117,9 @@
     <div v-if="error" class="px-3 py-2 bg-warn/15 text-warn border-t border-warn/50 text-ui-md">{{ error }}</div>
 
     <Dialog v-model:visible="showCreateTerminalDialog" modal header="Create Terminal" :style="{ width: '28rem' }">
-      <div class="flex flex-col gap-1.5 mb-3">
-        <label class="text-muted text-ui-sm font-semibold" for="terminal-name">Name</label>
-        <InputText id="terminal-name" v-model="terminalCreateName" class="w-full" @keydown.enter="confirmCreateTerminal" />
-      </div>
+      <UiField class="mb-3" label="Name" for-id="terminal-name">
+        <UiInput id="terminal-name" v-model="terminalCreateName" class="w-full" @keydown.enter="confirmCreateTerminal" />
+      </UiField>
       <div class="flex items-start gap-2 mb-3">
         <UiCheckbox
           id="terminal-agent-accessible"
@@ -141,38 +140,39 @@
       </div>
       <template #footer>
         <div class="ui-dialog-actions">
-          <button class="ui-btn ui-btn-ghost" @click="showCreateTerminalDialog = false">Cancel</button>
-          <button class="ui-btn ui-btn-primary" @click="confirmCreateTerminal">Create</button>
+          <UiButton @click="showCreateTerminalDialog = false">Cancel</UiButton>
+          <UiButton variant="primary" @click="confirmCreateTerminal">Create</UiButton>
         </div>
       </template>
     </Dialog>
 
     <Dialog v-model:visible="showCreateChannelDialog" modal header="Create Channel" :style="{ width: '24rem' }">
-      <div class="flex flex-col gap-1.5 mb-3">
-        <label class="text-muted text-ui-sm font-semibold" for="channel-name">Channel Name</label>
-        <InputText id="channel-name" v-model="channelCreateName" class="w-full" @keydown.enter="confirmCreateChannel" />
-      </div>
+      <UiField class="mb-3" label="Channel Name" for-id="channel-name">
+        <UiInput id="channel-name" v-model="channelCreateName" class="w-full" @keydown.enter="confirmCreateChannel" />
+      </UiField>
       <template #footer>
         <div class="ui-dialog-actions">
-          <button class="ui-btn ui-btn-ghost" @click="showCreateChannelDialog = false">Cancel</button>
-          <button class="ui-btn ui-btn-primary" @click="confirmCreateChannel">Create</button>
+          <UiButton @click="showCreateChannelDialog = false">Cancel</UiButton>
+          <UiButton variant="primary" @click="confirmCreateChannel">Create</UiButton>
         </div>
       </template>
     </Dialog>
 
     <Dialog v-model:visible="showUploadDialog" modal :header="uploadMode === 'archive' ? 'Upload & Extract Archive' : 'Upload File / Archive'" :style="{ width: '28rem' }">
       <div class="flex flex-col gap-2.5 mb-3">
-        <label class="text-muted text-ui-sm font-semibold" for="upload-file">File (any file, .zip, .tar, .tar.gz)</label>
-        <input id="upload-file" type="file" @change="uploadFile = $event.target.files?.[0] || null"
-               class="text-ui-lg text-text" />
-        <label class="text-muted text-ui-sm font-semibold mt-1.5" for="upload-dest">Destination Path</label>
-        <InputText id="upload-dest" v-model="uploadDest" class="w-full" placeholder="/" />
+        <UiField label="File (any file, .zip, .tar, .tar.gz)" for-id="upload-file" compact>
+          <input id="upload-file" type="file" @change="uploadFile = $event.target.files?.[0] || null"
+                 class="text-ui-lg text-text" />
+        </UiField>
+        <UiField label="Destination Path" for-id="upload-dest" class="mt-1.5" compact>
+          <UiInput id="upload-dest" v-model="uploadDest" class="w-full" placeholder="/" />
+        </UiField>
         <div v-if="uploadResult" class="text-muted text-ui-sm mt-1 whitespace-pre-wrap">{{ uploadResult }}</div>
       </div>
       <template #footer>
         <div class="ui-dialog-actions">
-          <button class="ui-btn ui-btn-ghost" @click="showUploadDialog = false">Cancel</button>
-          <button class="ui-btn ui-btn-primary" :disabled="!uploadFile || uploading" @click="confirmUpload">{{ uploading ? 'Uploading…' : 'Upload' }}</button>
+          <UiButton @click="showUploadDialog = false">Cancel</UiButton>
+          <UiButton variant="primary" :disabled="!uploadFile || uploading" @click="confirmUpload">{{ uploading ? 'Uploading…' : 'Upload' }}</UiButton>
         </div>
       </template>
     </Dialog>
@@ -192,9 +192,11 @@ import Menubar from 'primevue/menubar'
 import Splitter from 'primevue/splitter'
 import SplitterPanel from 'primevue/splitterpanel'
 import Dialog from 'primevue/dialog'
-import InputText from 'primevue/inputtext'
 import WorkspacePaneShell from '../components/workspace/WorkspacePaneShell.vue'
 import UiCheckbox from '../components/ui/UiCheckbox.vue'
+import UiButton from '../components/ui/UiButton.vue'
+import UiInput from '../components/ui/UiInput.vue'
+import UiField from '../components/ui/UiField.vue'
 import ExplorerPane from '../components/workspace/ExplorerPane.vue'
 import RecordingsDialog from '../components/workspace/RecordingsDialog.vue'
 import BrandMark from '../components/BrandMark.vue'

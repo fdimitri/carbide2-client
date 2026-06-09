@@ -6,7 +6,7 @@
   <div class="flex flex-col flex-1 min-h-0 monaco-bg monaco-fg overflow-hidden">
 
     <!-- Toolbar: agent picker + new conversation -->
-    <div class="flex items-center gap-2 px-3 py-1.5 border-b monaco-panel-border monaco-tabs-bg text-ui-md">
+    <PaneToolbar class="text-ui-md">
       <label class="opacity-70">Agent:</label>
       <select
         :value="store.agentSelectedSlug || ''"
@@ -31,10 +31,10 @@
           title="Start a fresh conversation"
         >New</UiButton>
       </span>
-    </div>
+    </PaneToolbar>
 
     <!-- Conversation picker + visibility -->
-    <div class="flex items-center gap-2 px-3 py-1.5 border-b monaco-panel-border text-ui-sm">
+    <PaneToolbar class="text-ui-sm">
       <label class="opacity-70">Conversation:</label>
       <select
         :value="store.agentConversationId || ''"
@@ -59,7 +59,7 @@
         class="text-ui-xs opacity-60 italic"
         :title="'Owned by another user — read-only view'"
       >watching</span>
-    </div>
+    </PaneToolbar>
 
     <!-- Timeline -->
     <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-2 min-h-0" ref="scrollEl">
@@ -220,6 +220,7 @@ import { ref, computed, watch, nextTick } from 'vue'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { renderMarkdown } from '../../utils/markdown'
 import UiButton from '../ui/UiButton.vue'
+import PaneToolbar from '../ui/PaneToolbar.vue'
 import Avatar from '../ui/Avatar.vue'
 import authService from '../../services/authService'
 

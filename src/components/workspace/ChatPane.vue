@@ -6,35 +6,34 @@
     <div class="flex flex-col flex-1 min-w-0 min-h-0">
 
       <!-- ── Call bar (video shares the channel's context) ───────────────── -->
-      <div class="flex items-center gap-2 px-3 py-1.5 border-b monaco-panel-border monaco-tabs-bg">
+      <PaneToolbar>
         <template v-if="!callActive">
-          <button
-            class="ui-btn ui-btn-sm"
-            :class="callAvailable ? 'ui-btn-primary' : 'ui-btn-mono'"
+          <PaneToolbarButton
+            :variant="callAvailable ? 'primary' : 'mono'"
             :disabled="!canSend"
             :title="callAvailable ? 'Join the call in progress in this channel' : 'Start a video call in this channel'"
             @click="emit('start-call')"
-          >{{ callAvailable ? `Join call (${callAvailableCount})` : '▶ Start call' }}</button>
+          >{{ callAvailable ? `Join call (${callAvailableCount})` : '▶ Start call' }}</PaneToolbarButton>
           <span class="text-ui-xs monaco-line-fg">
             {{ callAvailable ? `Call in progress in #${channelName || 'channel'}` : `Video call in #${channelName || 'channel'}` }}
           </span>
         </template>
         <template v-else>
-          <button
-            class="ui-btn ui-btn-sm ui-btn-mono"
+          <PaneToolbarButton
+            variant="mono"
             @click="emit('toggle-mic')"
-          >{{ micEnabled ? 'Mute' : 'Unmute' }}</button>
-          <button
-            class="ui-btn ui-btn-sm ui-btn-mono"
+          >{{ micEnabled ? 'Mute' : 'Unmute' }}</PaneToolbarButton>
+          <PaneToolbarButton
+            variant="mono"
             @click="emit('toggle-cam')"
-          >{{ camEnabled ? 'Camera off' : 'Camera on' }}</button>
-          <button
-            class="ui-btn ui-btn-sm ui-btn-warn"
+          >{{ camEnabled ? 'Camera off' : 'Camera on' }}</PaneToolbarButton>
+          <PaneToolbarButton
+            variant="warn"
             @click="emit('leave-call')"
-          >Leave</button>
+          >Leave</PaneToolbarButton>
           <span class="text-ui-xs monaco-line-fg ml-auto">{{ participants.length + 1 }} in call</span>
         </template>
-      </div>
+      </PaneToolbar>
 
       <!-- ── Video tiles ─────────────────────────────────────────────── -->
       <div v-if="callActive" class="flex gap-2 px-3 py-2 overflow-x-auto border-b monaco-panel-border bg-black/20">
@@ -84,11 +83,12 @@
           :disabled="!connected || joining"
           class="flex-1 px-2.5 py-2 text-ui-lg rounded-ui-sm outline-none font-[inherit] border monaco-input-bg monaco-input-fg monaco-input-border focus:monaco-focus-border placeholder:monaco-line-fg"
         />
-        <button
-          class="ui-btn ui-btn-focus"
+        <PaneToolbarButton
+          variant="focus"
+          size="md"
           @click="emitSend"
           :disabled="!canSend"
-        >Send</button>
+        >Send</PaneToolbarButton>
       </div>
     </div>
 
@@ -121,6 +121,8 @@ import { ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import workerSocket from '../../services/workerSocket'
 import CallTile from './CallTile.vue'
 import Avatar from '../ui/Avatar.vue'
+import PaneToolbar from '../ui/PaneToolbar.vue'
+import PaneToolbarButton from '../ui/PaneToolbarButton.vue'
 
 const props = defineProps({
   messages:      { type: Array,   default: () => [] },

@@ -37,10 +37,10 @@
 
       <!-- Back -->
       <div class="mt-10 flex gap-4">
-        <button
+        <UiButton
           @click="$router.back()"
-          class="text-dim text-sm border-b border-line pb-px hover:text-text hover:border-text transition-colors bg-transparent cursor-pointer"
-        >&larr; Back</button>
+          size="sm"
+        >&larr; Back</UiButton>
         <a
           :href="`${WORKSPACE_PATH}/login`"
           class="text-dim text-sm border-b border-line pb-px hover:text-text hover:border-text transition-colors no-underline"
@@ -53,6 +53,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import UiButton from '../components/ui/UiButton.vue'
 
 const WORKSPACE_PATH = '/w/1'
 const featured  = ref('')

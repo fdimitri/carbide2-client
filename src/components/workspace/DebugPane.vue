@@ -3,8 +3,7 @@
     <PaneHeader title="Debug Channel" size="sm">
       <template #actions>
         <span class="text-muted">{{ events.length }} event{{ events.length === 1 ? '' : 's' }}</span>
-        <button class="ui-btn ui-btn-sm ui-btn-ghost"
-                @click="debugLog.clear()">Clear</button>
+        <PaneToolbarButton @click="debugLog.clear()">Clear</PaneToolbarButton>
       </template>
     </PaneHeader>
     <div ref="scrollEl" class="flex-1 min-h-0 overflow-y-auto font-mono text-ui-sm leading-[1.35] px-2 py-1">
@@ -29,6 +28,7 @@ import { nextTick, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useDebugLogStore } from '../../stores/debugLogStore'
 import PaneHeader from '../ui/PaneHeader.vue'
+import PaneToolbarButton from '../ui/PaneToolbarButton.vue'
 
 const debugLog = useDebugLogStore()
 const { events } = storeToRefs(debugLog)

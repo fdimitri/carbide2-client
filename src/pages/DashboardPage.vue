@@ -12,9 +12,9 @@
         </div>
         <div class="flex items-center gap-2">
           <a href="/about" target="_blank" class="btn-ghost no-underline">About</a>
-          <button @click="showNewForm = !showNewForm" class="btn-primary">
+          <UiButton variant="primary" @click="showNewForm = !showNewForm">
             <span class="text-base leading-none font-bold">+</span> New {{ singularTitle }}
-          </button>
+          </UiButton>
         </div>
       </div>
     </div>
@@ -24,14 +24,12 @@
       <!-- New item inline form -->
       <div v-if="showNewForm"
         class="mb-8 p-5 rounded-xl border border-accent/25 bg-bg-1/70 backdrop-blur flex flex-wrap gap-4 items-end">
-        <div class="flex flex-col gap-1.5 flex-1 min-w-44">
-          <label class="text-muted text-label font-semibold uppercase tracking-widest">Name</label>
+        <UiField class="flex-1 min-w-44" label="Name" label-class="text-muted text-label font-semibold uppercase tracking-widest">
           <UiInput v-model="newName" :placeholder="`my-${singularSlug}`" autofocus />
-        </div>
-        <div class="flex flex-col gap-1.5 flex-1 min-w-44">
-          <label class="text-muted text-label font-semibold uppercase tracking-widest">Description</label>
+        </UiField>
+        <UiField class="flex-1 min-w-44" label="Description" label-class="text-muted text-label font-semibold uppercase tracking-widest">
           <UiInput v-model="newDesc" placeholder="optional" />
-        </div>
+        </UiField>
 
         <!-- Seed method: how the new workspace's project starts out. "Empty"
              is always valid; "Clone from git" stashes a pending seed that the
@@ -54,27 +52,17 @@
 
         <!-- Git seed inputs, only when "Clone from git" is selected. -->
         <div v-if="seedMethod === 'git'" class="flex flex-wrap gap-4 w-full">
-          <div class="flex flex-col gap-1.5 flex-1 min-w-56">
-            <label class="text-muted text-label font-semibold uppercase tracking-widest">Repository URL</label>
+          <UiField class="flex-1 min-w-56" label="Repository URL" label-class="text-muted text-label font-semibold uppercase tracking-widest">
             <UiInput v-model="seedGitUrl" placeholder="https://github.com/user/repo.git" />
-          </div>
-          <div class="flex flex-col gap-1.5 min-w-40">
-            <label class="text-muted text-label font-semibold uppercase tracking-widest">Branch / ref</label>
+          </UiField>
+          <UiField class="min-w-40" label="Branch / ref" label-class="text-muted text-label font-semibold uppercase tracking-widest">
             <UiInput v-model="seedGitRef" placeholder="default branch" />
-          </div>
+          </UiField>
         </div>
 
         <div class="flex gap-2">
-          <button @click="createItem" :disabled="!canCreate"
-            class="px-4 py-2 rounded-lg bg-accent text-accent-text text-sm font-bold border-0 cursor-pointer
-                   hover:brightness-110 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
-            Create
-          </button>
-          <button @click="showNewForm = false"
-            class="px-4 py-2 rounded-lg bg-transparent border border-line text-muted text-sm
-                   cursor-pointer hover:border-accent hover:text-text transition-all">
-            Cancel
-          </button>
+          <UiButton variant="primary" @click="createItem" :disabled="!canCreate">Create</UiButton>
+          <UiButton @click="showNewForm = false">Cancel</UiButton>
         </div>
       </div>
 
@@ -120,7 +108,9 @@ import { ref, computed, onMounted, onBeforeUnmount, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { listWorkspaces, createWorkspace, getWorkspaceHealth } from '../services/workspaceService'
 import { setPendingSeed } from '../services/pendingSeed'
+import UiButton from '../components/ui/UiButton.vue'
 import UiInput from '../components/ui/UiInput.vue'
+import UiField from '../components/ui/UiField.vue'
 
 // Model B: this Dashboard is the CONTROL-PLANE dashboard. It lists the
 // user's Workspaces (one isolated pod each). Workspace pods themselves have

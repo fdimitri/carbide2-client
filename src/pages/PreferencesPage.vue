@@ -8,11 +8,9 @@
           <p class="text-muted text-xs font-mono uppercase tracking-widest mb-2">Account</p>
           <h1 class="text-text text-2xl font-bold tracking-tight">User Preferences</h1>
         </div>
-        <button @click="router.push('/dashboard')"
-          class="px-4 py-2 rounded-lg bg-transparent border border-line text-muted text-sm
-                 cursor-pointer hover:border-accent hover:text-text transition-all">
+        <UiButton @click="router.push('/dashboard')">
           ← Dashboard
-        </button>
+        </UiButton>
       </div>
     </div>
 
@@ -150,12 +148,10 @@
 
         <!-- ── Actions ──────────────────────────────────────────────────── -->
         <div class="flex items-center gap-4">
-          <button @click="save" :disabled="saving || tzInvalid"
-            class="px-6 py-2.5 rounded-lg bg-accent text-accent-text text-sm font-bold border-0 cursor-pointer
-                   hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed
-                   shadow-[0_4px_20px_rgba(90,176,255,0.3)]">
+          <UiButton @click="save" :disabled="saving || tzInvalid" variant="primary" size="md"
+            class="shadow-[0_4px_20px_rgba(90,176,255,0.3)]">
             {{ saving ? 'Saving…' : 'Save Preferences' }}
-          </button>
+          </UiButton>
           <Transition name="fade">
             <span v-if="saved" class="text-accent text-sm font-mono">✓ Saved</span>
           </Transition>
@@ -171,6 +167,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getPreferences, updatePreferences } from '../services/preferencesService'
+import UiButton from '../components/ui/UiButton.vue'
 import UiInput from '../components/ui/UiInput.vue'
 
 const router    = useRouter()

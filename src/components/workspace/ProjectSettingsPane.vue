@@ -96,12 +96,12 @@
 
         <!-- ── Actions ────────────────────────────────────────────────── -->
         <div class="flex items-center gap-3">
-          <button
+          <UiButton
             :disabled="saving"
-            class="px-5 py-2 rounded-lg bg-accent text-accent-text text-sm font-bold border-0 cursor-pointer
-                   hover:brightness-110 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            variant="primary"
+            size="md"
             @click="save"
-          >{{ saving ? 'Saving…' : 'Save' }}</button>
+          >{{ saving ? 'Saving…' : 'Save' }}</UiButton>
 
           <span v-if="savedOk" class="text-accent text-sm">Saved.</span>
           <span v-if="saveError" class="text-warn text-sm">{{ saveError }}</span>
@@ -132,16 +132,18 @@
 
     <template #footer>
       <div class="flex items-center gap-3 w-full">
-        <button
-          class="flex-1 px-4 py-2 rounded-lg bg-sel border-2 border-accent text-accent-fg font-bold text-sm cursor-pointer hover:brightness-110 transition-all"
+        <UiButton
+          class="flex-1 border-2"
+          variant="primary"
+          size="md"
           @click="cancelWipe"
-        >CANCEL — GO BACK</button>
-        <button
+        >CANCEL — GO BACK</UiButton>
+        <UiButton
           :disabled="!wipeConfirmed"
-          class="px-4 py-2 rounded-lg bg-warn/15 border border-warn text-warn text-sm font-bold cursor-pointer
-                 hover:brightness-110 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+          variant="warn"
+          size="md"
           @click="confirmWipe"
-        >I'm REALLY sure</button>
+        >I'm REALLY sure</UiButton>
       </div>
     </template>
   </Dialog>
@@ -151,6 +153,7 @@
 import { ref, onMounted, defineComponent, h } from 'vue'
 import Dialog from 'primevue/dialog'
 import { getProjectSettings, updateProjectSettings, setProjectRoot, listProjects } from '../../services/projectService'
+import UiButton from '../ui/UiButton.vue'
 import UiInput from '../ui/UiInput.vue'
 import UiCheckbox from '../ui/UiCheckbox.vue'
 
