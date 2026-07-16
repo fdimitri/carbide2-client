@@ -1,5 +1,14 @@
 // usePanes — multi-pane layout state: layouts, tabs, drag-drop
-import { ref, computed } from 'vue'
+//
+// The layout state (layout / activePaneIndex / panes) is NOT local to this
+// composable anymore — it lives in the server-authoritative session store
+// (useSessionStore, ADR-002). These methods keep their exact public signatures
+// but mutate the store's refs (via storeToRefs, which are writable). Because
+// useSessionSync deep-watches those same refs, every mutation here is diffed and
+// emitted to the server automatically — no per-method instrumentation needed.
+import { computed } from 'vue'
+import { storeToRefs } from 'pinia'
+import { useSessionStore } from '../stores/sessionStore'
 import { logEntry, logInfo, logWarn } from '../services/log'
 
 export const PANE_COUNTS = {
@@ -12,9 +21,11 @@ export const PANE_COUNTS = {
 }
 
 export function usePanes({ activePane, pendingNavigation }) {
-  const paneLayout     = ref('one')
-  const activePaneIndex = ref(0)
-  const panes          = ref(Array.from({ length: 4 }, () => ({ tabs: [], activeTab: null })))
+  // `paneLayout`/`activePaneIndex`/`panes` ARE the store's state (writable refs),
+  // so mutating them below drives the session emitter. Names preserved so
+  // ProjectPage's destructure and template bindings are unchanged.
+  const store = useSessionStore()
+  const { layout: paneLayout, activePaneIndex, panes } = storeToRefs(store)
 
   const menuLayoutItems = computed(() => [
     { label: '1 Pane',                                     command: () => setPaneLayout('one') },

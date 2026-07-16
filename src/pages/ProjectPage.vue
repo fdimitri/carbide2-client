@@ -206,6 +206,8 @@ import authService from '../services/authService'
 import { listProjects, getWsToken, uploadProjectFile, importProjectFromDisk } from '../services/projectService'
 import { storeToRefs } from 'pinia'
 import { usePanes, PANE_COUNTS } from '../composables/usePanes'
+import { useSessionSync } from '../composables/useSessionSync'
+import { useSessionStore } from '../stores/sessionStore'
 import { useTerminals } from '../composables/useTerminals'
 import { useChat } from '../composables/useChat'
 import { useRtc } from '../composables/useRtc'
@@ -244,6 +246,22 @@ const {
   activatePaneTab, closePaneTab,
   onTabDragStart, onTabDrop, onPaneDrop,
 } = usePanes({ activePane, pendingNavigation })
+
+// Server-authoritative browser session (ADR-002). usePanes already mutates the
+// session store; this emitter diffs + ships those changes and, on connect,
+// resumes the last/most-recent free session or creates a new one. Chat is the
+// only surface that needs driving on restore (files/terminals self-bind on
+// mount) — selectChannelNode is hoisted, so referencing it here is safe.
+const sessionSync = useSessionSync({
+  storageKey: `carbide_session:${projectId}`,
+  bindActiveSurface: (tab) => {
+    if (tab?.kind === 'channel') selectChannelNode(tab.id, { skipPaneTab: true })
+  },
+})
+
+// Reactive session identity + picker list (populated by session/list).
+const sessionStore = useSessionStore()
+const { sessions: sessionList, sessionUuid: currentSessionUuid } = storeToRefs(sessionStore)
 
 const terminals = useTerminals({ error, bindTabToActivePane, activePane })
 const {
@@ -389,6 +407,10 @@ const menuItems = computed(() => ([
     items: menuLayoutItems.value,
   },
   {
+    label: 'Session',
+    items: sessionMenuItems.value,
+  },
+  {
     label: 'Project',
     items: [
       { label: 'Settings…', icon: 'pi pi-cog', command: () => bindTabToActivePane('settings', projectId, 'Settings') },
@@ -428,6 +450,41 @@ const dockItems = computed(() => ([
   { label: 'Join Channel',   icon: 'pi-comments',    command: () => focusAnyChannel() },
   { label: 'Open File',      icon: 'pi-file',        command: () => focusAnyFile() },
 ]))
+
+// ── Session picker (server-authoritative browser sessions, ADR-002) ───────────
+function sessionMenuLabel(s) {
+  const base = s.name || `Session ${String(s.session_uuid).slice(0, 8)}`
+  if (s.session_uuid === currentSessionUuid.value) return `${base} (current)`
+  if (s.in_use) return `${base} (in use)`
+  return base
+}
+
+const sessionMenuItems = computed(() => {
+  const list = sessionList.value.map((s) => {
+    const isCurrent = s.session_uuid === currentSessionUuid.value
+    const busy      = s.in_use && !isCurrent
+    return {
+      label:    sessionMenuLabel(s),
+      // check = current, lock = driven by another tab, replay = resumable
+      icon:     isCurrent ? 'pi pi-check' : busy ? 'pi pi-lock' : 'pi pi-replay',
+      disabled: isCurrent || busy,   // can't switch to yourself or steal a live one
+      command:  () => switchSession(s.session_uuid),
+    }
+  })
+  const controls = [
+    { separator: true },
+    { label: 'New Session',   icon: 'pi pi-plus',    command: () => sessionSync.create() },
+    { label: 'Refresh List',  icon: 'pi pi-refresh', command: () => sessionSync.list() },
+  ]
+  return list.length ? [...list, ...controls] : controls
+}) 
+
+function switchSession(uuid) {
+  if (!uuid || uuid === currentSessionUuid.value) return
+  // resume → server replies session/resumed → useSessionSync hydrates the store,
+  // re-baselines the emitter, and re-binds the active surfaces.
+  sessionSync.resume(uuid)
+}
 
 // ── Navigation helpers ────────────────────────────────────────────────────────
 async function selectTerminalNode(tid, options = {}) {
@@ -534,6 +591,9 @@ onMounted(async () => {
         // agent / fs activity shows up in the Debug pane in real time.
         // See #3 in May30-Questions.md.
         workerSocket.send('debug', 'subscribe', {})
+        // (Re)establish this tab's browser session: silent re-resume on a
+        // reconnect, resume-or-create on the first connect.
+        sessionSync.ensureSession()
       }),
       // Reflect drops so panes can react (e.g. clear stuck spinners) instead of
       // appearing frozen.
@@ -571,6 +631,10 @@ onMounted(async () => {
     registerAgentHandlers(offHandlers)
     registerRtcHandlers(offHandlers)
 
+    // Register session/* handlers + start the layout emitter BEFORE connecting
+    // so the created/resumed/snapshot frames are caught.
+    sessionSync.start()
+
     workerSocket.connect(() => getWsToken(projectId))
     // Intentionally do not auto-open any file; explorer will populate from server.
   } catch (e) {
@@ -581,6 +645,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   offHandlers.forEach(off => off())
   workspaceStore.projectName = ''
+  sessionSync.stop()
   cleanupChat()
   cleanupRtc()
   cleanupTerminals()

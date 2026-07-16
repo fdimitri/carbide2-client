@@ -117,6 +117,12 @@ export const useSessionStore = defineStore('session', () => {
   const activePaneIndex = ref(0)
   const panes           = ref(emptyPanes())
 
+  // ── Resume picker ───────────────────────────────────────────────────────────
+  // This user's sessions as of the last session/list, newest first. Each entry:
+  // { session_uuid, name, updated_at, created_at, in_use }. Drives auto-resume
+  // (pick most-recent not-in-use) and a future "Connect session" dropdown.
+  const sessions = ref([])
+
   const isProducer = () => role.value === 'producer'
   const isWatcher  = () => role.value === 'watcher'
 
@@ -219,6 +225,8 @@ export const useSessionStore = defineStore('session', () => {
 
   function setRev(v) { if (v !== undefined) rev.value = v }
 
+  function setSessions(list) { sessions.value = Array.isArray(list) ? list : [] }
+
   function reset() {
     sessionUuid.value = null
     name.value        = null
@@ -228,6 +236,7 @@ export const useSessionStore = defineStore('session', () => {
     layout.value          = 'one'
     activePaneIndex.value = 0
     panes.value           = emptyPanes()
+    sessions.value        = []
   }
 
   return {
@@ -236,9 +245,11 @@ export const useSessionStore = defineStore('session', () => {
     isProducer, isWatcher,
     // layout state
     layout, activePaneIndex, panes,
+    // resume picker
+    sessions,
     // (de)serialization + patch application
     toDoc, loadDoc, applyOps,
     // metadata
-    setSession, setRev, reset,
+    setSession, setRev, setSessions, reset,
   }
 })

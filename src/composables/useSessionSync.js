@@ -35,7 +35,11 @@ const EMIT_DEBOUNCE_MS = 200
 //   the binding path is kind-agnostic and future-proof. ACTIVE tabs only: only
 //   the active tab per pane renders, so inactive tabs bind when activated
 //   (interest management). Must be idempotent — it may run on every inbound apply.
-export function useSessionSync({ bindActiveSurface = null } = {}) {
+// options.storageKey?: string
+//   localStorage key under which we remember the last session_uuid we owned, so
+//   a full page reload can silently re-resume it (if it isn't in use elsewhere).
+//   A mid-life WS drop doesn't need it — the store keeps sessionUuid in memory.
+export function useSessionSync({ bindActiveSurface = null, storageKey = null } = {}) {
   const store = useSessionStore()
 
   // The last wire doc we've reconciled with the server — the diff baseline. Also
@@ -44,7 +48,20 @@ export function useSessionSync({ bindActiveSurface = null } = {}) {
   let applyingRemote = false   // true while mutating the store from a server frame
   let debounceTimer = null
   let stopWatch = null
+  // True only while an ensureSession() first-connect flow is awaiting session/list
+  // so a manual/dropdown list() refresh doesn't trigger an auto-resume.
+  let autoResumePending = false
   const offHandlers = []
+
+  // ── last-session persistence (page-reload resume) ──────────────────────────
+  function persistUuid(uuid) {
+    if (!storageKey || !uuid) return
+    try { localStorage.setItem(storageKey, uuid) } catch { /* private mode / quota */ }
+  }
+  function readStoredUuid() {
+    if (!storageKey) return null
+    try { return localStorage.getItem(storageKey) } catch { return null }
+  }
 
   // ── OUTBOUND ────────────────────────────────────────────────────────────────
   function flush() {
@@ -93,6 +110,7 @@ export function useSessionSync({ bindActiveSurface = null } = {}) {
       applyingRemote = false
     }
     lastSentDoc = store.toDoc()
+    if (role === 'producer') persistUuid(store.sessionUuid)
     bindActiveSurfaces()
   }
 
@@ -118,6 +136,24 @@ export function useSessionSync({ bindActiveSurface = null } = {}) {
     bindActiveSurfaces()
   }
 
+  // session/list — record the picker list, and (only when ensureSession is
+  // awaiting it) apply the resume-or-create policy: prefer the session we last
+  // owned on this browser (page-reload continuity), else the most-recent session
+  // NOT currently in use by another tab; if every session is in use (or none
+  // exist), start a brand-new one. The list is server-ordered newest-first.
+  function onList(payload) {
+    const list = Array.isArray(payload?.sessions) ? payload.sessions : []
+    store.setSessions(list)
+    if (!autoResumePending) return
+    autoResumePending = false
+    const preferred = readStoredUuid()
+    const pick =
+      list.find((s) => s.session_uuid === preferred && !s.in_use) ||
+      list.find((s) => !s.in_use)
+    if (pick) resume(pick.session_uuid)
+    else      create()
+  }
+
   // ── Lifecycle ───────────────────────────────────────────────────────────────
   function start() {
     if (stopWatch) return   // idempotent
@@ -137,6 +173,7 @@ export function useSessionSync({ bindActiveSurface = null } = {}) {
       workerSocket.on(SESSION_CS, 'snapshot',  onSnapshot),
       workerSocket.on(SESSION_CS, 'patched',   onPatched),
       workerSocket.on(SESSION_CS, 'patch',     onPatch),
+      workerSocket.on(SESSION_CS, 'list',      onList),
     )
   }
 
@@ -178,9 +215,25 @@ export function useSessionSync({ bindActiveSurface = null } = {}) {
     workerSocket.send(SESSION_CS, 'list', {})
   }
 
+  // Establish this tab's session after the socket is (re)connected. Call on every
+  // `system/connected`:
+  //   • RECONNECT (we already own a session this page-life): silently re-resume
+  //     the same uuid — the store kept it in memory across the drop.
+  //   • FIRST connect: fetch the list and let onList apply resume-or-create.
+  // Idempotent per connect; the reconnect path never spawns a second session.
+  function ensureSession() {
+    if (store.sessionUuid && store.isProducer()) {
+      resume(store.sessionUuid)
+      return
+    }
+    autoResumePending = true
+    list()
+  }
+
   return {
     start, stop,
     create, resume, subscribe, unsubscribe, list,
+    ensureSession,
     // exposed for tests / manual flush
     _flush: flush,
   }
