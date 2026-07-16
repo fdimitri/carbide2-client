@@ -12,9 +12,9 @@
         </div>
         <div class="flex items-center gap-2">
           <a href="/about" target="_blank" class="btn-ghost no-underline">About</a>
-          <UiButton variant="primary" @click="showNewForm = !showNewForm">
+          <button class="btn-primary" @click="showNewForm = !showNewForm">
             <span class="text-base leading-none font-bold">+</span> New {{ singularTitle }}
-          </UiButton>
+          </button>
         </div>
       </div>
     </div>

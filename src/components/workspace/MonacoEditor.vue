@@ -1,6 +1,6 @@
 <!-- MonacoEditor.vue — thin wrapper around monaco-editor -->
 <template>
-  <div ref="containerEl" class="w-full h-full min-h-0" />
+  <div ref="containerEl" class="relative w-full h-full min-h-0 overflow-hidden" />
 </template>
 
 <script setup>
@@ -81,11 +81,14 @@ onMounted(async () => {
     theme:             'vs-dark',
     automaticLayout:   true,
     fontSize:          13,
+    lineHeight:        20,
     fontFamily:        '"Cascadia Code", "Fira Code", "Consolas", monospace',
+    disableLayerHinting: true,
     lineNumbers:       'on',
     minimap:           { enabled: true },
     scrollBeyondLastLine: false,
     renderWhitespace: 'selection',
+    smoothScrolling:   false,
     wordWrap:          'off',
   })
   editor.value.onDidChangeModelContent((e) => {
