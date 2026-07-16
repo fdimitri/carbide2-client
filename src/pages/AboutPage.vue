@@ -2,7 +2,7 @@
   <div class="min-h-screen bg-bg-0 flex flex-col items-center px-6 py-16 font-ui">
     <div class="w-full max-w-2xl">
 
-      <div class="text-muted text-xs font-mono tracking-[0.2em] uppercase mb-7">
+      <div class="text-muted text-xs font-mono tracking-widest uppercase mb-7">
         <span class="text-accent">◈</span> Carbide2
       </div>
 
@@ -11,7 +11,7 @@
 
       <!-- Featured -->
       <div v-if="featured" class="rounded-xl border border-accent/25 bg-accent/5 px-5 py-4 mb-10">
-        <div class="text-accent text-ui-2xs font-semibold tracking-[0.15em] uppercase mb-1">
+        <div class="text-accent text-ui-2xs font-semibold tracking-widest uppercase mb-1">
           Today's answer
         </div>
         <div class="text-text/80 italic text-base leading-relaxed">
@@ -20,7 +20,7 @@
       </div>
 
       <!-- Full list -->
-      <h2 class="text-dim text-ui-2xs font-semibold tracking-[0.15em] uppercase mb-4">
+      <h2 class="text-dim text-ui-2xs font-semibold tracking-widest uppercase mb-4">
         All known definitions
       </h2>
       <ul v-if="acronyms.length" class="flex flex-col gap-2">
@@ -37,10 +37,10 @@
 
       <!-- Back -->
       <div class="mt-10 flex gap-4">
-        <button
+        <UiButton
           @click="$router.back()"
-          class="text-dim text-sm border-b border-line pb-px hover:text-text hover:border-text transition-colors bg-transparent cursor-pointer"
-        >&larr; Back</button>
+          size="sm"
+        >&larr; Back</UiButton>
         <a
           :href="`${WORKSPACE_PATH}/login`"
           class="text-dim text-sm border-b border-line pb-px hover:text-text hover:border-text transition-colors no-underline"
@@ -53,6 +53,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import UiButton from '../components/ui/UiButton.vue'
 
 const WORKSPACE_PATH = '/w/1'
 const featured  = ref('')

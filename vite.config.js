@@ -6,6 +6,14 @@ import { readFileSync } from 'node:fs'
 // App version is read from package.json at config time and injected as the
 // compile-time constant __APP_VERSION__ (consumed by src/version.js).
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url)))
+const appBuildMeta = {
+  metaSha: process.env.VITE_APP_META_SHA || '',
+  clientSha: process.env.VITE_APP_CLIENT_SHA || '',
+  serverSha: process.env.VITE_APP_SERVER_SHA || '',
+  workerSha: process.env.VITE_APP_WORKER_SHA || '',
+  controlSha: process.env.VITE_APP_CONTROL_SHA || '',
+  buildTime: process.env.VITE_APP_BUILD_TIME || '',
+}
 
 // VITE_BASE lets the dev server (and built bundle) live under a path prefix
 // like '/w/1/' when the app is mounted behind an ingress that strips that
@@ -16,6 +24,7 @@ export default defineConfig({
   base,
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
+    __APP_BUILD_META__: JSON.stringify(appBuildMeta),
   },
   plugins: [tailwindcss(), vue()],
   server: {

@@ -39,14 +39,16 @@
 
             <div class="flex gap-4">
               <div class="flex-1">
-                <label class="block text-ui-md text-text mb-1">Name</label>
-                <UiInput v-model="form.name" class="w-full" />
+                <UiField label="Name" label-class="block text-ui-md text-text mb-1" compact>
+                  <UiInput v-model="form.name" class="w-full" />
+                </UiField>
               </div>
               <div class="w-40">
-                <label class="block text-ui-md text-text mb-1">Role</label>
-                <UiInput as="select" v-model="form.role" class="w-full">
-                  <option v-for="r in ROLES" :key="r" :value="r">{{ r }}</option>
-                </UiInput>
+                <UiField label="Role" label-class="block text-ui-md text-text mb-1" compact>
+                  <UiInput as="select" v-model="form.role" class="w-full">
+                    <option v-for="r in ROLES" :key="r" :value="r">{{ r }}</option>
+                  </UiInput>
+                </UiField>
               </div>
             </div>
 
@@ -54,49 +56,53 @@
               <span class="text-ui-xs text-dim font-mono">slug: {{ selectedAgent?.slug }}</span>
             </div>
 
-            <label class="block text-ui-md text-text mb-1 mt-3">Description</label>
-            <UiInput
-              v-model="form.description"
-              class="w-full"
-              placeholder="Short description"
-            />
+            <UiField label="Description" class="mt-3" label-class="block text-ui-md text-text mb-1" compact>
+              <UiInput
+                v-model="form.description"
+                class="w-full"
+                placeholder="Short description"
+              />
+            </UiField>
           </section>
 
           <!-- ── Connection ─────────────────────────────────────────────── -->
           <section class="mb-7">
             <h3 class="text-ui-xs font-semibold text-muted uppercase tracking-widest mb-3">Connection</h3>
 
-            <label class="block text-ui-md text-text mb-1">Provider URL</label>
-            <UiInput
-              v-model="form.provider_url"
-              mono
-              class="w-full"
-              placeholder="http://host.k3d.internal:11234/v1"
-            />
+            <UiField label="Provider URL" label-class="block text-ui-md text-text mb-1" compact>
+              <UiInput
+                v-model="form.provider_url"
+                mono
+                class="w-full"
+                placeholder="http://host.k3d.internal:11234/v1"
+              />
+            </UiField>
             <p class="text-ui-xs text-muted mt-1">
               OpenAI-compatible base URL. The worker appends
               <code class="font-mono text-accent">/chat/completions</code>.
             </p>
 
-            <label class="block text-ui-md text-text mb-1 mt-3">Model</label>
-            <UiInput
-              v-model="form.model"
-              mono
-              class="w-full"
-            />
+            <UiField label="Model" class="mt-3" label-class="block text-ui-md text-text mb-1" compact>
+              <UiInput
+                v-model="form.model"
+                mono
+                class="w-full"
+              />
+            </UiField>
 
-            <label class="block text-ui-md text-text mb-1 mt-3">
-              API key
-              <span class="text-dim">({{ selectedAgent?.api_key_set ? 'set' : 'none' }})</span>
-            </label>
-            <UiInput
-              v-model="form.api_key"
-              type="password"
-              autocomplete="off"
-              mono
-              class="w-full"
-              :placeholder="selectedAgent?.api_key_set ? '•••••• (leave blank to keep)' : 'Leave blank for local servers'"
-            />
+            <UiField class="mt-3" label="API key" label-class="block text-ui-md text-text mb-1" compact>
+              <template #label-extra>
+                <span class="text-dim"> ({{ selectedAgent?.api_key_set ? 'set' : 'none' }})</span>
+              </template>
+              <UiInput
+                v-model="form.api_key"
+                type="password"
+                autocomplete="off"
+                mono
+                class="w-full"
+                :placeholder="selectedAgent?.api_key_set ? '•••••• (leave blank to keep)' : 'Leave blank for local servers'"
+              />
+            </UiField>
           </section>
 
           <!-- ── System prompt ──────────────────────────────────────────── -->
@@ -121,13 +127,13 @@
                 :key="t"
                 class="flex items-center gap-2 text-ui-md text-text cursor-pointer select-none w-fit"
               >
-                <input type="checkbox" :value="t" v-model="form.allowed_tools" class="accent-accent" />
+                <UiCheckbox :value="t" v-model="form.allowed_tools" />
                 <code class="font-mono">{{ t }}</code>
               </label>
             </div>
 
             <label class="flex items-center gap-2 text-ui-md text-text cursor-pointer select-none w-fit mt-3">
-              <input type="checkbox" v-model="form.shell_exec_enabled" class="accent-warn" />
+              <UiCheckbox v-model="form.shell_exec_enabled" tone="warn" />
               <span>Allow <code class="font-mono text-warn">shell_exec</code> capability</span>
             </label>
             <p class="text-ui-xs text-muted mt-1">
@@ -142,20 +148,22 @@
             <h3 class="text-ui-xs font-semibold text-muted uppercase tracking-widest mb-3">Sampling</h3>
             <div class="flex gap-4">
               <div class="flex-1">
-                <label class="block text-ui-md text-text mb-1">Temperature</label>
-                <UiInput
-                  v-model.number="form.temperature"
-                  type="number" min="0" max="2" step="0.05"
-                  class="w-full"
-                />
+                <UiField label="Temperature" label-class="block text-ui-md text-text mb-1" compact>
+                  <UiInput
+                    v-model.number="form.temperature"
+                    type="number" min="0" max="2" step="0.05"
+                    class="w-full"
+                  />
+                </UiField>
               </div>
               <div class="flex-1">
-                <label class="block text-ui-md text-text mb-1">Max tokens</label>
-                <UiInput
-                  v-model.number="form.max_tokens"
-                  type="number" min="1" step="1"
-                  class="w-full"
-                />
+                <UiField label="Max tokens" label-class="block text-ui-md text-text mb-1" compact>
+                  <UiInput
+                    v-model.number="form.max_tokens"
+                    type="number" min="1" step="1"
+                    class="w-full"
+                  />
+                </UiField>
               </div>
             </div>
           </section>
@@ -163,18 +171,18 @@
           <!-- ── Status + actions ───────────────────────────────────────── -->
           <section class="mb-7">
             <label class="flex items-center gap-2 text-ui-md text-text cursor-pointer select-none w-fit">
-              <input type="checkbox" v-model="form.enabled" class="accent-accent" />
+              <UiCheckbox v-model="form.enabled" />
               Enabled (selectable in the agent picker)
             </label>
           </section>
 
           <div class="flex items-center gap-3">
-            <button
+            <UiButton
               :disabled="saving"
-              class="px-5 py-2 rounded-lg bg-accent text-accent-text text-sm font-bold border-0 cursor-pointer
-                     hover:brightness-110 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              variant="primary"
+              size="md"
               @click="save"
-            >{{ saving ? 'Saving…' : 'Save' }}</button>
+            >{{ saving ? 'Saving…' : 'Save' }}</UiButton>
 
             <span v-if="savedOk" class="text-accent text-sm">Saved.</span>
             <span v-if="saveError" class="text-warn text-sm">{{ saveError }}</span>
@@ -189,6 +197,9 @@
 import { ref, computed, onMounted } from 'vue'
 import { listAgents, updateAgent } from '../../services/agentService'
 import UiInput from '../ui/UiInput.vue'
+import UiCheckbox from '../ui/UiCheckbox.vue'
+import UiField from '../ui/UiField.vue'
+import UiButton from '../ui/UiButton.vue'
 
 // Mirrors Agent::ROLES (server) and the worker AgentTools registry. Kept as
 // plain constants — small, stable capability lists.

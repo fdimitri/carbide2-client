@@ -26,7 +26,7 @@
     </svg>
     <span v-if="wordmark" class="inline-flex items-baseline gap-2 font-mono font-bold tracking-tight">
       <span class="text-accent glow-text">CARB/IDE2</span>
-      <span v-if="tagline" class="hidden sm:inline text-muted font-normal text-[0.8em]">{{ tagline }}</span>
+      <span v-if="tagline" class="hidden sm:inline text-muted font-normal text-ui-sm">{{ tagline }}</span>
     </span>
   </span>
 </template>

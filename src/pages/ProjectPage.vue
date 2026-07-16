@@ -9,7 +9,7 @@
       </template>
     </Menubar>
 
-    <div class="grid flex-1 min-h-0 overflow-hidden [grid-template-columns:300px_minmax(0,1fr)] max-[980px]:[grid-template-columns:1fr] max-[980px]:[grid-template-rows:42vh_minmax(0,1fr)]">
+    <div class="workspace-main-grid flex-1 min-h-0 overflow-hidden">
       <ExplorerPane
         ref="explorerPane"
         :terminal-list="terminalList"
@@ -117,16 +117,15 @@
     <div v-if="error" class="px-3 py-2 bg-warn/15 text-warn border-t border-warn/50 text-ui-md">{{ error }}</div>
 
     <Dialog v-model:visible="showCreateTerminalDialog" modal header="Create Terminal" :style="{ width: '28rem' }">
-      <div class="flex flex-col gap-[0.35rem] mb-[0.7rem]">
-        <label class="text-muted text-ui-sm font-semibold" for="terminal-name">Name</label>
-        <InputText id="terminal-name" v-model="terminalCreateName" class="w-full" @keydown.enter="confirmCreateTerminal" />
-      </div>
-      <div class="flex items-start gap-[0.5rem] mb-[0.7rem]">
-        <input
+      <UiField class="mb-3" label="Name" for-id="terminal-name">
+        <UiInput id="terminal-name" v-model="terminalCreateName" class="w-full" @keydown.enter="confirmCreateTerminal" />
+      </UiField>
+      <div class="flex items-start gap-2 mb-3">
+        <UiCheckbox
           id="terminal-agent-accessible"
-          type="checkbox"
           v-model="terminalCreateAgentAccessible"
-          class="mt-[0.25rem]"
+          class="mt-1"
+          tone="accent"
           @change="onAgentAccessibleToggleFromUi"
         />
         <label for="terminal-agent-accessible" class="text-ui-md text-text leading-[1.2]">
@@ -140,34 +139,41 @@
         </label>
       </div>
       <template #footer>
-        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-muted text-text text-ui-lg rounded-ui-md cursor-pointer hover:border-accent-bright hover:text-accent-fg" @click="showCreateTerminalDialog = false">Cancel</button>
-        <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-sel border border-accent text-accent-fg rounded-ui-md cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" @click="confirmCreateTerminal">Create</button>
+        <div class="ui-dialog-actions">
+          <UiButton @click="showCreateTerminalDialog = false">Cancel</UiButton>
+          <UiButton variant="primary" @click="confirmCreateTerminal">Create</UiButton>
+        </div>
       </template>
     </Dialog>
 
     <Dialog v-model:visible="showCreateChannelDialog" modal header="Create Channel" :style="{ width: '24rem' }">
-      <div class="flex flex-col gap-[0.35rem] mb-[0.7rem]">
-        <label class="text-muted text-ui-sm font-semibold" for="channel-name">Channel Name</label>
-        <InputText id="channel-name" v-model="channelCreateName" class="w-full" @keydown.enter="confirmCreateChannel" />
-      </div>
+      <UiField class="mb-3" label="Channel Name" for-id="channel-name">
+        <UiInput id="channel-name" v-model="channelCreateName" class="w-full" @keydown.enter="confirmCreateChannel" />
+      </UiField>
       <template #footer>
-        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-muted text-text text-ui-lg rounded-ui-md cursor-pointer hover:border-accent-bright hover:text-accent-fg" @click="showCreateChannelDialog = false">Cancel</button>
-        <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-sel border border-accent text-accent-fg rounded-ui-md cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" @click="confirmCreateChannel">Create</button>
+        <div class="ui-dialog-actions">
+          <UiButton @click="showCreateChannelDialog = false">Cancel</UiButton>
+          <UiButton variant="primary" @click="confirmCreateChannel">Create</UiButton>
+        </div>
       </template>
     </Dialog>
 
     <Dialog v-model:visible="showUploadDialog" modal :header="uploadMode === 'archive' ? 'Upload & Extract Archive' : 'Upload File / Archive'" :style="{ width: '28rem' }">
-      <div class="flex flex-col gap-[0.6rem] mb-[0.7rem]">
-        <label class="text-muted text-ui-sm font-semibold" for="upload-file">File (any file, .zip, .tar, .tar.gz)</label>
-        <input id="upload-file" type="file" @change="uploadFile = $event.target.files?.[0] || null"
-               class="text-ui-lg text-text" />
-        <label class="text-muted text-ui-sm font-semibold mt-[0.4rem]" for="upload-dest">Destination Path</label>
-        <InputText id="upload-dest" v-model="uploadDest" class="w-full" placeholder="/" />
-        <div v-if="uploadResult" class="text-muted text-ui-sm mt-[0.3rem] whitespace-pre-wrap">{{ uploadResult }}</div>
+      <div class="flex flex-col gap-2.5 mb-3">
+        <UiField label="File (any file, .zip, .tar, .tar.gz)" for-id="upload-file" compact>
+          <input id="upload-file" type="file" @change="uploadFile = $event.target.files?.[0] || null"
+                 class="text-ui-lg text-text" />
+        </UiField>
+        <UiField label="Destination Path" for-id="upload-dest" class="mt-1.5" compact>
+          <UiInput id="upload-dest" v-model="uploadDest" class="w-full" placeholder="/" />
+        </UiField>
+        <div v-if="uploadResult" class="text-muted text-ui-sm mt-1 whitespace-pre-wrap">{{ uploadResult }}</div>
       </div>
       <template #footer>
-        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-muted text-text text-ui-lg rounded-ui-md cursor-pointer hover:border-accent-bright hover:text-accent-fg" @click="showUploadDialog = false">Cancel</button>
-        <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-sel border border-accent text-accent-fg rounded-ui-md cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" :disabled="!uploadFile || uploading" @click="confirmUpload">{{ uploading ? 'Uploading…' : 'Upload' }}</button>
+        <div class="ui-dialog-actions">
+          <UiButton @click="showUploadDialog = false">Cancel</UiButton>
+          <UiButton variant="primary" :disabled="!uploadFile || uploading" @click="confirmUpload">{{ uploading ? 'Uploading…' : 'Upload' }}</UiButton>
+        </div>
       </template>
     </Dialog>
 
@@ -186,8 +192,11 @@ import Menubar from 'primevue/menubar'
 import Splitter from 'primevue/splitter'
 import SplitterPanel from 'primevue/splitterpanel'
 import Dialog from 'primevue/dialog'
-import InputText from 'primevue/inputtext'
 import WorkspacePaneShell from '../components/workspace/WorkspacePaneShell.vue'
+import UiCheckbox from '../components/ui/UiCheckbox.vue'
+import UiButton from '../components/ui/UiButton.vue'
+import UiInput from '../components/ui/UiInput.vue'
+import UiField from '../components/ui/UiField.vue'
 import ExplorerPane from '../components/workspace/ExplorerPane.vue'
 import RecordingsDialog from '../components/workspace/RecordingsDialog.vue'
 import BrandMark from '../components/BrandMark.vue'

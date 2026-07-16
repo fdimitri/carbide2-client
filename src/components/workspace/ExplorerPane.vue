@@ -1,20 +1,18 @@
 <template>
   <aside id="pane-explorer" class="border-r border-line bg-gradient-to-b from-bg-2/95 to-bg-1/95 flex flex-col min-h-0 min-w-0">
-    <div class="flex items-center justify-between px-3 py-[0.65rem] border-b border-line text-ui-md font-bold uppercase tracking-[0.08em]">
-      <span>Explorer</span>
-    </div>
-    <input v-model="explorerSearch" class="mx-[0.6rem] mt-[0.6rem] mb-[0.4rem] px-[0.55rem] py-[0.45rem] text-ui-md bg-bg-1 border border-line text-text rounded-ui-md focus:outline-none focus:border-accent-bright" placeholder="Filter explorer..." />
+    <PaneHeader title="Explorer" />
+    <input v-model="explorerSearch" class="mx-2.5 mt-2.5 mb-1.5 px-2.5 py-2 text-ui-md bg-bg-1 border border-line text-text rounded-ui-md focus:outline-none focus:border-accent-bright" placeholder="Filter explorer..." />
 
     <!-- Empty-project banner: project has no files yet -> offer git clone.
          Hidden as soon as the tree has any entry. -->
-    <div v-if="fileTree.length === 0 && !gitImportRunning" class="mx-[0.6rem] mb-[0.5rem] p-[0.55rem] border border-dashed border-dim rounded-ui-md bg-bg-1">
-      <div class="text-ui-sm text-muted mb-[0.35rem]">This project is empty.</div>
-      <button class="w-full px-[0.55rem] py-[0.34rem] bg-transparent border border-muted text-text text-ui-md rounded-ui-md hover:border-accent-bright hover:text-accent-fg" @click="showGitImportDialog = true">
-        <i class="pi pi-github mr-[0.35rem]"></i>Clone from git URL
-      </button>
+    <div v-if="fileTree.length === 0 && !gitImportRunning" class="mx-2.5 mb-2 p-2.5 border border-dashed border-dim rounded-ui-md bg-bg-1">
+      <div class="text-ui-sm text-muted mb-1.5">This project is empty.</div>
+      <UiButton size="sm" class="w-full" @click="showGitImportDialog = true">
+        <i class="pi pi-github mr-1.5"></i>Clone from git URL
+      </UiButton>
     </div>
-    <div v-else-if="gitImportRunning" class="mx-[0.6rem] mb-[0.5rem] p-[0.55rem] border border-muted rounded-ui-md bg-bg-1 text-ui-sm text-accent-fg">
-      <i class="pi pi-spin pi-spinner mr-[0.35rem]"></i>Cloning {{ gitImportUrl }}…
+    <div v-else-if="gitImportRunning" class="mx-2.5 mb-2 p-2.5 border border-muted rounded-ui-md bg-bg-1 text-ui-sm text-accent-fg">
+      <i class="pi pi-spin pi-spinner mr-1.5"></i>Cloning {{ gitImportUrl }}…
     </div>
 
     <div class="flex-1 min-h-0 overflow-y-auto">
@@ -32,7 +30,7 @@
       >
         <template #default="slotProps">
           <div
-            class="flex items-center gap-[0.45rem] w-full min-w-0"
+            class="flex items-center gap-2 w-full min-w-0"
             :draggable="!['group-files','group-terminals','group-channels','dir'].includes(slotProps.node.data?.kind)"
             @click="onExplorerNodeSelect(slotProps.node)"
             @dblclick.stop="onExplorerNodeDblClick(slotProps.node)"
@@ -49,7 +47,7 @@
                  project_settings.agent_shell_busy_timeout_s). -->
             <span
               v-if="slotProps.node.data?.kind === 'terminal' && slotProps.node.data?.agentAccessible"
-              class="ml-1 px-[0.35rem] py-[0.05rem] text-ui-3xs font-bold tracking-wide rounded border"
+              class="ml-1 px-1.5 py-px text-ui-3xs font-bold tracking-wide rounded border"
               :class="slotProps.node.data?.agentBusy
                 ? 'bg-warn/15 border-warn text-warn'
                 : 'bg-sel border-accent-bright text-accent-fg'"
@@ -69,27 +67,27 @@
 
     <!-- Create File Dialog -->
     <Dialog v-model:visible="showCreateFileDialog" modal header="New File" :style="{ width: '22rem' }">
-      <div class="flex flex-col gap-[0.35rem] mb-[0.7rem]">
-        <label class="text-muted text-ui-sm font-semibold">File Name</label>
-        <InputText v-model="createFileName" class="w-full" @keydown.enter="confirmCreateFile" autofocus />
-        <span class="text-muted text-ui-sm">in {{ createDialogParentPath }}</span>
-      </div>
+      <UiField label="File Name" :hint="`in ${createDialogParentPath}`" class="mb-3">
+        <UiInput v-model="createFileName" class="w-full" @keydown.enter="confirmCreateFile" autofocus />
+      </UiField>
       <template #footer>
-        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-muted text-text text-ui-lg rounded-ui-md cursor-pointer hover:border-accent-bright hover:text-accent-fg" @click="showCreateFileDialog = false">Cancel</button>
-        <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-sel border border-accent text-accent-fg rounded-ui-md cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" :disabled="!createFileName.trim()" @click="confirmCreateFile">Create</button>
+        <div class="ui-dialog-actions">
+          <UiButton @click="showCreateFileDialog = false">Cancel</UiButton>
+          <UiButton variant="primary" :disabled="!createFileName.trim()" @click="confirmCreateFile">Create</UiButton>
+        </div>
       </template>
     </Dialog>
 
     <!-- Create Folder Dialog -->
     <Dialog v-model:visible="showCreateFolderDialog" modal header="New Folder" :style="{ width: '22rem' }">
-      <div class="flex flex-col gap-[0.35rem] mb-[0.7rem]">
-        <label class="text-muted text-ui-sm font-semibold">Folder Name</label>
-        <InputText v-model="createFolderName" class="w-full" @keydown.enter="confirmCreateFolder" autofocus />
-        <span class="text-muted text-ui-sm">in {{ createDialogParentPath }}</span>
-      </div>
+      <UiField label="Folder Name" :hint="`in ${createDialogParentPath}`" class="mb-3">
+        <UiInput v-model="createFolderName" class="w-full" @keydown.enter="confirmCreateFolder" autofocus />
+      </UiField>
       <template #footer>
-        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-muted text-text text-ui-lg rounded-ui-md cursor-pointer hover:border-accent-bright hover:text-accent-fg" @click="showCreateFolderDialog = false">Cancel</button>
-        <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-sel border border-accent text-accent-fg rounded-ui-md cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" :disabled="!createFolderName.trim()" @click="confirmCreateFolder">Create</button>
+        <div class="ui-dialog-actions">
+          <UiButton @click="showCreateFolderDialog = false">Cancel</UiButton>
+          <UiButton variant="primary" :disabled="!createFolderName.trim()" @click="confirmCreateFolder">Create</UiButton>
+        </div>
       </template>
     </Dialog>
 
@@ -97,18 +95,23 @@
          Server still enforces emptiness (409 on conflict) so this is just
          a UX gate, not a security boundary. -->
     <Dialog v-model:visible="showGitImportDialog" modal header="Clone from git URL" :style="{ width: '28rem' }">
-      <div class="flex flex-col gap-[0.35rem] mb-[0.7rem]">
-        <label class="text-muted text-ui-sm font-semibold">Repository URL</label>
-        <InputText v-model="gitImportUrl" class="w-full" placeholder="https://github.com/user/repo.git" autofocus />
-        <label class="text-muted text-ui-sm font-semibold mt-[0.4rem]">Branch / ref <span class="font-normal opacity-70">(blank = default branch)</span></label>
-        <InputText v-model="gitImportRef" class="w-full" placeholder="default branch" />
-        <span v-if="gitImportError" class="text-warn text-ui-sm mt-[0.3rem]">{{ gitImportError }}</span>
+      <div class="flex flex-col gap-1.5 mb-3">
+        <UiField label="Repository URL" compact>
+          <UiInput v-model="gitImportUrl" class="w-full" placeholder="https://github.com/user/repo.git" autofocus />
+        </UiField>
+        <UiField label="Branch / ref" class="mt-1.5" compact>
+          <template #label-extra><span class="font-normal opacity-70"> (blank = default branch)</span></template>
+          <UiInput v-model="gitImportRef" class="w-full" placeholder="default branch" />
+        </UiField>
+        <span v-if="gitImportError" class="text-warn text-ui-sm mt-1">{{ gitImportError }}</span>
       </div>
       <template #footer>
-        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-muted text-text text-ui-lg rounded-ui-md cursor-pointer hover:border-accent-bright hover:text-accent-fg" @click="showGitImportDialog = false" :disabled="gitImportSubmitting">Cancel</button>
-        <button class="shrink-0 px-[0.85rem] py-[0.42rem] bg-sel border border-accent text-accent-fg rounded-ui-md cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" :disabled="!gitImportUrl.trim() || gitImportSubmitting" @click="confirmGitImport">
-          {{ gitImportSubmitting ? 'Starting…' : 'Clone' }}
-        </button>
+        <div class="ui-dialog-actions">
+          <UiButton @click="showGitImportDialog = false" :disabled="gitImportSubmitting">Cancel</UiButton>
+          <UiButton variant="primary" :disabled="!gitImportUrl.trim() || gitImportSubmitting" @click="confirmGitImport">
+            {{ gitImportSubmitting ? 'Starting…' : 'Clone' }}
+          </UiButton>
+        </div>
       </template>
     </Dialog>
 
@@ -119,13 +122,15 @@
       <table v-else-if="propertiesData" class="w-full text-ui-md">
         <tbody>
           <tr v-for="row in propertiesRows" :key="row.label" class="align-top">
-            <td class="py-[0.18rem] pr-2 text-muted whitespace-nowrap w-[10rem]">{{ row.label }}</td>
-            <td class="py-[0.18rem] text-text break-all">{{ row.value }}</td>
+            <td class="py-0.5 pr-2 text-muted whitespace-nowrap w-40">{{ row.label }}</td>
+            <td class="py-0.5 text-text break-all">{{ row.value }}</td>
           </tr>
         </tbody>
       </table>
       <template #footer>
-        <button class="shrink-0 px-3 py-[0.34rem] bg-transparent border border-muted text-text text-ui-lg rounded-ui-md cursor-pointer hover:border-accent-bright hover:text-accent-fg" @click="showPropertiesDialog = false">Close</button>
+        <div class="ui-dialog-actions">
+          <UiButton @click="showPropertiesDialog = false">Close</UiButton>
+        </div>
       </template>
     </Dialog>
   </aside>
@@ -136,12 +141,15 @@ import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import Tree from 'primevue/tree'
 import ContextMenu from 'primevue/contextmenu'
 import Dialog from 'primevue/dialog'
-import InputText from 'primevue/inputtext'
 import { logInfo } from '../../services/log'
 import { PANE_COUNTS } from '../../composables/usePanes'
 import workerSocket from '../../services/workerSocket'
 import { useRoute } from 'vue-router'
 import { takePendingSeed, currentScope } from '../../services/pendingSeed'
+import PaneHeader from '../ui/PaneHeader.vue'
+import UiButton from '../ui/UiButton.vue'
+import UiInput from '../ui/UiInput.vue'
+import UiField from '../ui/UiField.vue'
 
 const _explorerRoute = useRoute()
 const _explorerProjectId = Number(_explorerRoute.params.id)

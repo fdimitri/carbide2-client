@@ -1,10 +1,10 @@
 <template>
   <div class="relative flex min-h-screen items-center justify-center px-4 workspace-bg overflow-hidden">
     <!-- ambient glows -->
-    <div class="pointer-events-none absolute -top-60 -left-60 w-[500px] h-[500px] rounded-full bg-accent/8 blur-[120px]"></div>
-    <div class="pointer-events-none absolute -bottom-60 -right-40 w-[400px] h-[400px] rounded-full bg-accent/10 blur-[100px]"></div>
+    <div class="login-glow-a pointer-events-none absolute -top-60 -left-60 rounded-full bg-accent/8"></div>
+    <div class="login-glow-b pointer-events-none absolute -bottom-60 -right-40 rounded-full bg-accent/10"></div>
 
-    <div class="relative w-full max-w-[360px]">
+    <div class="relative w-full max-w-sm">
       <!-- Brand -->
       <div class="text-center mb-8">
         <div class="inline-flex items-center justify-center mb-4">
@@ -29,13 +29,9 @@
               class="focus:shadow-[0_0_0_3px_rgba(90,176,255,0.12)]" />
           </div>
 
-          <button type="submit" :disabled="loading"
-            class="mt-4 w-full py-3.5 rounded-lg font-bold text-sm text-accent-text
-                   bg-accent border-0 cursor-pointer
-                   hover:brightness-110 active:scale-[0.98] transition-all
-                   disabled:opacity-50 disabled:cursor-not-allowed
-                   shadow-[0_4px_24px_rgba(90,176,255,0.35)]"
-          >{{ loading ? 'Signing in…' : 'Sign in' }}</button>
+          <UiButton type="submit" :disabled="loading" variant="primary" size="md"
+            class="mt-4 w-full py-3.5 font-bold shadow-[0_4px_24px_rgba(90,176,255,0.35)]"
+          >{{ loading ? 'Signing in…' : 'Sign in' }}</UiButton>
 
           <p v-if="error" class="text-warn text-xs text-center -mt-1">{{ error }}</p>
         </form>
@@ -60,6 +56,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import BrandMark from '../components/BrandMark.vue'
 import { VERSION_LABEL } from '../version'
+import UiButton from '../components/ui/UiButton.vue'
 import UiInput from '../components/ui/UiInput.vue'
 import authService from '../services/authService'
 

@@ -27,7 +27,7 @@
           <svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7" /></svg>
         </span>
       </button>
-      <span v-if="pane.tabs.length === 0" class="text-muted text-ui-xs pl-[0.2rem]">Empty pane</span>
+      <span v-if="pane.tabs.length === 0" class="text-muted text-ui-xs pl-1">Empty pane</span>
     </div>
 
     <div class="flex flex-col flex-1 overflow-hidden" v-show="activeTabKind === 'file'">

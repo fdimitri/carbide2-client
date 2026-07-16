@@ -33,17 +33,19 @@
       </svg>
       <span class="text-muted opacity-70">↓{{ rateInText }} ↑{{ rateOutText }}</span>
     </template>
-    <button
+    <UiButton
       v-else-if="status === 'offline' || status === 'reconnecting'"
-      class="px-1.5 py-0.5 rounded border border-accent/40 text-accent-bright hover:bg-accent/10"
+      size="xs"
+      class="px-1.5 py-0.5 border-accent/40 text-accent-bright hover:bg-accent/10"
       @click="retry"
-    >Retry now</button>
+    >Retry now</UiButton>
   </div>
 </template>
 
 <script setup>
 import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import workerSocket from '../services/workerSocket'
+import UiButton from './ui/UiButton.vue'
 
 const status    = workerSocket.status
 const latencyMs = workerSocket.latencyMs

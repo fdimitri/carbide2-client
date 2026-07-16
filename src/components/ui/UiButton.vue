@@ -1,8 +1,6 @@
-<!-- UiButton — the single place button padding, surface, and hover live.
-     Variants: primary (filled accent) · ghost (bordered, subtle).
-     Sizes: xs · sm · md. Everything else (title, @click, type, …) falls
-     through via $attrs. This exists so buttons stop being copy-pasted
-     utility strings that drift a hair apart in every file. -->
+<!-- UiButton — shared button primitive used by panes, dialogs, and forms.
+     Uses semantic ui-btn classes from main.css so tone/size rules live in one
+     stylesheet instead of repeated utility strings in templates. -->
 <template>
   <button :class="cls" :disabled="disabled">
     <slot />
@@ -13,24 +11,27 @@
 import { computed } from 'vue'
 
 const props = defineProps({
-  variant:  { type: String,  default: 'ghost' },  // 'primary' | 'ghost'
+  variant:  { type: String,  default: 'ghost' },  // primary | ghost | mono | focus | warn
   size:     { type: String,  default: 'sm' },     // 'xs' | 'sm' | 'md'
   disabled: { type: Boolean, default: false },
 })
 
 const SIZES = {
-  xs: 'px-2.5 py-1 text-ui-xs',
-  sm: 'px-2.5 py-2 text-ui-md',
-  md: 'px-3.5 py-2 text-ui-lg',
+  xs: 'ui-btn ui-btn-sm px-2 py-1 text-ui-xs',
+  sm: 'ui-btn ui-btn-sm',
+  md: 'ui-btn',
 }
 
 const VARIANTS = {
-  ghost:   'rounded-ui-sm border monaco-panel-border opacity-80 hover:opacity-100 disabled:opacity-30 disabled:cursor-default cursor-pointer',
-  primary: 'rounded-ui-sm border-0 text-white monaco-focus-bg hover:brightness-115 disabled:opacity-40 disabled:cursor-default cursor-pointer',
+  ghost:   'ui-btn-ghost',
+  primary: 'ui-btn-primary',
+  mono:    'ui-btn-mono',
+  focus:   'ui-btn-focus',
+  warn:    'ui-btn-warn',
 }
 
 const cls = computed(() => [
-  'inline-flex items-center justify-center gap-1.5 font-[inherit] select-none',
+  'select-none',
   SIZES[props.size] || SIZES.sm,
   VARIANTS[props.variant] || VARIANTS.ghost,
 ])
