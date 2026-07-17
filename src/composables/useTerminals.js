@@ -10,7 +10,7 @@ import { useDebugLogStore } from '../stores/debugLogStore'
 
 export function useTerminals({ error, bindTabToActivePane, activePane }) {
   const store = useWorkspaceStore()
-  const { terminalList, selectedTerminalId } = storeToRefs(store)
+  const { terminalList, selectedTerminalId, terminalsLoaded } = storeToRefs(store)
   const debugLog = useDebugLogStore()
 
   const terminalLoading          = ref(false)
@@ -85,13 +85,36 @@ export function useTerminals({ error, bindTabToActivePane, activePane }) {
     }
   }
 
-  function selectTerminalNode(tid, options = {}) {
-    selectedTerminalId.value = tid
+  function selectTerminalNode(ref, options = {}) {
+    // `ref` may be a stable UUID (from a tab/session doc) or the reusable
+    // integer id (from the explorer / create / dock). Resolve to both: the
+    // integer id drives the live protocol + selection; the UUID is the tab
+    // identity so a recycled integer can never bind a stale tab to the wrong
+    // shell.
+    const { id, uuid, name } = resolveTerminal(ref)
+    if (id != null) selectedTerminalId.value = id
     activePane.value = 'terminal'
-    const current = terminalList.value.find(t => Number(t.id) === Number(tid))
     if (!options.skipPaneTab) {
-      bindTabToActivePane('terminal', tid, current?.name || `terminal #${tid}`)
+      const key = uuid || id
+      if (key != null) {
+        bindTabToActivePane('terminal', key, name || `Terminal #${id ?? ref}`)
+      }
     }
+  }
+
+  // Map a terminal reference (integer id OR uuid string) to { id, uuid, name }
+  // using the current terminal list. Either field may be null if the terminal
+  // isn't (yet) known locally.
+  function resolveTerminal(ref) {
+    const list = terminalList.value || []
+    const s = String(ref)
+    if (/^\d+$/.test(s)) {
+      const id = Number(ref)
+      const t = list.find((x) => Number(x.id) === id)
+      return { id, uuid: t?.uuid || null, name: t?.name }
+    }
+    const t = list.find((x) => x.uuid === s)
+    return { id: t ? Number(t.id) : null, uuid: s, name: t?.name }
   }
 
   function renameTerminalById(tid) {
@@ -168,8 +191,10 @@ export function useTerminals({ error, bindTabToActivePane, activePane }) {
       workerSocket.on('term', 'list', (p) => {
         logWs('recv', 'term', 'list', p)
         // Worker now sends agent_accessible / agent_busy / agent_busy_until_ms
-        // per entry — pass them through unchanged so the UI can badge.
+        // and a stable uuid per entry — pass them through unchanged so the UI
+        // can badge and resolve tab identity.
         terminalList.value = p.terminals || []
+        terminalsLoaded.value = true
       }),
       workerSocket.on('term', 'created', (p) => {
         logWs('recv', 'term', 'created', p)
@@ -184,6 +209,7 @@ export function useTerminals({ error, bindTabToActivePane, activePane }) {
             ...terminalList.value,
             {
               id: createdId,
+              uuid: p.uuid || null,
               name: p.name || `terminal-${createdId}`,
               status: 'active',
               agent_accessible: !!p.agent_accessible,

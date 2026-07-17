@@ -10,8 +10,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const currentUserId     = computed(() => authService.userId())
 
   // ── Terminals ───────────────────────────────────────────────────────────────
-  const terminalList       = ref([])   // [{ id, name, status }]
+  const terminalList       = ref([])   // [{ id, uuid, name, status }]
   const selectedTerminalId = ref(null)
+  // True once at least one term/list has arrived, so consumers can distinguish
+  // "terminals not loaded yet" from "this terminal is genuinely gone (defunct)".
+  const terminalsLoaded    = ref(false)
 
   // ── Chat ────────────────────────────────────────────────────────────────────
   const chatChannels           = ref([])   // [{ id, name }]
@@ -70,6 +73,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     currentUserId,
     terminalList,
     selectedTerminalId,
+    terminalsLoaded,
     chatChannels,
     selectedChatChannelId,
     chatMessagesMap,

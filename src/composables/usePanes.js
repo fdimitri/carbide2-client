@@ -76,7 +76,10 @@ export function usePanes({ activePane, pendingNavigation }) {
   function parseTabKey(key) {
     if (!key || typeof key !== 'string' || !key.includes(':')) return null
     const [kind, rawId] = key.split(':')
-    if (kind === 'file') return { kind, id: rawId }
+    // file paths and terminal UUIDs are string identities; only channels use a
+    // numeric id. Terminals are keyed by their stable UUID (never the reusable
+    // integer id) so a recycled integer can't collide with a stale tab ref.
+    if (kind === 'file' || kind === 'terminal') return { kind, id: rawId }
     return { kind, id: Number(rawId) }
   }
 
@@ -190,7 +193,8 @@ export function usePanes({ activePane, pendingNavigation }) {
     activePaneIndex.value = paneIndex
 
     if (payload.kind === 'terminal') {
-      pendingNavigation.value = { kind: 'terminal', id: Number(payload.id), opts: {} }
+      // Terminal identity is the stable UUID (string), not the integer id.
+      pendingNavigation.value = { kind: 'terminal', id: String(payload.id), opts: {} }
       return
     }
     if (payload.kind === 'channel') {

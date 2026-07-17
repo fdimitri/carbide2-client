@@ -34,7 +34,9 @@ const getWorkerUrl = () => {
 // Sent to the worker on the handshake URL (&proto=&min_server=); the worker
 // advertises its own protocol/min_client in system/connected. We compare both
 // floors and, for now, only WARN on a mismatch (advisory — still connect).
-const PROTOCOL   = 1
+// PROTOCOL 3: session/delete + client_version tagging, per-terminal uuid. All
+// additive — MIN_SERVER stays 1.
+const PROTOCOL   = 3
 const MIN_SERVER = 1
 
 const RECONNECT_BASE_MS  = 1000

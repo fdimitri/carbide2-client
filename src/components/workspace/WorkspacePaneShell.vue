@@ -62,8 +62,17 @@
     </div>
 
     <div class="flex flex-col flex-1 overflow-hidden" v-show="activeTabKind === 'terminal'">
+      <div
+        v-if="terminalDefunct"
+        class="flex flex-col flex-1 items-center justify-center text-center text-muted p-4 gap-2"
+      >
+        <i class="pi pi-times-circle text-2xl" />
+        <div>This terminal has ended and is no longer available.</div>
+        <div class="text-ui-xs">Close this tab and open a new terminal.</div>
+      </div>
       <TerminalPane
-        :key="`term-${paneIndex}-${activeTerminalId || 'none'}`"
+        v-else
+        :key="`term-${paneIndex}-${activeTerminalUuid || 'none'}`"
         :terminal-id="activeTerminalId"
         :active="paneIndex === activePaneIndex"
         :agent-busy="activeTerminalAgentState.busy"
@@ -137,10 +146,36 @@ const activeTabKind = computed(() => {
   return key.split(':')[0] || null
 })
 
-const activeTerminalId = computed(() => {
+const activeTerminalUuid = computed(() => {
   if (activeTabKind.value !== 'terminal') return null
-  return Number((effectiveActiveKey.value || '').split(':')[1]) || null
+  // Everything after 'terminal:' is the stable uuid (uuids contain no colon,
+  // but join defensively anyway).
+  return (effectiveActiveKey.value || '').split(':').slice(1).join(':') || null
 })
+
+// Resolve the tab's stable uuid to the live terminal entry (and thus its
+// reusable integer id used by the live protocol). Null when the terminal no
+// longer exists.
+const activeTerminalEntry = computed(() => {
+  const uuid = activeTerminalUuid.value
+  if (!uuid) return null
+  return (store.terminalList || []).find((t) => t.uuid === uuid) || null
+})
+
+const activeTerminalId = computed(() => {
+  const e = activeTerminalEntry.value
+  return e ? Number(e.id) : null
+})
+
+// Defunct = the tab references a terminal uuid that isn't in the (already
+// loaded) terminal list, i.e. its shell has exited. Gated on terminalsLoaded
+// so a tab doesn't flash "defunct" before the first term/list arrives.
+const terminalDefunct = computed(() =>
+  activeTabKind.value === 'terminal' &&
+  !!activeTerminalUuid.value &&
+  store.terminalsLoaded &&
+  !activeTerminalEntry.value
+)
 
 // Pull the agent-lock state for whichever terminal this pane currently
 // shows so TerminalPane can render the busy overlay. Store-driven so it

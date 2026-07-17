@@ -22,6 +22,7 @@ import { watch } from 'vue'
 import workerSocket from '../services/workerSocket'
 import { logInfo, logWs } from '../services/log'
 import { useSessionStore, diffSessionDoc, SESSION_CS } from '../stores/sessionStore'
+import { VERSION } from '../version'
 
 // Coalesce a burst of layout mutations (a drag, a multi-step layout switch) into
 // one outbound patch. Long enough to swallow a drag, short enough to feel live.
@@ -147,11 +148,32 @@ export function useSessionSync({ bindActiveSurface = null, storageKey = null } =
     if (!autoResumePending) return
     autoResumePending = false
     const preferred = readStoredUuid()
+    const matches = (s) => s.client_version === VERSION
+    // Prefer: the exact session we last owned (if version-compatible and free),
+    // then the newest free version-MATCHING session, then any free session
+    // (mismatch is resumable — the picker flags it — but not our first choice),
+    // else start fresh.
     const pick =
+      list.find((s) => s.session_uuid === preferred && !s.in_use && matches(s)) ||
+      list.find((s) => !s.in_use && matches(s)) ||
       list.find((s) => s.session_uuid === preferred && !s.in_use) ||
       list.find((s) => !s.in_use)
     if (pick) resume(pick.session_uuid)
     else      create()
+  }
+
+  // session/deleted — a session we own (or watch) was garbage-collected. If it
+  // was the one we're driving, reset local state and establish a replacement so
+  // the tab is never left bound to a destroyed session.
+  function onDeleted(payload) {
+    const uuid = payload?.session_uuid
+    if (!uuid) return
+    store.setSessions((store.sessions || []).filter((s) => s.session_uuid !== uuid))
+    if (uuid === store.sessionUuid) {
+      store.reset()
+      lastSentDoc = store.toDoc()
+      ensureSession()
+    }
   }
 
   // ── Lifecycle ───────────────────────────────────────────────────────────────
@@ -174,6 +196,7 @@ export function useSessionSync({ bindActiveSurface = null, storageKey = null } =
       workerSocket.on(SESSION_CS, 'patched',   onPatched),
       workerSocket.on(SESSION_CS, 'patch',     onPatch),
       workerSocket.on(SESSION_CS, 'list',      onList),
+      workerSocket.on(SESSION_CS, 'deleted',   onDeleted),
     )
   }
 
@@ -186,7 +209,7 @@ export function useSessionSync({ bindActiveSurface = null, storageKey = null } =
 
   // ── Producer-side commands (thin wrappers over the wire) ────────────────────
   function create({ fromUuid = null, name = null } = {}) {
-    const payload = {}
+    const payload = { client_version: VERSION }
     if (fromUuid) payload.from_uuid = fromUuid
     if (name != null) payload.name = name
     // A brand-new (non-fork) session seeds the server with the current layout.
@@ -211,10 +234,19 @@ export function useSessionSync({ bindActiveSurface = null, storageKey = null } =
     workerSocket.send(SESSION_CS, 'unsubscribe', { session_uuid: uuid })
   }
 
+  // Garbage-collect a session the user owns. If it's the session we're currently
+  // driving, the server's session/deleted handler (below) resets us and a fresh
+  // ensureSession() spins up a replacement.
+  function remove(sessionUuid) {
+    const uuid = sessionUuid || store.sessionUuid
+    if (!uuid) return
+    logWs('send', SESSION_CS, 'delete', { session_uuid: uuid })
+    workerSocket.send(SESSION_CS, 'delete', { session_uuid: uuid })
+  }
+
   function list() {
     workerSocket.send(SESSION_CS, 'list', {})
   }
-
   // Establish this tab's session after the socket is (re)connected. Call on every
   // `system/connected`:
   //   • RECONNECT (we already own a session this page-life): silently re-resume
@@ -232,7 +264,7 @@ export function useSessionSync({ bindActiveSurface = null, storageKey = null } =
 
   return {
     start, stop,
-    create, resume, subscribe, unsubscribe, list,
+    create, resume, subscribe, unsubscribe, list, remove,
     ensureSession,
     // exposed for tests / manual flush
     _flush: flush,

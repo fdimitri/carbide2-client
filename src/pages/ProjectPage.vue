@@ -5,7 +5,49 @@
         <BrandMark :size="18" :wordmark="false" class="ml-1 mr-3 shrink-0" />
       </template>
       <template #end>
-        <ConnectionStatus class="mr-2" />
+        <div class="flex items-center gap-2 mr-2">
+          <Select
+            :model-value="currentSessionUuid"
+            :options="sessionOptions"
+            option-label="label"
+            option-value="value"
+            option-disabled="disabled"
+            placeholder="Session"
+            size="small"
+            class="session-select"
+            @change="onSessionSelect"
+            @show="sessionSync.list()"
+          >
+            <template #option="{ option }">
+              <div class="flex items-center gap-2 w-full">
+                <span class="flex-1 truncate">{{ option.label }}</span>
+                <i
+                  v-if="option.versionMismatch"
+                  class="pi pi-exclamation-triangle text-amber"
+                  :title="`Created by a different client version (${option.clientVersion || 'unknown'}). Layout may not load correctly.`"
+                />
+                <button
+                  type="button"
+                  class="shrink-0 text-muted hover:text-warn p-1 rounded"
+                  title="Delete session"
+                  aria-label="Delete session"
+                  @click.stop="deleteSession(option.value)"
+                >
+                  <i class="pi pi-trash" />
+                </button>
+              </div>
+            </template>
+          </Select>
+          <UiButton
+            variant="ghost"
+            title="New session"
+            aria-label="New session"
+            @click="sessionSync.create()"
+          >
+            <i class="pi pi-plus" />
+          </UiButton>
+          <ConnectionStatus />
+        </div>
       </template>
     </Menubar>
 
@@ -192,6 +234,7 @@ import Menubar from 'primevue/menubar'
 import Splitter from 'primevue/splitter'
 import SplitterPanel from 'primevue/splitterpanel'
 import Dialog from 'primevue/dialog'
+import Select from 'primevue/select'
 import WorkspacePaneShell from '../components/workspace/WorkspacePaneShell.vue'
 import UiCheckbox from '../components/ui/UiCheckbox.vue'
 import UiButton from '../components/ui/UiButton.vue'
@@ -208,6 +251,7 @@ import { storeToRefs } from 'pinia'
 import { usePanes, PANE_COUNTS } from '../composables/usePanes'
 import { useSessionSync } from '../composables/useSessionSync'
 import { useSessionStore } from '../stores/sessionStore'
+import { VERSION } from '../version'
 import { useTerminals } from '../composables/useTerminals'
 import { useChat } from '../composables/useChat'
 import { useRtc } from '../composables/useRtc'
@@ -407,10 +451,6 @@ const menuItems = computed(() => ([
     items: menuLayoutItems.value,
   },
   {
-    label: 'Session',
-    items: sessionMenuItems.value,
-  },
-  {
     label: 'Project',
     items: [
       { label: 'Settings…', icon: 'pi pi-cog', command: () => bindTabToActivePane('settings', projectId, 'Settings') },
@@ -452,32 +492,34 @@ const dockItems = computed(() => ([
 ]))
 
 // ── Session picker (server-authoritative browser sessions, ADR-002) ───────────
-function sessionMenuLabel(s) {
+function sessionOptionLabel(s) {
   const base = s.name || `Session ${String(s.session_uuid).slice(0, 8)}`
   if (s.session_uuid === currentSessionUuid.value) return `${base} (current)`
   if (s.in_use) return `${base} (in use)`
   return base
 }
 
-const sessionMenuItems = computed(() => {
-  const list = sessionList.value.map((s) => {
+// Dropdown options: the current session plus every resumable one. A session
+// driven by ANOTHER tab (in_use and not the current one) is disabled so it
+// can't be stolen from under its live producer. A version mismatch is NOT
+// disabled — it stays resumable but is flagged with a warning triangle, since
+// the layout doc was written by a different client build.
+const sessionOptions = computed(() =>
+  sessionList.value.map((s) => {
     const isCurrent = s.session_uuid === currentSessionUuid.value
-    const busy      = s.in_use && !isCurrent
     return {
-      label:    sessionMenuLabel(s),
-      // check = current, lock = driven by another tab, replay = resumable
-      icon:     isCurrent ? 'pi pi-check' : busy ? 'pi pi-lock' : 'pi pi-replay',
-      disabled: isCurrent || busy,   // can't switch to yourself or steal a live one
-      command:  () => switchSession(s.session_uuid),
+      label:           sessionOptionLabel(s),
+      value:           s.session_uuid,
+      disabled:        s.in_use && !isCurrent,
+      clientVersion:   s.client_version || null,
+      versionMismatch: !!s.client_version && s.client_version !== VERSION,
     }
   })
-  const controls = [
-    { separator: true },
-    { label: 'New Session',   icon: 'pi pi-plus',    command: () => sessionSync.create() },
-    { label: 'Refresh List',  icon: 'pi pi-refresh', command: () => sessionSync.list() },
-  ]
-  return list.length ? [...list, ...controls] : controls
-}) 
+)
+
+function onSessionSelect(event) {
+  switchSession(event?.value)
+}
 
 function switchSession(uuid) {
   if (!uuid || uuid === currentSessionUuid.value) return
@@ -486,9 +528,18 @@ function switchSession(uuid) {
   sessionSync.resume(uuid)
 }
 
+function deleteSession(uuid) {
+  if (!uuid) return
+  const s = sessionList.value.find((x) => x.session_uuid === uuid)
+  const label = s?.name || `Session ${String(uuid).slice(0, 8)}`
+  if (!window.confirm(`Delete "${label}"? This permanently removes the saved layout.`)) return
+  sessionSync.remove(uuid)
+}
+
 // ── Navigation helpers ────────────────────────────────────────────────────────
 async function selectTerminalNode(tid, options = {}) {
-  selectedTerminalId.value = tid
+  // tid may be an integer id or a stable uuid; useTerminals.selectTerminalNode
+  // resolves both and sets selectedTerminalId to the integer id.
   if (options.paneIndex != null) activePaneIndex.value = options.paneIndex
   await terminals.selectTerminalNode(tid, options)
 }
