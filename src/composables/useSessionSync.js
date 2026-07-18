@@ -21,8 +21,8 @@
 import { watch } from 'vue'
 import workerSocket from '../services/workerSocket'
 import { logInfo, logWs } from '../services/log'
-import { useSessionStore, diffSessionDoc, SESSION_CS } from '../stores/sessionStore'
-import { VERSION } from '../version'
+import { useSessionStore, diffSessionDoc, SESSION_CS, SESSION_DOC_VERSION } from '../stores/sessionStore'
+import { VERSION, CLIENT_SHA } from '../version'
 
 // Coalesce a burst of layout mutations (a drag, a multi-step layout switch) into
 // one outbound patch. Long enough to swallow a drag, short enough to feel live.
@@ -77,7 +77,33 @@ export function useSessionSync({ bindActiveSurface = null, storageKey = null } =
 
     lastSentDoc = next
     logWs('send', SESSION_CS, 'patch', { ops: patch.length })
-    workerSocket.send(SESSION_CS, 'patch', { session_uuid: store.sessionUuid, ops: patch })
+    workerSocket.send(SESSION_CS, 'patch', {
+      session_uuid: store.sessionUuid,
+      ops: patch,
+      // Re-stamp the last-writer signature on every write so the stored
+      // fingerprint always describes the bytes on disk (this build), not just
+      // whoever first created the session.
+      client_sha: CLIENT_SHA,
+      doc_version: SESSION_DOC_VERSION,
+    })
+  }
+
+  // Replace the ENTIRE server doc with our freshly normalized one. loadDoc()->
+  // toDoc() has already dropped keys this build doesn't understand, so this is a
+  // garbage-collection pass that a diff-patch stream can't do (a diff never
+  // mentions a defunct key, so it lingers forever). Fired after resuming a
+  // session whose stored signature differs from ours.
+  function resync() {
+    if (!store.subscribed || !store.isProducer() || !store.sessionUuid) return
+    const doc = store.toDoc()
+    lastSentDoc = doc
+    logWs('send', SESSION_CS, 'resync', {})
+    workerSocket.send(SESSION_CS, 'resync', {
+      session_uuid: store.sessionUuid,
+      doc,
+      client_sha: CLIENT_SHA,
+      doc_version: SESSION_DOC_VERSION,
+    })
   }
 
   function scheduleFlush() {
@@ -116,7 +142,16 @@ export function useSessionSync({ bindActiveSurface = null, storageKey = null } =
   }
 
   function onCreated(payload)  { hydrate(payload, 'producer') }
-  function onResumed(payload)  { hydrate(payload, 'producer') }
+  function onResumed(payload)  {
+    hydrate(payload, 'producer')
+    // If we resumed a session last written by a different build (SHA) or an
+    // incompatible doc shape (doc_version), re-emit our normalized doc: this
+    // drops any defunct keys the old build left behind and re-stamps the
+    // signature to us. Same-signature resumes skip it (no-op churn avoided).
+    const sha  = payload?.client_sha ?? null
+    const docV = payload?.doc_version ?? null
+    if (sha !== CLIENT_SHA || docV !== SESSION_DOC_VERSION) resync()
+  }
   // A watcher's initial state also arrives as a snapshot; role stays whatever the
   // subscribe flow set (watcher). Default to 'watcher' if unset.
   function onSnapshot(payload) { hydrate(payload, store.role || 'watcher') }
@@ -148,7 +183,10 @@ export function useSessionSync({ bindActiveSurface = null, storageKey = null } =
     if (!autoResumePending) return
     autoResumePending = false
     const preferred = readStoredUuid()
-    const matches = (s) => s.client_version === VERSION
+    // "Compatible" for auto-resume = the doc SHOULD load, i.e. it was written at
+    // the same SESSION_DOC_VERSION. A differing build SHA alone is fine to resume
+    // (the picker still flags it); a differing doc_version is not our first pick.
+    const matches = (s) => (s.doc_version ?? null) === SESSION_DOC_VERSION
     // Prefer: the exact session we last owned (if version-compatible and free),
     // then the newest free version-MATCHING session, then any free session
     // (mismatch is resumable — the picker flags it — but not our first choice),
@@ -209,7 +247,7 @@ export function useSessionSync({ bindActiveSurface = null, storageKey = null } =
 
   // ── Producer-side commands (thin wrappers over the wire) ────────────────────
   function create({ fromUuid = null, name = null } = {}) {
-    const payload = { client_version: VERSION }
+    const payload = { client_version: VERSION, client_sha: CLIENT_SHA, doc_version: SESSION_DOC_VERSION }
     if (fromUuid) payload.from_uuid = fromUuid
     if (name != null) payload.name = name
     // A brand-new (non-fork) session seeds the server with the current layout.

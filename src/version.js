@@ -28,3 +28,10 @@ const shaParts = [
 
 // Display form: "v0.2.1-bluesteel (meta:abc1234 client:def5678 ...)"
 export const VERSION_LABEL = shaParts ? `v${VERSION} (${shaParts})` : `v${VERSION}`
+
+// Short git SHA of THIS client build (from BUILD_META, injected at build time).
+// Sessions are tagged with it so the picker can tell which exact build saved a
+// session vs. which is loading it — a discipline-free "different build?" signal
+// that never silently misses a doc-shape change the way a manual version bump
+// can. Empty string when no SHA was injected (e.g. plain local dev).
+export const CLIENT_SHA = shortSha(BUILD_META.clientSha)

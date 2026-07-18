@@ -413,20 +413,35 @@ html.theme-green {
 .workspace-splitter .p-splitter-gutter-handle {
   background: var(--color-line);
 }
+/* The active pane's glow is an OUTWARD box-shadow that spills into the gutter,
+   so the splitter and its panels must not clip it. The pane itself keeps its
+   own overflow-hidden (that clips its children; a box-shadow is drawn outside
+   the box and is unaffected by the element's own overflow). */
+.workspace-splitter.p-splitter,
+.workspace-splitter .p-splitterpanel {
+  overflow: visible;
+}
 
 /* Workspace pane frame. Inactive panes carry a hairline theme border; the
-   active pane swaps it for a brand-accent ring the width of the splitter
-   gutter plus a soft accent glow. Colours come from the accent token
-   (--accent-rgb) so re-skinning the brand re-skins the highlight. Border
-   width is identical in both states so focus changes never shift layout. */
+   active pane adds an OUTWARD brand-accent glow that radiates into the splitter
+   gutter (an inset glow can't read as "outward" and always bleeds inward over
+   the pane's content — Monaco, the terminal, chat, anything). The glow lives on
+   the pane element itself, not an ::after overlay, so it stays outside the
+   content. Colours come from the accent token (--accent-rgb) so re-skinning the
+   brand re-skins the highlight; the transition fades focus in/out. Border width
+   matches in both states so focus never shifts layout. */
 .workspace-pane {
+  position: relative;
   border: 1px solid var(--color-line);
+  transition: box-shadow 300ms ease, border-color 300ms ease;
 }
 .workspace-pane.is-active {
-  border-color: rgb(var(--accent-rgb) / 0.25);
+  z-index: 2;
+  border-color: rgb(var(--accent-rgb) / 0.55);
   box-shadow:
-    inset 0 0 0 3px rgb(var(--accent-rgb) / 0.5),
-    inset 0 0 16px 3px rgb(var(--accent-rgb) / 0.22);
+    0 0 0 1px rgb(var(--accent-rgb) / 0.4),
+    0 0 2px 1px rgb(var(--accent-rgb) / 0.33),
+    0 0 2px 3px rgb(var(--accent-rgb) / 0.19);
 }
 
 /* Workspace pane tabs — Chrome-style (variant E) */

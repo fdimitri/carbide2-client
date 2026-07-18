@@ -22,9 +22,14 @@
               <div class="flex items-center gap-2 w-full">
                 <span class="flex-1 truncate">{{ option.label }}</span>
                 <i
-                  v-if="option.versionMismatch"
+                  v-if="option.docIncompatible"
                   class="pi pi-exclamation-triangle text-amber"
-                  :title="`Created by a different client version (${option.clientVersion || 'unknown'}). Layout may not load correctly.`"
+                  :title="option.warningTitle"
+                />
+                <i
+                  v-else-if="option.buildDiffers"
+                  class="pi pi-info-circle text-muted"
+                  :title="option.warningTitle"
                 />
                 <button
                   type="button"
@@ -250,8 +255,8 @@ import { listProjects, getWsToken, uploadProjectFile, importProjectFromDisk } fr
 import { storeToRefs } from 'pinia'
 import { usePanes, PANE_COUNTS } from '../composables/usePanes'
 import { useSessionSync } from '../composables/useSessionSync'
-import { useSessionStore } from '../stores/sessionStore'
-import { VERSION } from '../version'
+import { useSessionStore, SESSION_DOC_VERSION } from '../stores/sessionStore'
+import { CLIENT_SHA } from '../version'
 import { useTerminals } from '../composables/useTerminals'
 import { useChat } from '../composables/useChat'
 import { useRtc } from '../composables/useRtc'
@@ -501,18 +506,38 @@ function sessionOptionLabel(s) {
 
 // Dropdown options: the current session plus every resumable one. A session
 // driven by ANOTHER tab (in_use and not the current one) is disabled so it
-// can't be stolen from under its live producer. A version mismatch is NOT
-// disabled — it stays resumable but is flagged with a warning triangle, since
-// the layout doc was written by a different client build.
+// can't be stolen from under its live producer. Compatibility is surfaced, not
+// enforced — a flagged session stays resumable:
+//   * doc_version differs  -> the doc shape is (probably) incompatible: strong
+//     warning triangle, "layout may not load".
+//   * only the build SHA differs -> the doc SHOULD be compatible; a subtle info
+//     marker records that a different build saved it (useful for debugging).
+// The tooltip always reports which build/doc-version saved it vs. which is
+// loading it.
 const sessionOptions = computed(() =>
   sessionList.value.map((s) => {
     const isCurrent = s.session_uuid === currentSessionUuid.value
+    const savedSha  = s.client_sha || null
+    const savedDocV = s.doc_version ?? null
+    const docIncompatible = savedDocV !== null && savedDocV !== SESSION_DOC_VERSION
+    const buildDiffers    = !!savedSha && savedSha !== CLIENT_SHA
+    const savedBuild = savedSha ? `client:${savedSha}` : 'an unknown build'
+    const loadBuild  = CLIENT_SHA ? `client:${CLIENT_SHA}` : 'this build'
+    const warningTitle = docIncompatible
+      ? `Saved by ${savedBuild} (doc v${savedDocV ?? '?'}); loading with ${loadBuild} (doc v${SESSION_DOC_VERSION}). `
+        + 'Doc version differs — layout may not load correctly.'
+      : buildDiffers
+        ? `Saved by ${savedBuild}; loading with ${loadBuild} (doc v${SESSION_DOC_VERSION}). `
+          + 'Different build — should be compatible.'
+        : ''
     return {
       label:           sessionOptionLabel(s),
       value:           s.session_uuid,
       disabled:        s.in_use && !isCurrent,
       clientVersion:   s.client_version || null,
-      versionMismatch: !!s.client_version && s.client_version !== VERSION,
+      docIncompatible,
+      buildDiffers,
+      warningTitle,
     }
   })
 )
