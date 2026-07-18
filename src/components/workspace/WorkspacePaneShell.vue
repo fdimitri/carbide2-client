@@ -4,9 +4,9 @@
     class="flex flex-col h-full bg-bg-1/70 overflow-hidden"
     :class="paneCount > 1
       ? (paneIndex === activePaneIndex
-          ? 'border border-accent/60'
-          : 'border border-line')
-      : 'border-0'"
+          ? 'workspace-pane is-active'
+          : 'workspace-pane')
+      : ''"
     @mousedown.capture="emit('set-active-pane', paneIndex)"
     @dragover.prevent
     @drop.prevent="onPaneDrop($event)"
