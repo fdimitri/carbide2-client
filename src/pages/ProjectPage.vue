@@ -520,7 +520,7 @@ const sessionOptions = computed(() =>
     const savedSha  = s.client_sha || null
     const savedDocV = s.doc_version ?? null
     const docIncompatible = savedDocV !== null && savedDocV !== SESSION_DOC_VERSION
-    const buildDiffers    = !!savedSha && savedSha !== CLIENT_SHA
+    const buildDiffers    = savedSha !== CLIENT_SHA
     const savedBuild = savedSha ? `client:${savedSha}` : 'an unknown build'
     const loadBuild  = CLIENT_SHA ? `client:${CLIENT_SHA}` : 'this build'
     const warningTitle = docIncompatible
