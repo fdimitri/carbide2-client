@@ -51,6 +51,7 @@
           >
             <i class="pi pi-plus" />
           </UiButton>
+          <ClientPicker />
           <ConnectionStatus />
         </div>
       </template>
@@ -249,6 +250,7 @@ import ExplorerPane from '../components/workspace/ExplorerPane.vue'
 import RecordingsDialog from '../components/workspace/RecordingsDialog.vue'
 import BrandMark from '../components/BrandMark.vue'
 import ConnectionStatus from '../components/ConnectionStatus.vue'
+import ClientPicker from '../components/workspace/ClientPicker.vue'
 import workerSocket from '../services/workerSocket'
 import authService from '../services/authService'
 import { listProjects, getWsToken, uploadProjectFile, importProjectFromDisk } from '../services/projectService'
