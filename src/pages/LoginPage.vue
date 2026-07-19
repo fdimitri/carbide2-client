@@ -46,7 +46,7 @@
         </div>
       </div>
 
-      <p class="mt-6 text-center text-dim text-ui-xs font-mono tracking-wide">{{ VERSION_LABEL }}</p>
+      <p class="mt-6 text-center text-dim text-ui-xs font-mono tracking-wide">{{ versionLabel }}</p>
     </div>
   </div>
 </template>
@@ -55,7 +55,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import BrandMark from '../components/BrandMark.vue'
-import { VERSION_LABEL } from '../version'
+import { useVersionLabel } from '../composables/useVersionLabel'
 import UiButton from '../components/ui/UiButton.vue'
 import UiInput from '../components/ui/UiInput.vue'
 import authService from '../services/authService'
@@ -66,6 +66,7 @@ const loading = ref(false)
 const error = ref('')
 const router = useRouter()
 const acronym = ref('')
+const { versionLabel } = useVersionLabel()
 
 onMounted(async () => {
   try {

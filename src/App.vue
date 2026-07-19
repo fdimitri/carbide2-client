@@ -19,7 +19,7 @@
       </div>
       <div id="app-nav-right" v-if="authService.isAuthenticated" class="flex gap-3 items-center">
         <ConnectionStatus v-if="!inWorkspace" />
-        <span class="hidden sm:inline text-dim text-ui-xs font-mono tracking-wide">{{ VERSION_LABEL }}</span>
+        <span class="hidden sm:inline text-dim text-ui-xs font-mono tracking-wide">{{ versionLabel }}</span>
         <span class="hidden md:inline text-muted text-xs font-mono">{{ authService.currentUser?.email }}</span>
         <button
           class="px-3 py-1 text-xs rounded border border-warn/50 text-warn bg-transparent cursor-pointer hover:bg-warn/10 transition-colors"
@@ -61,7 +61,7 @@
 import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import BrandMark from './components/BrandMark.vue'
-import { VERSION_LABEL } from './version'
+import { useVersionLabel } from './composables/useVersionLabel'
 import ConnectionStatus from './components/ConnectionStatus.vue'
 import authService from './services/authService'
 import workerSocket from './services/workerSocket'
@@ -70,6 +70,7 @@ import { useWorkspaceStore } from './stores/workspaceStore'
 const router = useRouter()
 const route = useRoute()
 const workspaceStore = useWorkspaceStore()
+const { versionLabel } = useVersionLabel()
 
 // True while a project workspace is open (route like /projects/1). Drives the
 // collapsed single top-bar layout (project identity lives in the shared nav).

@@ -12,26 +12,15 @@ function shortSha(sha) {
 	return sha.slice(0, 7)
 }
 
-const shaParts = [
-	['meta', BUILD_META.metaSha],
-	['client', BUILD_META.clientSha],
-	['server', BUILD_META.serverSha],
-	['worker', BUILD_META.workerSha],
-	['control', BUILD_META.controlSha],
-]
-	.map(([name, sha]) => {
-		const short = shortSha(sha)
-		return short ? `${name}:${short}` : ''
-	})
-	.filter(Boolean)
-	.join(' ')
-
-// Display form: "v0.2.1-bluesteel (meta:abc1234 client:def5678 ...)"
-export const VERSION_LABEL = shaParts ? `v${VERSION} (${shaParts})` : `v${VERSION}`
-
 // Short git SHA of THIS client build (from BUILD_META, injected at build time).
-// Sessions are tagged with it so the picker can tell which exact build saved a
-// session vs. which is loading it — a discipline-free "different build?" signal
-// that never silently misses a doc-shape change the way a manual version bump
-// can. Empty string when no SHA was injected (e.g. plain local dev).
+// This is the ONLY SHA the client legitimately knows at build time — it *is*
+// the client build. The server/worker/control/meta SHAs are unknowable here
+// (the shell is de-baked from the pod image) and are fetched at runtime from
+// /api/v1/common/version; see composables/useVersionLabel.js for the merged
+// label shown in the UI.
+//
+// Sessions are tagged with this so the picker can tell which exact build saved
+// a session vs. which is loading it — a discipline-free "different build?"
+// signal that never silently misses a doc-shape change the way a manual version
+// bump can. Empty string when no SHA was injected (e.g. plain local dev).
 export const CLIENT_SHA = shortSha(BUILD_META.clientSha)
