@@ -44,6 +44,14 @@ const routes = [
     name: 'About',
     component: AboutPage,
   },
+  // Catch-all: any unmatched path (e.g. the removed legacy /projects/:id, a
+  // stale bookmark, or a build-switch that landed on a route this bundle no
+  // longer defines) redirects to the mount root instead of rendering an empty
+  // <router-view>. Keeps the app resilient across build/route changes.
+  {
+    path: '/:pathMatch(.*)*',
+    redirect: '/',
+  },
 ]
 
 const router = createRouter({
