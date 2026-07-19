@@ -11,7 +11,9 @@ const loading = ref(false)
 const families = ref([])
 const defaultFamily = ref(null)
 
-// PrimeVue Select value is "<family>@<sha>". Options are grouped by family.
+// PrimeVue Select value. The newest build of a family uses the family name
+// alone ("carbide2-client") = "track latest" (clears any pin); older builds use
+// "<family>@<sha>" = pin that exact build. This mirrors what the loader honors.
 const selected = ref(currentPin())
 
 const groups = computed(() =>
@@ -19,7 +21,7 @@ const groups = computed(() =>
     label: f.name,
     items: (f.builds || []).map((b) => ({
       label: buildLabel(f, b),
-      value: `${f.name}@${b.sha}`,
+      value: b.sha === f.default_sha ? f.name : `${f.name}@${b.sha}`,
     })),
   }))
 )
@@ -41,11 +43,10 @@ async function load() {
     const data = await listClients()
     families.value = data.families || []
     defaultFamily.value = data.default || null
-    // If the loader hasn't pinned anything yet, reflect the default build so
-    // the control isn't blank.
-    if (!selected.value) {
-      const fam = families.value.find((f) => f.name === defaultFamily.value)
-      if (fam && fam.default_sha) selected.value = `${fam.name}@${fam.default_sha}`
+    // No pin set (loader is tracking the newest)? Reflect the family-only
+    // "latest" option so the control isn't blank and shows the live state.
+    if (!selected.value && defaultFamily.value) {
+      selected.value = defaultFamily.value
     }
   } catch {
     families.value = []
@@ -57,8 +58,7 @@ async function load() {
 function onChange(e) {
   const val = e.value
   if (!val || val === currentPin()) return
-  const [family, sha] = val.split('@')
-  switchTo(family, sha)
+  switchTo(val)
 }
 
 onMounted(load)

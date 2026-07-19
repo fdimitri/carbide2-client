@@ -227,14 +227,13 @@
 
     <RecordingsDialog
       v-model:visible="showRecordingsDialog"
-      :project-id="route.params.id"
+      :project-id="projectId"
     />
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
-import { useRoute } from 'vue-router'
 import '@xterm/xterm/css/xterm.css'
 import Menubar from 'primevue/menubar'
 import Splitter from 'primevue/splitter'
@@ -277,8 +276,11 @@ const LAYOUT_CONFIGS = {
 }
 
 // ── Shared state ──────────────────────────────────────────────────────────────
-const route       = useRoute()
-const projectId   = Number(route.params.id)
+// Model B: a workspace pod hosts exactly ONE canonical project whose local PK
+// is always 1 (the backend defaults every association to Project.canonical and
+// the Helm chart seeds projectId: 1). It is NOT in the URL — the workspace mount
+// (/w/<id>/) already identifies it — so we use the canonical id directly.
+const projectId   = 1
 const project     = ref(null)
 const error       = ref('')
 const activePane  = ref('terminal')

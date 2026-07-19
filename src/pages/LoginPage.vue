@@ -81,7 +81,7 @@ const handleLogin = async () => {
 
   try {
     await authService.login(email.value, password.value)
-    router.push('/dashboard')
+    router.push('/')
   } catch (err) {
     error.value = err.message || 'Login failed. Please try again.'
   } finally {

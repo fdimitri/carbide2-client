@@ -19,6 +19,7 @@
       </div>
       <div id="app-nav-right" v-if="authService.isAuthenticated" class="flex gap-3 items-center">
         <ConnectionStatus v-if="!inWorkspace" />
+        <ClientPicker v-if="!inWorkspace" />
         <span class="hidden sm:inline text-dim text-ui-xs font-mono tracking-wide">{{ versionLabel }}</span>
         <span class="hidden md:inline text-muted text-xs font-mono">{{ authService.currentUser?.email }}</span>
         <button
@@ -29,7 +30,7 @@
     <main
       id="app-main"
       class="flex-1 min-h-0 overflow-auto"
-      :class="$route.path.startsWith('/projects/') ? 'flex flex-col overflow-hidden' : ''"
+      :class="inWorkspace ? 'flex flex-col overflow-hidden' : ''"
     >
       <router-view />
     </main>
@@ -63,6 +64,7 @@ import { useRouter, useRoute } from 'vue-router'
 import BrandMark from './components/BrandMark.vue'
 import { useVersionLabel } from './composables/useVersionLabel'
 import ConnectionStatus from './components/ConnectionStatus.vue'
+import ClientPicker from './components/workspace/ClientPicker.vue'
 import authService from './services/authService'
 import workerSocket from './services/workerSocket'
 import { useWorkspaceStore } from './stores/workspaceStore'
@@ -72,9 +74,10 @@ const route = useRoute()
 const workspaceStore = useWorkspaceStore()
 const { versionLabel } = useVersionLabel()
 
-// True while a project workspace is open (route like /projects/1). Drives the
-// collapsed single top-bar layout (project identity lives in the shared nav).
-const inWorkspace = computed(() => route.path.startsWith('/projects/'))
+// True while the workspace IDE is open (the Project route, which is the home
+// route in workspace mode). Drives the collapsed single top-bar layout
+// (project identity lives in the shared nav).
+const inWorkspace = computed(() => route.name === 'Project')
 
 const sessionExpired = computed(() => authService.sessionExpired.value)
 

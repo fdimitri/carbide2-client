@@ -27,11 +27,13 @@ export async function listClients() {
   return res.data
 }
 
-// Full-reload onto the given build. Preserves the current path/hash and drops
-// any prior `?client=` param.
-export function switchTo(family, sha) {
+// Full-reload onto the given build spec. `spec` is either "<family>@<sha>" (pin
+// that exact build) or "<family>" alone (track the family's newest build — the
+// loader clears any pin). Preserves the current path/hash; the loader strips
+// the ?client= param via redirect so it never lingers in the address bar.
+export function switchTo(spec) {
   const url = new URL(window.location.href)
-  url.searchParams.set('client', `${family}@${sha}`)
+  url.searchParams.set('client', spec)
   window.location.assign(url.toString())
 }
 
