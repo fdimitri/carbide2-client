@@ -8,7 +8,7 @@
           <p class="text-muted text-xs font-mono uppercase tracking-widest mb-2">Account</p>
           <h1 class="text-text text-2xl font-bold tracking-tight">User Preferences</h1>
         </div>
-        <UiButton @click="router.push('/dashboard')">
+        <UiButton @click="router.push('/')">
           ← Dashboard
         </UiButton>
       </div>

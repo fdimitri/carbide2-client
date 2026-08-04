@@ -5,13 +5,14 @@ import { readFileSync } from 'node:fs'
 
 // App version is read from package.json at config time and injected as the
 // compile-time constant __APP_VERSION__ (consumed by src/version.js).
+//
+// Only the client's OWN build SHA is baked here — it *is* the client build.
+// The server/worker/control/meta SHAs are reported at runtime by the backend's
+// /api/v1/common/version endpoint (see composables/useVersionLabel.js), not
+// baked into the shell.
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url)))
 const appBuildMeta = {
-  metaSha: process.env.VITE_APP_META_SHA || '',
   clientSha: process.env.VITE_APP_CLIENT_SHA || '',
-  serverSha: process.env.VITE_APP_SERVER_SHA || '',
-  workerSha: process.env.VITE_APP_WORKER_SHA || '',
-  controlSha: process.env.VITE_APP_CONTROL_SHA || '',
   buildTime: process.env.VITE_APP_BUILD_TIME || '',
 }
 

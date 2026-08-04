@@ -6,26 +6,33 @@ import PreferencesPage from '../pages/PreferencesPage.vue'
 import AboutPage from '../pages/AboutPage.vue'
 import authService from '../services/authService'
 import { isWorkspaceMode } from '../services/mode'
-import { listProjects } from '../services/projectService'
 
+// The home route depends on the build's runtime context (same bundle, two
+// mounts — see services/mode.js):
+//   - workspace mode (served under /w/<id>/): the pod hosts exactly ONE
+//     canonical project, so the IDE IS the home page. No /projects/:id — the
+//     workspace *is* the project and its id is always canonical, so it never
+//     belongs in the URL. The mount is just /w/<id>/.
+//   - control mode (dashboard at origin root): home is the workspace list.
 const routes = [
   {
     path: '/login',
     name: 'Login',
     component: LoginPage,
   },
-  {
-    path: '/dashboard',
-    name: 'Dashboard',
-    component: DashboardPage,
-    meta: { requiresAuth: true },
-  },
-  {
-    path: '/projects/:id',
-    name: 'Project',
-    component: ProjectPage,
-    meta: { requiresAuth: true },
-  },
+  isWorkspaceMode
+    ? {
+        path: '/',
+        name: 'Project',
+        component: ProjectPage,
+        meta: { requiresAuth: true },
+      }
+    : {
+        path: '/',
+        name: 'Dashboard',
+        component: DashboardPage,
+        meta: { requiresAuth: true },
+      },
   {
     path: '/preferences',
     name: 'Preferences',
@@ -37,9 +44,13 @@ const routes = [
     name: 'About',
     component: AboutPage,
   },
+  // Catch-all: any unmatched path (e.g. the removed legacy /projects/:id, a
+  // stale bookmark, or a build-switch that landed on a route this bundle no
+  // longer defines) redirects to the mount root instead of rendering an empty
+  // <router-view>. Keeps the app resilient across build/route changes.
   {
-    path: '/',
-    redirect: '/dashboard',
+    path: '/:pathMatch(.*)*',
+    redirect: '/',
   },
 ]
 
@@ -63,21 +74,7 @@ router.beforeEach(async (to, from, next) => {
     return next('/login')
   }
   if (to.path === '/login' && isAuthenticated) {
-    return next('/dashboard')
-  }
-
-  // Model B: a workspace pod hosts exactly one project and has no in-pod
-  // dashboard. Landing on /dashboard in workspace mode resolves that single
-  // canonical project and drops the user straight into its IDE.
-  if (isWorkspaceMode && isAuthenticated && to.name === 'Dashboard') {
-    try {
-      const projects = await listProjects()
-      if (projects.length) {
-        return next(`/projects/${projects[0].id}`)
-      }
-    } catch {
-      // Fall through to the Dashboard view, which surfaces the load error.
-    }
+    return next('/')
   }
 
   next()

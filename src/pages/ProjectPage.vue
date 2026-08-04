@@ -5,7 +5,55 @@
         <BrandMark :size="18" :wordmark="false" class="ml-1 mr-3 shrink-0" />
       </template>
       <template #end>
-        <ConnectionStatus class="mr-2" />
+        <div class="flex items-center gap-2 mr-2">
+          <Select
+            :model-value="currentSessionUuid"
+            :options="sessionOptions"
+            option-label="label"
+            option-value="value"
+            option-disabled="disabled"
+            placeholder="Session"
+            size="small"
+            class="session-select"
+            @change="onSessionSelect"
+            @show="sessionSync.list()"
+          >
+            <template #option="{ option }">
+              <div class="flex items-center gap-2 w-full">
+                <span class="flex-1 truncate">{{ option.label }}</span>
+                <i
+                  v-if="option.docIncompatible"
+                  class="pi pi-exclamation-triangle text-amber"
+                  :title="option.warningTitle"
+                />
+                <i
+                  v-else-if="option.buildDiffers"
+                  class="pi pi-info-circle text-muted"
+                  :title="option.warningTitle"
+                />
+                <button
+                  type="button"
+                  class="shrink-0 text-muted hover:text-warn p-1 rounded"
+                  title="Delete session"
+                  aria-label="Delete session"
+                  @click.stop="deleteSession(option.value)"
+                >
+                  <i class="pi pi-trash" />
+                </button>
+              </div>
+            </template>
+          </Select>
+          <UiButton
+            variant="ghost"
+            title="New session"
+            aria-label="New session"
+            @click="sessionSync.create()"
+          >
+            <i class="pi pi-plus" />
+          </UiButton>
+          <ClientPicker />
+          <ConnectionStatus />
+        </div>
       </template>
     </Menubar>
 
@@ -179,19 +227,19 @@
 
     <RecordingsDialog
       v-model:visible="showRecordingsDialog"
-      :project-id="route.params.id"
+      :project-id="projectId"
     />
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
-import { useRoute } from 'vue-router'
 import '@xterm/xterm/css/xterm.css'
 import Menubar from 'primevue/menubar'
 import Splitter from 'primevue/splitter'
 import SplitterPanel from 'primevue/splitterpanel'
 import Dialog from 'primevue/dialog'
+import Select from 'primevue/select'
 import WorkspacePaneShell from '../components/workspace/WorkspacePaneShell.vue'
 import UiCheckbox from '../components/ui/UiCheckbox.vue'
 import UiButton from '../components/ui/UiButton.vue'
@@ -201,11 +249,15 @@ import ExplorerPane from '../components/workspace/ExplorerPane.vue'
 import RecordingsDialog from '../components/workspace/RecordingsDialog.vue'
 import BrandMark from '../components/BrandMark.vue'
 import ConnectionStatus from '../components/ConnectionStatus.vue'
+import ClientPicker from '../components/workspace/ClientPicker.vue'
 import workerSocket from '../services/workerSocket'
 import authService from '../services/authService'
 import { listProjects, getWsToken, uploadProjectFile, importProjectFromDisk } from '../services/projectService'
 import { storeToRefs } from 'pinia'
 import { usePanes, PANE_COUNTS } from '../composables/usePanes'
+import { useSessionSync } from '../composables/useSessionSync'
+import { useSessionStore, SESSION_DOC_VERSION } from '../stores/sessionStore'
+import { CLIENT_SHA } from '../version'
 import { useTerminals } from '../composables/useTerminals'
 import { useChat } from '../composables/useChat'
 import { useRtc } from '../composables/useRtc'
@@ -224,8 +276,11 @@ const LAYOUT_CONFIGS = {
 }
 
 // ── Shared state ──────────────────────────────────────────────────────────────
-const route       = useRoute()
-const projectId   = Number(route.params.id)
+// Model B: a workspace pod hosts exactly ONE canonical project whose local PK
+// is always 1 (the backend defaults every association to Project.canonical and
+// the Helm chart seeds projectId: 1). It is NOT in the URL — the workspace mount
+// (/w/<id>/) already identifies it — so we use the canonical id directly.
+const projectId   = 1
 const project     = ref(null)
 const error       = ref('')
 const activePane  = ref('terminal')
@@ -244,6 +299,22 @@ const {
   activatePaneTab, closePaneTab,
   onTabDragStart, onTabDrop, onPaneDrop,
 } = usePanes({ activePane, pendingNavigation })
+
+// Server-authoritative browser session (ADR-002). usePanes already mutates the
+// session store; this emitter diffs + ships those changes and, on connect,
+// resumes the last/most-recent free session or creates a new one. Chat is the
+// only surface that needs driving on restore (files/terminals self-bind on
+// mount) — selectChannelNode is hoisted, so referencing it here is safe.
+const sessionSync = useSessionSync({
+  storageKey: `carbide_session:${projectId}`,
+  bindActiveSurface: (tab) => {
+    if (tab?.kind === 'channel') selectChannelNode(tab.id, { skipPaneTab: true })
+  },
+})
+
+// Reactive session identity + picker list (populated by session/list).
+const sessionStore = useSessionStore()
+const { sessions: sessionList, sessionUuid: currentSessionUuid } = storeToRefs(sessionStore)
 
 const terminals = useTerminals({ error, bindTabToActivePane, activePane })
 const {
@@ -429,9 +500,75 @@ const dockItems = computed(() => ([
   { label: 'Open File',      icon: 'pi-file',        command: () => focusAnyFile() },
 ]))
 
+// ── Session picker (server-authoritative browser sessions, ADR-002) ───────────
+function sessionOptionLabel(s) {
+  const base = s.name || `Session ${String(s.session_uuid).slice(0, 8)}`
+  if (s.session_uuid === currentSessionUuid.value) return `${base} (current)`
+  if (s.in_use) return `${base} (in use)`
+  return base
+}
+
+// Dropdown options: the current session plus every resumable one. A session
+// driven by ANOTHER tab (in_use and not the current one) is disabled so it
+// can't be stolen from under its live producer. Compatibility is surfaced, not
+// enforced — a flagged session stays resumable:
+//   * doc_version differs  -> the doc shape is (probably) incompatible: strong
+//     warning triangle, "layout may not load".
+//   * only the build SHA differs -> the doc SHOULD be compatible; a subtle info
+//     marker records that a different build saved it (useful for debugging).
+// The tooltip always reports which build/doc-version saved it vs. which is
+// loading it.
+const sessionOptions = computed(() =>
+  sessionList.value.map((s) => {
+    const isCurrent = s.session_uuid === currentSessionUuid.value
+    const savedSha  = s.client_sha || null
+    const savedDocV = s.doc_version ?? null
+    const docIncompatible = savedDocV !== SESSION_DOC_VERSION
+    const buildDiffers    = savedSha !== CLIENT_SHA
+    const savedBuild = savedSha ? `client:${savedSha}` : 'an unknown build'
+    const loadBuild  = CLIENT_SHA ? `client:${CLIENT_SHA}` : 'this build'
+    const warningTitle = docIncompatible
+      ? `Saved by ${savedBuild} (doc v${savedDocV ?? '?'}); loading with ${loadBuild} (doc v${SESSION_DOC_VERSION}). `
+        + 'Doc version differs — layout may not load correctly.'
+      : buildDiffers
+        ? `Saved by ${savedBuild}; loading with ${loadBuild} (doc v${SESSION_DOC_VERSION}). `
+          + 'Different build — should be compatible.'
+        : ''
+    return {
+      label:           sessionOptionLabel(s),
+      value:           s.session_uuid,
+      disabled:        s.in_use && !isCurrent,
+      clientVersion:   s.client_version || null,
+      docIncompatible,
+      buildDiffers,
+      warningTitle,
+    }
+  })
+)
+
+function onSessionSelect(event) {
+  switchSession(event?.value)
+}
+
+function switchSession(uuid) {
+  if (!uuid || uuid === currentSessionUuid.value) return
+  // resume → server replies session/resumed → useSessionSync hydrates the store,
+  // re-baselines the emitter, and re-binds the active surfaces.
+  sessionSync.resume(uuid)
+}
+
+function deleteSession(uuid) {
+  if (!uuid) return
+  const s = sessionList.value.find((x) => x.session_uuid === uuid)
+  const label = s?.name || `Session ${String(uuid).slice(0, 8)}`
+  if (!window.confirm(`Delete "${label}"? This permanently removes the saved layout.`)) return
+  sessionSync.remove(uuid)
+}
+
 // ── Navigation helpers ────────────────────────────────────────────────────────
 async function selectTerminalNode(tid, options = {}) {
-  selectedTerminalId.value = tid
+  // tid may be an integer id or a stable uuid; useTerminals.selectTerminalNode
+  // resolves both and sets selectedTerminalId to the integer id.
   if (options.paneIndex != null) activePaneIndex.value = options.paneIndex
   await terminals.selectTerminalNode(tid, options)
 }
@@ -534,6 +671,9 @@ onMounted(async () => {
         // agent / fs activity shows up in the Debug pane in real time.
         // See #3 in May30-Questions.md.
         workerSocket.send('debug', 'subscribe', {})
+        // (Re)establish this tab's browser session: silent re-resume on a
+        // reconnect, resume-or-create on the first connect.
+        sessionSync.ensureSession()
       }),
       // Reflect drops so panes can react (e.g. clear stuck spinners) instead of
       // appearing frozen.
@@ -571,6 +711,10 @@ onMounted(async () => {
     registerAgentHandlers(offHandlers)
     registerRtcHandlers(offHandlers)
 
+    // Register session/* handlers + start the layout emitter BEFORE connecting
+    // so the created/resumed/snapshot frames are caught.
+    sessionSync.start()
+
     workerSocket.connect(() => getWsToken(projectId))
     // Intentionally do not auto-open any file; explorer will populate from server.
   } catch (e) {
@@ -581,6 +725,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   offHandlers.forEach(off => off())
   workspaceStore.projectName = ''
+  sessionSync.stop()
   cleanupChat()
   cleanupRtc()
   cleanupTerminals()
