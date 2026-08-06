@@ -15,9 +15,11 @@ const api = async (path, body) => {
   return res.json()
 }
 
-// Pulls the handful of keys the wizard cares about out of a pasted cluster.yaml
-// (or the JSON equivalent). Deliberately not a YAML parser: the shape is two
-// levels deep and we only want five keys.
+// Reads a pasted cluster.yaml (or the JSON equivalent) into dotted keys —
+// every key, at any depth, because a whole config may be pasted and not just
+// the two the join flow needs. Not a general YAML parser: it covers what
+// deploy.rb emits (nested maps, block scalars, and quoted scalars that run
+// across lines, which is how a PEM shows up).
 function readPasted (text) {
   const trimmed = text.trim()
   if (trimmed.startsWith('{')) {
@@ -25,29 +27,50 @@ function readPasted (text) {
   }
   const out = {}
   const lines = text.split('\n')
-  let section = null
+  const stack = []
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
-    if (!line.trim() || line.trim().startsWith('#')) continue
-    const top = line.match(/^([\w-]+):\s*$/)
-    if (top) { section = top[1]; continue }
-    const kv = line.match(/^\s+([\w-]+):\s*(.*)$/)
-    if (!kv || !section) continue
-    let [, key, value] = kv
-    if (value === '|' || value === '|-') {
+    if (!line.trim() || line.trim() === '---' || line.trim().startsWith('#')) continue
+    const m = line.match(/^(\s*)([\w.-]+):(?:\s+(.*))?\s*$/)
+    if (!m) continue
+    const [, pad, key] = m
+    let value = m[3] === undefined ? '' : m[3].trim()
+    const indent = pad.length
+    while (stack.length && stack[stack.length - 1].indent >= indent) stack.pop()
+    const path = [...stack.map((s) => s.key), key].join('.')
+
+    // A bare `key:` opens a nested map. A null scalar looks identical and
+    // carries nothing an override could use, so treating it as a parent is safe.
+    if (value === '' || value.startsWith('#')) { stack.push({ indent, key }); continue }
+
+    if (/^[|>]-?$/.test(value)) {
       const block = []
-      while (i + 1 < lines.length && /^\s{4,}/.test(lines[i + 1])) block.push(lines[++i].replace(/^\s{4}/, ''))
+      while (i + 1 < lines.length) {
+        const peek = lines[i + 1]
+        if (peek.trim() && peek.match(/^\s*/)[0].length <= indent) break
+        block.push(lines[++i].slice(indent + 2))
+      }
+      out[path] = block.join('\n').replace(/\n+$/, '')
+      continue
+    }
+
+    const quote = value[0] === "'" || value[0] === '"' ? value[0] : null
+    if (quote && !(value.length > 1 && value.endsWith(quote))) {
+      const block = [value]
+      while (i + 1 < lines.length && !lines[i].trimEnd().endsWith(quote)) block.push(lines[++i])
       value = block.join('\n')
     }
-    out[`${section}.${key}`] = value.replace(/^['"]|['"]$/g, '')
+    out[path] = value.replace(/^(['"])([\s\S]*)\1$/, '$2')
   }
   return out
 }
 
-const flatten = (obj) => {
+const flatten = (obj, prefix = '') => {
   const out = {}
   for (const [k, v] of Object.entries(obj || {})) {
-    if (v && typeof v === 'object') for (const [k2, v2] of Object.entries(v)) out[`${k}.${k2}`] = String(v2)
+    const key = prefix ? `${prefix}.${k}` : k
+    if (v && typeof v === 'object' && !Array.isArray(v)) Object.assign(out, flatten(v, key))
+    else out[key] = String(v)
   }
   return out
 }
@@ -76,7 +99,7 @@ const App = {
     const open = ref({ cluster: true })
     const busy = ref(false)
     const toast = ref('')
-    const imported = ref(false)
+    const imported = ref('')
 
     const log = ref('')
     const logOffset = ref(0)
@@ -230,6 +253,33 @@ const App = {
 
     watch([multi, joining], () => { if (plan.value) schedulePlan() })
 
+    // A whole cluster.yaml already answers every question the cards ask, so
+    // asking them again (and ignoring the answers, since overrides win) is
+    // wrong. Take the file as the configuration and land on the review screen.
+    const importFull = async (got) => {
+      const backend = got['cluster.backend']
+      const multiNode = !!got['cluster.server-url'] || got['cluster.role'] === 'join' ||
+        got['storage.backend'] === 'longhorn'
+      a.value = {
+        ...a.value,
+        topology: backend === 'k3d' ? 'k3d-single' : (multiNode ? 'k3s-multi' : 'k3s-single'),
+        role: got['cluster.role'] || 'init',
+        publicHost: got['public.host'] || '',
+        serverUrl: got['cluster.server-url'] || '',
+        clusterToken: got['cluster.token'] || '',
+        registryHost: got['registry.host'] || '',
+        registryCa: got['registry.ca'] || '',
+        registry: got['registry.host']
+          ? (String(got['registry.external']) === 'true' ? 'external' : 'local')
+          : 'none'
+      }
+      overrides.value = { ...overrides.value, ...got }
+      imported.value = 'Imported a full config from the clipboard.'
+      await nextTick()
+      step.value = cards.value.length - 1
+      await refreshPlan()
+    }
+
     // Import needs no textbox and no permission prompt: a paste anywhere on the
     // page is user-initiated, so clipboardData is readable directly. This is
     // what replaces scp'ing the frozen config between nodes.
@@ -244,6 +294,16 @@ const App = {
         const text = ev.clipboardData?.getData('text') || ''
         if (!text.includes('cluster')) return
         const got = readPasted(text)
+
+        // cluster.backend is the key a partial join snippet never carries and a
+        // complete file always does.
+        if (got['cluster.backend']) {
+          ev.preventDefault()
+          importFull(got)
+          flash('imported full config — review and deploy')
+          return
+        }
+
         // Swallow the paste so a whole config dump doesn't land verbatim in
         // whatever field happens to be focused — we want the extracted keys.
         if (got['cluster.token'] || got['cluster.server-url']) ev.preventDefault()
@@ -252,8 +312,11 @@ const App = {
         if (got['public.host']) a.value.publicHost = got['public.host']
         if (got['registry.host']) { a.value.registryHost = got['registry.host']; a.value.registry = 'external' }
         if (got['registry.ca']) a.value.registryCa = got['registry.ca']
-        if (got['cluster.token']) { a.value.topology = 'k3s-multi'; a.value.role = 'join' }
-        imported.value = true
+        if (got['cluster.token']) {
+          a.value.topology = 'k3s-multi'
+          a.value.role = got['cluster.role'] || 'join'
+        }
+        imported.value = 'Imported from clipboard.'
         flash('imported from clipboard')
       })
     })
@@ -398,7 +461,7 @@ const App = {
     <label class="field">
       <span class="name">cluster.yaml (or just the token)</span>
       <textarea v-model="a.clusterToken" placeholder="paste cluster.frozen.yaml here"></textarea>
-      <span class="hint" v-if="imported">Imported from clipboard.</span>
+      <span class="hint" v-if="imported">{{ imported }}</span>
     </label>
     <div class="actions">
       <button class="ghost btn" @click="back">Back</button>
@@ -444,6 +507,7 @@ const App = {
   <div class="card" v-else>
     <h2>Here's what we recommend</h2>
     <p class="why">Every knob deploy.rb has, pre-set from your answers. Change anything — the YAML follows.</p>
+    <p class="warnline" v-if="imported">{{ imported }}</p>
 
     <div class="tabs">
       <button :class="{ on: tab === 'settings' }" @click="tab = 'settings'">Settings</button>
