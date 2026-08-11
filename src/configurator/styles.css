@@ -1,0 +1,211 @@
+/* CARB/IDE2 configurator — standalone styles.
+   Colour/type tokens come from /tokens.css, which configure.rb re-emits from
+   the SPA's src/styles/main.css @theme block. Utilities are hand-written here
+   because there is no Tailwind build in this context. */
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--color-bg-0);
+  color: var(--color-text);
+  font-family: var(--font-ui, system-ui, sans-serif);
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+
+code, pre, .mono { font-family: var(--font-mono, ui-monospace, monospace); }
+
+.shell { max-width: 46rem; margin: 0 auto; padding: 2.5rem 1.5rem 4rem; }
+
+.brand {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  color: var(--color-accent);
+  letter-spacing: 0.08em;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  margin-bottom: 1.75rem;
+}
+
+/* ── progress ─────────────────────────────────────────────────────────── */
+.rail { display: flex; gap: 0.35rem; margin-bottom: 1.75rem; }
+.rail i {
+  flex: 1; height: 2px; background: var(--color-line); border-radius: 2px;
+  transition: background 0.25s ease;
+}
+.rail i.done { background: var(--color-accent-dark); }
+.rail i.here { background: var(--color-accent); }
+
+/* ── cards ────────────────────────────────────────────────────────────── */
+.card {
+  background: var(--color-bg-1);
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  padding: 1.5rem 1.6rem;
+  animation: rise 0.22s ease both;
+}
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) { .card { animation: none; } }
+
+.card h2 { margin: 0 0 0.35rem; font-size: 1.05rem; font-weight: 600; }
+.card .why { margin: 0 0 1.25rem; color: var(--color-muted); font-size: 0.82rem; }
+
+/* ── choices ──────────────────────────────────────────────────────────── */
+.choices { display: grid; gap: 0.6rem; }
+
+.choice {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  background: var(--color-bg-2);
+  border: 1px solid var(--color-line);
+  border-radius: 8px; padding: 0.85rem 1rem; color: inherit; font: inherit;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.choice:hover { border-color: var(--color-accent-dark); }
+.choice.on { border-color: var(--color-accent); background: var(--color-sel); }
+.choice strong { display: block; font-weight: 600; }
+.choice span { display: block; color: var(--color-muted); font-size: 0.8rem; margin-top: 0.15rem; }
+
+/* ── fields ───────────────────────────────────────────────────────────── */
+label.field { display: block; margin-bottom: 1rem; }
+label.field > .name {
+  display: block; font-size: var(--text-label, 0.7rem);
+  text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--color-muted); margin-bottom: 0.35rem;
+}
+input[type="text"], input[type="password"], textarea {
+  width: 100%; background: var(--color-bg-input); color: var(--color-text);
+  border: 1px solid var(--color-line); border-radius: 6px;
+  padding: 0.6rem 0.7rem; font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.82rem;
+}
+input[type="text"]:focus, input[type="password"]:focus, textarea:focus {
+  outline: none; border-color: var(--color-accent);
+}
+textarea { min-height: 7rem; resize: vertical; }
+.hint { color: var(--color-muted); font-size: 0.78rem; margin-top: 0.3rem; }
+
+/* ── buttons ──────────────────────────────────────────────────────────── */
+.actions { display: flex; gap: 0.6rem; margin-top: 1.5rem; align-items: center; }
+.actions .spacer { flex: 1; }
+
+button.btn {
+  background: var(--color-accent); color: var(--color-accent-text);
+  border: 0; border-radius: 6px; padding: 0.55rem 1.15rem;
+  font: inherit; font-weight: 600; cursor: pointer;
+}
+button.btn:hover { background: var(--color-accent-bright); }
+button.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+button.ghost {
+  background: transparent; color: var(--color-muted);
+  border: 1px solid var(--color-line);
+}
+button.ghost:hover { color: var(--color-text); border-color: var(--color-accent-dark); }
+
+/* ── preflight ────────────────────────────────────────────────────────── */
+.checks { display: grid; gap: 0.4rem; margin-bottom: 0.5rem; }
+.check {
+  display: grid; grid-template-columns: 1.4rem 12rem 1fr; gap: 0.5rem;
+  align-items: baseline; font-size: 0.82rem;
+}
+.check .k { color: var(--color-muted); }
+.check .v { font-family: var(--font-mono, ui-monospace, monospace); }
+.check .d { color: var(--color-muted); font-size: 0.78rem; }
+.mark.ok { color: var(--color-success); }
+.mark.warn { color: var(--color-amber); }
+.mark.bad { color: var(--color-warn); }
+.mark.unknown { color: var(--color-dim); }
+
+.nics { margin-top: 1.25rem; }
+.nics .head {
+  font-size: var(--text-label, 0.7rem); text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--color-muted); margin-bottom: 0.5rem;
+}
+
+/* ── review ───────────────────────────────────────────────────────────── */
+pre.out {
+  background: var(--color-bg-input); border: 1px solid var(--color-line);
+  border-radius: 8px; padding: 1rem; overflow-x: auto;
+  font-size: 0.78rem; margin: 0 0 1rem;
+}
+pre.out .cmt { color: var(--color-muted); }
+pre.out.log {
+  max-height: 26rem; overflow-y: auto; white-space: pre-wrap; word-break: break-word;
+}
+.head {
+  font-size: var(--text-label, 0.7rem); text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--color-muted); margin-bottom: 0.4rem;
+}
+.toast {
+  color: var(--color-success); font-size: 0.8rem;
+}
+.warnline { color: var(--color-amber); font-size: 0.8rem; margin-top: 0.75rem; }
+
+/* ── tabs ─────────────────────────────────────────────────────────────── */
+.tabs {
+  display: flex; gap: 0.25rem; margin-bottom: 1.1rem;
+  border-bottom: 1px solid var(--color-line);
+}
+.tabs button {
+  background: transparent; border: 0; border-bottom: 2px solid transparent;
+  color: var(--color-muted); font: inherit; font-size: 0.82rem;
+  padding: 0.4rem 0.75rem; cursor: pointer; margin-bottom: -1px;
+}
+.tabs button:hover { color: var(--color-text); }
+.tabs button.on { color: var(--color-accent); border-bottom-color: var(--color-accent); }
+
+/* ── settings tree ────────────────────────────────────────────────────── */
+.group { border-bottom: 1px solid var(--color-line); }
+.group:last-of-type { border-bottom: 0; }
+
+.grouphead {
+  display: flex; align-items: center; gap: 0.5rem; width: 100%;
+  background: transparent; border: 0; color: inherit; font: inherit;
+  padding: 0.65rem 0.1rem; cursor: pointer; text-align: left;
+}
+.grouphead:hover { color: var(--color-accent); }
+.grouphead .label { font-weight: 600; }
+.grouphead .count {
+  margin-left: auto; color: var(--color-dim); font-size: 0.72rem;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.caret {
+  display: inline-block; color: var(--color-muted);
+  transition: transform 0.15s ease;
+}
+.caret.open { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .caret { transition: none; } }
+
+.groupbody { padding: 0.15rem 0 0.85rem 1.25rem; display: grid; gap: 0.7rem; }
+
+.knob {
+  display: grid; grid-template-columns: 1fr 14rem; gap: 0.75rem;
+  align-items: start;
+}
+.knobkey code { font-size: 0.78rem; color: var(--color-muted); }
+.knobkey code.set { color: var(--color-accent); }
+.knobkey .desc {
+  display: block; color: var(--color-dim); font-size: 0.75rem; line-height: 1.4;
+}
+.knobctl input[type="text"], .knobctl input[type="password"], .knobctl select, .knobctl textarea { font-size: 0.78rem; }
+.knobctl textarea { min-height: 4.5rem; }
+
+.knobctl select {
+  width: 100%; background: var(--color-bg-input); color: var(--color-text);
+  border: 1px solid var(--color-line); border-radius: 6px;
+  padding: 0.45rem 0.55rem; font-family: var(--font-mono, ui-monospace, monospace);
+}
+.knobctl select:focus { outline: none; border-color: var(--color-accent); }
+
+.toggle { display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer; }
+.toggle input { accent-color: var(--color-accent); width: 1rem; height: 1rem; }
+.toggle span {
+  color: var(--color-muted); font-size: 0.78rem;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
+@media (max-width: 40rem) {
+  .knob { grid-template-columns: 1fr; }
+}

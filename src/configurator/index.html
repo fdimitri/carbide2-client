@@ -1,0 +1,20 @@
+<!doctype html>
+<!-- CARB/IDE2 first-bringup wizard. Served by carbide2/scripts/configure.rb.
+     Build-free on purpose: a fresh host has no Node, so this is plain ES
+     modules + an importmap, not a Vite entry point. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CARB/IDE2 — configure</title>
+    <link rel="stylesheet" href="/tokens.css" />
+    <link rel="stylesheet" href="/styles.css" />
+    <script type="importmap">
+      { "imports": { "vue": "/vendor/vue.js" } }
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
