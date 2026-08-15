@@ -235,7 +235,7 @@ import UiButton from '../ui/UiButton.vue'
 // Mirrors Agent::ROLES (server) and the worker AgentTools registry. Kept as
 // plain constants — small, stable capability lists.
 const ROLES = ['general', 'coder', 'reviewer', 'safety', 'router']
-const TOOL_SLUGS = ['read_file', 'list_dir', 'list_terminals', 'shell_exec']
+const TOOL_SLUGS = ['read_file', 'list_dir', 'list_terminals', 'shell_exec', 'file_edit_anchored', 'file_write_lines', 'file_pcre_search']
 
 const loading   = ref(true)
 const loadError = ref('')
