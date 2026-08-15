@@ -130,8 +130,9 @@
                 <details
                   v-if="item.reasoning"
                   class="text-ui-xs rounded-ui-sm bg-white/[0.05]"
+                  :open="item.streaming"
                 >
-                  <summary class="cursor-pointer select-none font-mono opacity-45 hover:opacity-75 marker:opacity-30 px-2 py-0.5 truncate">reasoning · {{ item.reasoning.length }} chars</summary>
+                  <summary class="cursor-pointer select-none font-mono opacity-45 hover:opacity-75 marker:opacity-30 px-2 py-0.5 truncate">reasoning · {{ item.reasoning.length }} chars<span v-if="item.streaming" class="opacity-60"> · thinking…</span></summary>
                   <div class="markdown-body text-ui-md px-2 pb-1 opacity-90" v-html="renderMarkdown(item.reasoning)"></div>
                 </details>
                 <div
@@ -197,10 +198,10 @@
         />
         <textarea
           v-model="draft"
+          ref="inputEl"
           @keydown.enter.exact.prevent="onSend"
           @paste="onPaste"
           :placeholder="placeholder"
-          :disabled="!canSend"
           rows="1"
           class="flex-1 px-2.5 py-2 text-ui-lg rounded-ui-sm outline-none font-[inherit] border monaco-input-bg monaco-input-fg monaco-input-border focus:monaco-focus-border placeholder:monaco-line-fg resize-none"
         ></textarea>
@@ -232,6 +233,7 @@ const emit = defineEmits(['agent-send', 'agent-reset', 'agent-pick', 'agent-load
 const store    = useWorkspaceStore()
 const draft    = ref('')
 const scrollEl = ref(null)
+const inputEl  = ref(null)
 
 // ── Image attachments ─────────────────────────────────────────────
 // Queued for the next send; cleared after onSend fires.
@@ -343,7 +345,7 @@ const timeline = computed(() => {
         if (last && last.type === 'tools') last.tools.push(m)
         else turn.items.push({ type: 'tools', tools: [m] })
       } else {
-        turn.items.push({ type: 'text', text: m.text, reasoning: m.reasoning, truncated: m.truncated, muted: m.muted })
+        turn.items.push({ type: 'text', text: m.text, reasoning: m.reasoning, truncated: m.truncated, muted: m.muted, streaming: m.streaming })
       }
     } else {
       turn = null
@@ -388,6 +390,9 @@ function onSend() {
   emit('agent-send', text, images.length ? images : null)
   draft.value = ''
   pendingImages.value = []
+  // Keep the keyboard in the composer so the user can keep typing while the
+  // agent works; clicking Send moves focus to the button, so pull it back.
+  nextTick(() => inputEl.value?.focus())
 }
 
 function onReset()  { emit('agent-reset') }

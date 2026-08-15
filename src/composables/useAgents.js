@@ -83,6 +83,15 @@ export function useAgents({ error, bindTabToActivePane }) {
   }
 
   function registerHandlers(offHandlers) {
+    // The in-progress streamed assistant message (reactive proxy) when the last
+    // message is one still streaming, else null. Streaming appends deltas to it;
+    // tool_call/done finalize it (streaming=false) so it stops being reused.
+    function liveStreamMsg() {
+      const arr = agentMessages.value
+      const last = arr[arr.length - 1]
+      return (last && last.kind === 'assistant' && last.streaming) ? last : null
+    }
+
     offHandlers.push(
       // The worker assigns a fresh session on every (re)connect (e.g. after a
       // worker restart), so re-request the agent list whenever the socket
@@ -107,7 +116,23 @@ export function useAgents({ error, bindTabToActivePane }) {
         debugLog.push({ source: 'agent', action: 'started',
           detail: `convo=${p?.conversation_id || '?'} agent=${p?.agent || '?'}` })
       }),
+      // Incremental assistant output. `delta` is reply text; `reasoning_delta`
+      // is the model's thinking (Qwen3/DeepSeek). Both accumulate onto a single
+      // in-progress assistant message that the timeline renders live.
+      workerSocket.on('agent', 'stream', (p) => {
+        let msg = liveStreamMsg()
+        if (!msg) {
+          agentMessages.value.push({ kind: 'assistant', text: '', reasoning: '', streaming: true })
+          msg = agentMessages.value[agentMessages.value.length - 1]
+        }
+        if (p?.delta != null)           msg.text     += String(p.delta)
+        if (p?.reasoning_delta != null) msg.reasoning = (msg.reasoning || '') + String(p.reasoning_delta)
+        agentStatus.value = 'thinking'
+      }),
       workerSocket.on('agent', 'tool_call', (p) => {
+        // A tool-call ends the assistant's text turn; stop streaming into it.
+        const live = liveStreamMsg()
+        if (live) live.streaming = false
         agentMessages.value.push({
           kind: 'tool_call',
           id:   p?.call_id,
@@ -146,7 +171,21 @@ export function useAgents({ error, bindTabToActivePane }) {
         const finish    = p?.finish_reason || null
         const reasoning = p?.reasoning || null
         const truncated = finish === 'length'
-        if (p?.content) {
+        // If we streamed this turn, finalize the in-progress message with the
+        // server's authoritative content/reasoning instead of appending a
+        // duplicate. Otherwise (non-streaming fallback) push a fresh message.
+        const live = liveStreamMsg()
+        if (live) {
+          live.streaming     = false
+          live.finish_reason = finish
+          live.truncated     = truncated
+          if (reasoning)  live.reasoning = reasoning
+          if (p?.content) live.text = String(p.content)
+          if (!live.text) {
+            if (truncated) { live.text = '(response truncated — increase model context window)'; live.muted = true }
+            else           { live.text = '(no reply)'; live.muted = true }
+          }
+        } else if (p?.content) {
           agentMessages.value.push({
             kind: 'assistant', text: String(p.content),
             finish_reason: finish, reasoning, truncated,

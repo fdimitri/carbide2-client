@@ -22,7 +22,7 @@
             v-for="a in agents"
             :key="a.id"
             class="px-3 py-1.5 rounded-lg border text-ui-md cursor-pointer transition-colors"
-            :class="a.id === selectedId
+            :class="a.id === selectedId && !isNew
               ? 'border-accent bg-sel text-accent-fg'
               : 'border-line bg-bg-2/60 text-muted hover:border-accent-bright hover:text-text'"
             @click="select(a.id)"
@@ -30,6 +30,13 @@
             {{ a.name }}
             <span v-if="!a.enabled" class="text-dim">(disabled)</span>
           </button>
+          <button
+            class="px-3 py-1.5 rounded-lg border border-dashed text-ui-md cursor-pointer transition-colors"
+            :class="isNew
+              ? 'border-accent bg-sel text-accent-fg'
+              : 'border-line bg-transparent text-muted hover:border-accent-bright hover:text-text'"
+            @click="newAgent"
+          >+ New</button>
         </div>
 
         <template v-if="form">
@@ -52,7 +59,16 @@
               </div>
             </div>
 
-            <div class="mt-1">
+            <UiField v-if="isNew" label="Slug" class="mt-3" label-class="block text-ui-md text-text mb-1" compact
+                     hint="Immutable after creation. Lowercase alphanumeric with - or _.">
+              <UiInput
+                v-model="form.slug"
+                mono
+                class="w-full"
+                placeholder="lowercase-id (e.g. coder-deepseek)"
+              />
+            </UiField>
+            <div v-else class="mt-1">
               <span class="text-ui-xs text-dim font-mono">slug: {{ selectedAgent?.slug }}</span>
             </div>
 
@@ -178,11 +194,26 @@
 
           <div class="flex items-center gap-3">
             <UiButton
-              :disabled="saving"
+              :disabled="saving || deleting"
               variant="primary"
               size="md"
               @click="save"
-            >{{ saving ? 'Saving…' : 'Save' }}</UiButton>
+            >{{ saving ? (isNew ? 'Creating…' : 'Saving…') : (isNew ? 'Create' : 'Save') }}</UiButton>
+
+            <UiButton
+              v-if="!isNew"
+              :disabled="saving || deleting"
+              variant="ghost"
+              size="md"
+              @click="cloneAgent"
+            >Clone</UiButton>
+
+            <UiButton
+              :disabled="saving || deleting"
+              variant="warn"
+              size="md"
+              @click="remove"
+            >{{ isNew ? 'Cancel' : (deleting ? 'Deleting…' : 'Delete') }}</UiButton>
 
             <span v-if="savedOk" class="text-accent text-sm">Saved.</span>
             <span v-if="saveError" class="text-warn text-sm">{{ saveError }}</span>
@@ -195,7 +226,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { listAgents, updateAgent } from '../../services/agentService'
+import { listAgents, updateAgent, createAgent, deleteAgent } from '../../services/agentService'
 import UiInput from '../ui/UiInput.vue'
 import UiCheckbox from '../ui/UiCheckbox.vue'
 import UiField from '../ui/UiField.vue'
@@ -209,11 +240,13 @@ const TOOL_SLUGS = ['read_file', 'list_dir', 'list_terminals', 'shell_exec']
 const loading   = ref(true)
 const loadError = ref('')
 const saving    = ref(false)
+const deleting  = ref(false)
 const savedOk   = ref(false)
 const saveError = ref('')
 
 const agents     = ref([])
 const selectedId = ref(null)
+const isNew      = ref(false)   // true while editing a not-yet-saved agent
 const form       = ref(null)
 
 const selectedAgent = computed(() =>
@@ -222,6 +255,7 @@ const selectedAgent = computed(() =>
 function loadForm(agent) {
   const s = agent.sampling || {}
   form.value = {
+    slug:               agent.slug ?? '',
     name:               agent.name ?? '',
     description:        agent.description ?? '',
     role:               agent.role ?? 'general',
@@ -231,7 +265,7 @@ function loadForm(agent) {
     system_prompt:      agent.system_prompt ?? '',
     allowed_tools:      Array.isArray(agent.allowed_tools) ? [...agent.allowed_tools] : [],
     shell_exec_enabled: !!agent.shell_exec_enabled,
-    enabled:            !!agent.enabled,
+    enabled:            agent.enabled ?? true,
     temperature:        s.temperature ?? 0.2,
     max_tokens:         s.max_tokens ?? 2048,
   }
@@ -240,9 +274,71 @@ function loadForm(agent) {
 }
 
 function select(id) {
+  isNew.value      = false
   selectedId.value = id
   const a = agents.value.find((x) => x.id === id)
   if (a) loadForm(a)
+}
+
+// Derive a slug that doesn't collide with an existing agent.
+function uniqueSlug(base) {
+  const clean = String(base).toLowerCase().replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'agent'
+  const taken = new Set(agents.value.map((a) => a.slug))
+  if (!taken.has(clean)) return clean
+  let n = 2
+  while (taken.has(`${clean}-${n}`)) n++
+  return `${clean}-${n}`
+}
+
+// Start a blank new agent. selectedId is cleared so nothing in the list is
+// highlighted; the form shows an editable slug field.
+function newAgent() {
+  isNew.value      = true
+  selectedId.value = null
+  loadForm({ role: 'general', enabled: true, sampling: { temperature: 0.2, max_tokens: 2048 } })
+  form.value.slug = uniqueSlug('agent')
+}
+
+// Copy the currently-shown values into a fresh unsaved agent. The API key is
+// never returned by the server, so a clone always starts with an empty key.
+function cloneAgent() {
+  if (!form.value) return
+  const src = { ...form.value }
+  isNew.value      = true
+  selectedId.value = null
+  form.value = {
+    ...src,
+    slug:    uniqueSlug(`${src.slug || 'agent'}-copy`),
+    name:    `${src.name || 'Agent'} (copy)`,
+    api_key: '',
+  }
+  savedOk.value   = false
+  saveError.value = ''
+}
+
+async function remove() {
+  // Cancelling an unsaved new agent just returns to the first existing one.
+  if (isNew.value) {
+    if (agents.value.length) select(agents.value[0].id)
+    else { form.value = null; selectedId.value = null; isNew.value = false }
+    return
+  }
+  const target = selectedAgent.value
+  if (!target) return
+  if (!window.confirm(`Delete agent "${target.name}"? This cannot be undone.`)) return
+  deleting.value  = true
+  saveError.value = ''
+  try {
+    await deleteAgent(target.id)
+    agents.value = agents.value.filter((a) => a.id !== target.id)
+    if (agents.value.length) select(agents.value[0].id)
+    else { form.value = null; selectedId.value = null }
+  } catch (e) {
+    saveError.value = e.response?.data?.error || ('Failed to delete: ' + (e.message || e))
+  } finally {
+    deleting.value = false
+  }
 }
 
 onMounted(async () => {
@@ -257,7 +353,7 @@ onMounted(async () => {
 })
 
 async function save() {
-  if (!selectedAgent.value || !form.value) return
+  if (!form.value) return
   saving.value    = true
   savedOk.value   = false
   saveError.value = ''
@@ -280,10 +376,20 @@ async function save() {
     // Only send api_key when the admin typed one (blank preserves the stored key).
     if (form.value.api_key) payload.api_key = form.value.api_key
 
-    const updated = await updateAgent(selectedAgent.value.id, payload)
-    const idx = agents.value.findIndex((a) => a.id === updated.id)
-    if (idx !== -1) agents.value[idx] = updated
-    loadForm(updated)
+    let result
+    if (isNew.value) {
+      payload.slug = (form.value.slug || '').trim()
+      result = await createAgent(payload)
+      agents.value.push(result)
+      isNew.value      = false
+      selectedId.value = result.id
+    } else {
+      if (!selectedAgent.value) return
+      result = await updateAgent(selectedAgent.value.id, payload)
+      const idx = agents.value.findIndex((a) => a.id === result.id)
+      if (idx !== -1) agents.value[idx] = result
+    }
+    loadForm(result)
     savedOk.value = true
   } catch (e) {
     saveError.value = e.response?.data?.error || ('Failed to save: ' + (e.message || e))
