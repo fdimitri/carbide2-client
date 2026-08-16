@@ -62,7 +62,7 @@
     </PaneToolbar>
 
     <!-- Timeline -->
-    <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-2 min-h-0" ref="scrollEl">
+    <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-2 min-h-0" ref="scrollEl" @scroll="onScroll">
       <div v-if="!messages.length && !store.agentSelectedSlug && store.agentListLoaded && !agents.length" class="flex-1 grid place-items-center monaco-line-fg p-4 text-ui-lg">
         No agents seeded. Run <code>rails db:seed</code>.
       </div>
@@ -217,7 +217,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick, onMounted } from 'vue'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { renderMarkdown } from '../../utils/markdown'
 import UiButton from '../ui/UiButton.vue'
@@ -387,6 +387,8 @@ function onSend() {
   const images = pendingImages.value.slice()
   if (!canSend.value) return
   if (!text && !images.length) return
+  // Sending re-pins to the bottom even if the user had scrolled up to read.
+  pinned = true
   emit('agent-send', text, images.length ? images : null)
   draft.value = ''
   pendingImages.value = []
@@ -472,10 +474,44 @@ function toolNames(tools) {
   return parts.join(', ')
 }
 
-// Auto-scroll on new message
-watch(() => messages.value.length, async () => {
+// Auto-scroll that follows streaming output. The watcher can't key off
+// messages.length alone: streaming deltas (reasoning + reply) mutate the last
+// message in place, and the final `done` updates that same message rather than
+// pushing a new row — so length never changes mid-turn. Key off the tail
+// message's content lengths too so the pane tracks reasoning as it arrives and
+// lands on the reply.
+const STICK_PX = 48
+let pinned = true
+
+function atBottom() {
+  const el = scrollEl.value
+  if (!el) return true
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= STICK_PX
+}
+
+// Only unpin when the user actively scrolls away from the bottom, so we never
+// yank them back while they're reading earlier output.
+function onScroll() { pinned = atBottom() }
+
+const scrollSignal = computed(() => {
+  const arr  = messages.value
+  const last = arr[arr.length - 1]
+  const tail = last ? `${(last.text || '').length}:${(last.reasoning || '').length}` : ''
+  return `${arr.length}:${tail}`
+})
+
+watch(scrollSignal, async () => {
+  if (!pinned) return
   await nextTick()
-  if (scrollEl.value) scrollEl.value.scrollTop = scrollEl.value.scrollHeight
+  const el = scrollEl.value
+  if (el) el.scrollTop = el.scrollHeight
+})
+
+// Opening the pane (or switching to it) mid-stream should land at the bottom.
+onMounted(async () => {
+  await nextTick()
+  const el = scrollEl.value
+  if (el) el.scrollTop = el.scrollHeight
 })
 </script>
 
