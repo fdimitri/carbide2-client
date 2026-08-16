@@ -133,9 +133,18 @@
                   :open="item.streaming"
                 >
                   <summary class="cursor-pointer select-none font-mono opacity-45 hover:opacity-75 marker:opacity-30 px-2 py-0.5 truncate">reasoning · {{ item.reasoning.length }} chars<span v-if="item.streaming" class="opacity-60"> · thinking…</span></summary>
-                  <div class="markdown-body text-ui-md px-2 pb-1 opacity-90" v-html="renderMarkdown(item.reasoning)"></div>
+                  <!-- Render markdown only once the turn settles; while streaming,
+                       show raw text so we don't re-parse on every token. -->
+                  <div v-if="item.streaming" class="text-ui-md px-2 pb-1 opacity-90 whitespace-pre-wrap break-words">{{ item.reasoning }}</div>
+                  <div v-else class="markdown-body text-ui-md px-2 pb-1 opacity-90" v-html="renderMarkdown(item.reasoning)"></div>
                 </details>
                 <div
+                  v-if="item.streaming"
+                  class="text-ui-lg leading-normal break-words whitespace-pre-wrap"
+                  :class="item.muted ? 'opacity-60 italic' : ''"
+                >{{ item.text }}</div>
+                <div
+                  v-else
                   class="markdown-body text-ui-lg leading-normal break-words"
                   :class="item.muted ? 'opacity-60 italic' : ''"
                   v-html="renderMarkdown(item.text)"

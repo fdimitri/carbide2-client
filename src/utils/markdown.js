@@ -27,8 +27,20 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   }
 })
 
+// Memoize by source string. Called inline from templates (v-html), so during
+// agent streaming it would otherwise re-parse every message on every token —
+// O(n²) marked+DOMPurify work that pins the CPU and churns memory. The cache is
+// bounded so long sessions don't leak.
+const _cache = new Map()
+const _CACHE_MAX = 500
+
 export function renderMarkdown(src) {
   if (src == null) return ''
-  const raw = marked.parse(String(src))
-  return DOMPurify.sanitize(raw, { USE_PROFILES: { html: true } })
+  const key = String(src)
+  const hit = _cache.get(key)
+  if (hit !== undefined) return hit
+  const html = DOMPurify.sanitize(marked.parse(key), { USE_PROFILES: { html: true } })
+  if (_cache.size >= _CACHE_MAX) _cache.delete(_cache.keys().next().value)
+  _cache.set(key, html)
+  return html
 }
