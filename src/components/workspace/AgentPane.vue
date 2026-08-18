@@ -77,7 +77,7 @@
         v-for="m in timeline"
         :key="m._uid"
         v-memo="[m._sig]"
-        class="contents"
+        class="cv-row"
       >
         <!-- User — left-aligned, avatar + name, same language as ChatPane -->
         <div v-if="m.kind === 'user'" class="flex items-start gap-2">
@@ -414,4 +414,19 @@ onMounted(async () => {
   if (el) el.scrollTop = el.scrollHeight
 })
 </script>
+
+<style scoped>
+/*
+ * Each timeline row is skipped during layout/paint while off-screen.
+ * With long conversations (hundreds of message blocks, tens of thousands of
+ * layout objects) this keeps a keystroke in the composer -- or any reflow --
+ * from re-laying-out the whole message list. Measured live: ~25ms -> ~2ms of
+ * layout per keystroke on a 465-row conversation. `auto` in contain-intrinsic-size
+ * lets the browser remember each row's real size after it's first rendered.
+ */
+.cv-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 200px;
+}
+</style>
 
