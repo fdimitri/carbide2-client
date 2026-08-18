@@ -73,7 +73,12 @@
         Ask {{ activeAgentName }} something.
       </div>
 
-      <template v-for="(m, i) in timeline" :key="i">
+      <div
+        v-for="m in timeline"
+        :key="m._uid"
+        v-memo="[m._sig]"
+        class="contents"
+      >
         <!-- User — left-aligned, avatar + name, same language as ChatPane -->
         <div v-if="m.kind === 'user'" class="flex items-start gap-2">
           <Avatar :id="selfLabel" :name="selfLabel" />
@@ -159,7 +164,7 @@
           {{ m.text }}
         </div>
         <div v-else class="text-ui-sm opacity-60 italic">{{ m.text }}</div>
-      </template>
+      </div>
     </div>
 
     <!-- Composer -->
@@ -326,19 +331,50 @@ const messages = computed(() => store.agentMessages || [])
 // (its tool calls + its reply) is grouped under a single Coder turn, so tool
 // calls are attributed to the agent — not left dangling under the user message.
 // Within a turn, consecutive tool rows coalesce into one collapsible group.
+// Stable per-source-message ids so v-for keys stay put when `timeline`
+// re-derives on every streamed delta (index keys forced the whole list to
+// re-render each token). The WeakMap ties an id to object identity without
+// mutating the reactive source messages.
+const _uidMap = new WeakMap()
+let _uidSeq = 0
+function uidFor(o) {
+  let id = _uidMap.get(o)
+  if (id === undefined) { id = ++_uidSeq; _uidMap.set(o, id) }
+  return id
+}
+
+// A render signature for a turn: changes only while the turn is streaming or a
+// tool result lands, so `v-memo` can skip re-rendering turns that haven't
+// changed — the fix for the O(n) full-list re-render on every token.
+function turnSig(items) {
+  let s = ''
+  for (const it of items) {
+    if (it.type === 'tools') {
+      s += 'T'
+      for (const t of it.tools) s += t.done ? 'd' : 'p'
+    } else {
+      s += 'X' + (it.text || '').length + ':' + (it.reasoning || '').length +
+           ':' + (it.streaming ? 1 : 0) + ':' + (it.truncated ? 1 : 0) + ':' + (it.muted ? 1 : 0)
+    }
+    s += '|'
+  }
+  return s
+}
+
 const timeline = computed(() => {
-  // Pass 1: merge tool_call + tool_result by id into one `tool` row.
+  // Pass 1: merge tool_call + tool_result by id into one `tool` row. Each row
+  // carries the source message's stable uid so turn keys don't shift.
   const merged = []
   const byId = new Map()
   for (const m of messages.value) {
     if (m.kind === 'tool_call') {
-      const row = { kind: 'tool', id: m.id, name: m.name, args: m.args, result: undefined, done: false }
+      const row = { kind: 'tool', id: m.id, name: m.name, args: m.args, result: undefined, done: false, _uid: uidFor(m) }
       if (m.id != null) byId.set(m.id, row)
       merged.push(row)
     } else if (m.kind === 'tool_result') {
       const row = m.id != null ? byId.get(m.id) : null
       if (row) { row.result = m.result; row.done = true }
-      else merged.push({ kind: 'tool', id: m.id, name: m.name, result: m.result, done: true })
+      else merged.push({ kind: 'tool', id: m.id, name: m.name, result: m.result, done: true, _uid: uidFor(m) })
     } else {
       merged.push(m)
     }
@@ -348,7 +384,7 @@ const timeline = computed(() => {
   let turn = null
   for (const m of merged) {
     if (m.kind === 'tool' || m.kind === 'assistant') {
-      if (!turn) { turn = { kind: 'assistant_turn', items: [] }; out.push(turn) }
+      if (!turn) { turn = { kind: 'assistant_turn', items: [], _uid: (m._uid ?? uidFor(m)) }; out.push(turn) }
       if (m.kind === 'tool') {
         const last = turn.items[turn.items.length - 1]
         if (last && last.type === 'tools') last.tools.push(m)
@@ -358,8 +394,12 @@ const timeline = computed(() => {
       }
     } else {
       turn = null
-      out.push(m)
+      out.push({ ...m, _uid: uidFor(m), _sig: 'x' + (m.text || '').length + ':' + (m.images ? m.images.length : 0) })
     }
+  }
+  // Signature per turn so v-memo skips settled turns.
+  for (const row of out) {
+    if (row.kind === 'assistant_turn') row._sig = turnSig(row.items)
   }
   return out
 })

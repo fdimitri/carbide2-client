@@ -92,6 +92,25 @@ export function useAgents({ error, bindTabToActivePane }) {
       return (last && last.kind === 'assistant' && last.streaming) ? last : null
     }
 
+    // Throttle streamed deltas: accumulate in a plain buffer and commit to the
+    // reactive message at most ~every 40ms, so a fast token stream triggers
+    // ~25 re-renders/sec instead of one per token. Flushed synchronously before
+    // a tool_call/done finalizes the turn so no trailing text is dropped.
+    let _pendText = ''
+    let _pendReason = ''
+    let _flushTimer = null
+    function _commitStream() {
+      _flushTimer = null
+      const msg = liveStreamMsg()
+      if (!msg) { _pendText = ''; _pendReason = ''; return }
+      if (_pendText)   { msg.text = (msg.text || '') + _pendText; _pendText = '' }
+      if (_pendReason) { msg.reasoning = (msg.reasoning || '') + _pendReason; _pendReason = '' }
+    }
+    function _flushStream() {
+      if (_flushTimer) { clearTimeout(_flushTimer); _flushTimer = null }
+      _commitStream()
+    }
+
     offHandlers.push(
       // The worker assigns a fresh session on every (re)connect (e.g. after a
       // worker restart), so re-request the agent list whenever the socket
@@ -120,17 +139,17 @@ export function useAgents({ error, bindTabToActivePane }) {
       // is the model's thinking (Qwen3/DeepSeek). Both accumulate onto a single
       // in-progress assistant message that the timeline renders live.
       workerSocket.on('agent', 'stream', (p) => {
-        let msg = liveStreamMsg()
-        if (!msg) {
+        if (!liveStreamMsg()) {
           agentMessages.value.push({ kind: 'assistant', text: '', reasoning: '', streaming: true })
-          msg = agentMessages.value[agentMessages.value.length - 1]
         }
-        if (p?.delta != null)           msg.text     += String(p.delta)
-        if (p?.reasoning_delta != null) msg.reasoning = (msg.reasoning || '') + String(p.reasoning_delta)
+        if (p?.delta != null)           _pendText   += String(p.delta)
+        if (p?.reasoning_delta != null) _pendReason += String(p.reasoning_delta)
+        if (!_flushTimer) _flushTimer = setTimeout(_commitStream, 40)
         agentStatus.value = 'thinking'
       }),
       workerSocket.on('agent', 'tool_call', (p) => {
         // A tool-call ends the assistant's text turn; stop streaming into it.
+        _flushStream()
         const live = liveStreamMsg()
         if (live) live.streaming = false
         agentMessages.value.push({
@@ -168,6 +187,7 @@ export function useAgents({ error, bindTabToActivePane }) {
           action: 'tool_result', detail: `${p?.tool || '?'} ${summary}` })
       }),
       workerSocket.on('agent', 'done', (p) => {
+        _flushStream()
         const finish    = p?.finish_reason || null
         const reasoning = p?.reasoning || null
         const truncated = finish === 'length'
