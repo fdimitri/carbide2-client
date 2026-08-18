@@ -138,22 +138,24 @@
                   :open="item.streaming"
                 >
                   <summary class="cursor-pointer select-none font-mono opacity-45 hover:opacity-75 marker:opacity-30 px-2 py-0.5 truncate">reasoning · {{ item.reasoning.length }} chars<span v-if="item.streaming" class="opacity-60"> · thinking…</span></summary>
-                  <!-- Render markdown only once the turn settles; while streaming,
-                       show raw text so we don't re-parse on every token. -->
-                  <div v-if="item.streaming" class="text-ui-md px-2 pb-1 opacity-90 whitespace-pre-wrap break-words">{{ item.reasoning }}</div>
-                  <div v-else class="markdown-body text-ui-md px-2 pb-1 opacity-90" v-html="renderMarkdown(item.reasoning)"></div>
+                  <!-- Progressive markdown: finished blocks parse once and
+                       freeze; the streaming tail stays plain text. -->
+                  <div class="markdown-body text-ui-md px-2 pb-1 opacity-90">
+                    <template v-for="blk in renderMarkdownBlocks(item.reasoning, item.streaming)" :key="blk.key">
+                      <div v-if="blk.kind === 'html'" v-memo="[blk.content]" v-html="blk.content"></div>
+                      <div v-else v-memo="[blk.content]" class="whitespace-pre-wrap break-words">{{ blk.content }}</div>
+                    </template>
+                  </div>
                 </details>
                 <div
-                  v-if="item.streaming"
-                  class="text-ui-lg leading-normal break-words whitespace-pre-wrap"
-                  :class="item.muted ? 'opacity-60 italic' : ''"
-                >{{ item.text }}</div>
-                <div
-                  v-else
                   class="markdown-body text-ui-lg leading-normal break-words"
                   :class="item.muted ? 'opacity-60 italic' : ''"
-                  v-html="renderMarkdown(item.text)"
-                ></div>
+                >
+                  <template v-for="blk in renderMarkdownBlocks(item.text, item.streaming)" :key="blk.key">
+                    <div v-if="blk.kind === 'html'" v-memo="[blk.content]" v-html="blk.content"></div>
+                    <div v-else v-memo="[blk.content]" class="whitespace-pre-wrap">{{ blk.content }}</div>
+                  </template>
+                </div>
               </template>
             </template>
           </div>
@@ -233,7 +235,7 @@
 <script setup>
 import { ref, computed, watch, nextTick, onMounted } from 'vue'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
-import { renderMarkdown } from '../../utils/markdown'
+import { renderMarkdown, renderMarkdownBlocks } from '../../utils/markdown'
 import UiButton from '../ui/UiButton.vue'
 import PaneToolbar from '../ui/PaneToolbar.vue'
 import Avatar from '../ui/Avatar.vue'
