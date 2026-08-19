@@ -139,12 +139,13 @@
             <h3 class="text-ui-xs font-semibold text-muted uppercase tracking-widest mb-3">Tools</h3>
             <div class="flex flex-col gap-2">
               <label
-                v-for="t in TOOL_SLUGS"
-                :key="t"
+                v-for="t in toolOptions"
+                :key="t.slug"
                 class="flex items-center gap-2 text-ui-md text-text cursor-pointer select-none w-fit"
+                :title="t.description"
               >
-                <UiCheckbox :value="t" v-model="form.allowed_tools" />
-                <code class="font-mono">{{ t }}</code>
+                <UiCheckbox :value="t.slug" v-model="form.allowed_tools" />
+                <code class="font-mono">{{ t.slug }}</code>
               </label>
             </div>
 
@@ -183,7 +184,21 @@
               </div>
             </div>
           </section>
-
+          <!-- ── Orchestration ────────────────────────────────── -->
+          <section class="mb-7">
+            <h3 class="text-ui-xs font-semibold text-muted uppercase tracking-widest mb-3">Orchestration</h3>
+            <UiField label="Max turns" label-class="block text-ui-md text-text mb-1" compact>
+              <UiInput
+                v-model.number="form.max_turns"
+                type="number" min="1" max="100" step="1"
+                class="w-40"
+                placeholder="default"
+              />
+            </UiField>
+            <p class="text-ui-xs text-muted mt-1">
+              Tool-call loop budget per message. Not sent to the model — leave blank to use the server default.
+            </p>
+          </section>
           <!-- ── Status + actions ───────────────────────────────────────── -->
           <section class="mb-7">
             <label class="flex items-center gap-2 text-ui-md text-text cursor-pointer select-none w-fit">
@@ -225,17 +240,28 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { listAgents, updateAgent, createAgent, deleteAgent } from '../../services/agentService'
+import workerSocket from '../../services/workerSocket'
 import UiInput from '../ui/UiInput.vue'
 import UiCheckbox from '../ui/UiCheckbox.vue'
 import UiField from '../ui/UiField.vue'
 import UiButton from '../ui/UiButton.vue'
 
-// Mirrors Agent::ROLES (server) and the worker AgentTools registry. Kept as
-// plain constants — small, stable capability lists.
+// Mirrors Agent::ROLES (server).
 const ROLES = ['general', 'coder', 'reviewer', 'safety', 'router']
-const TOOL_SLUGS = ['read_file', 'list_dir', 'list_terminals', 'shell_exec', 'file_edit_anchored', 'file_write_lines', 'file_pcre_search']
+
+// The tool allowlist is discovered live from the worker (agent/tools); this
+// static list is only a fallback for a worker that doesn't answer. See #73.
+const FALLBACK_TOOL_SLUGS = ['read_file', 'list_dir', 'list_terminals', 'shell_exec', 'file_edit_anchored', 'file_write_lines', 'file_pcre_search']
+
+// [{ slug, name, description }] from the worker, or null until it answers.
+const toolCatalog = ref(null)
+const toolOptions = computed(() => {
+  const cat = toolCatalog.value
+  if (cat && cat.length) return cat
+  return FALLBACK_TOOL_SLUGS.map((s) => ({ slug: s, name: s, description: '' }))
+})
 
 const loading   = ref(true)
 const loadError = ref('')
@@ -268,6 +294,7 @@ function loadForm(agent) {
     enabled:            agent.enabled ?? true,
     temperature:        s.temperature ?? 0.2,
     max_tokens:         s.max_tokens ?? 2048,
+    max_turns:          agent.max_turns ?? null,
   }
   savedOk.value   = false
   saveError.value = ''
@@ -342,6 +369,7 @@ async function remove() {
 }
 
 onMounted(async () => {
+  loadToolCatalog()
   try {
     agents.value = await listAgents()
     if (agents.value.length) select(agents.value[0].id)
@@ -351,6 +379,36 @@ onMounted(async () => {
     loading.value = false
   }
 })
+
+onUnmounted(stopToolCatalog)
+
+// Ask the worker which tools it can expose. If it doesn't answer we leave
+// toolCatalog null so toolOptions uses the static fallback — an older worker
+// replies system/error "unknown agent cmd: tools", a missing one is covered by
+// the timeout. See #73.
+let _offTools = null
+let _offToolsErr = null
+let _toolsTimer = null
+
+function stopToolCatalog() {
+  if (_offTools) { _offTools(); _offTools = null }
+  if (_offToolsErr) { _offToolsErr(); _offToolsErr = null }
+  if (_toolsTimer) { clearTimeout(_toolsTimer); _toolsTimer = null }
+}
+
+function loadToolCatalog() {
+  _offTools = workerSocket.on('agent', 'tools', (payload) => {
+    if (Array.isArray(payload?.tools)) toolCatalog.value = payload.tools
+    stopToolCatalog()
+  })
+  _offToolsErr = workerSocket.on('system', 'error', (payload) => {
+    if (typeof payload?.message === 'string' && payload.message.includes('unknown agent cmd: tools')) {
+      stopToolCatalog()
+    }
+  })
+  _toolsTimer = setTimeout(stopToolCatalog, 4000)
+  workerSocket.send('agent', 'tools', {})
+}
 
 async function save() {
   if (!form.value) return
@@ -368,6 +426,8 @@ async function save() {
       allowed_tools:      form.value.allowed_tools,
       shell_exec_enabled: form.value.shell_exec_enabled,
       enabled:            form.value.enabled,
+      max_turns:          form.value.max_turns === '' || form.value.max_turns == null
+                            ? null : Number(form.value.max_turns),
       sampling:           {
         temperature: form.value.temperature,
         max_tokens:  form.value.max_tokens,
