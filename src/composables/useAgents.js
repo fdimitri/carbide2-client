@@ -14,6 +14,7 @@
 // conversation_id and add a tab-per-conversation.
 import { storeToRefs } from 'pinia'
 import workerSocket from '../services/workerSocket'
+import authService from '../services/authService'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import { useDebugLogStore } from '../stores/debugLogStore'
 
@@ -63,6 +64,11 @@ export function useAgents({ error, bindTabToActivePane }) {
     })
   }
 
+  function currentUserName() {
+    const u = authService.currentUser
+    return u?.name || u?.email || 'you'
+  }
+
   function send(text, images = null) {
     const trimmed = (text || '').trim()
     const hasImages = Array.isArray(images) && images.length > 0
@@ -72,7 +78,13 @@ export function useAgents({ error, bindTabToActivePane }) {
       error.value = 'Pick an agent first.'
       return
     }
-    agentMessages.value.push({ kind: 'user', text: trimmed, images: hasImages ? images : null })
+    agentMessages.value.push({
+      kind: 'user',
+      text: trimmed,
+      images: hasImages ? images : null,
+      user_id: store.currentUserId,
+      name: currentUserName(),
+    })
     agentStatus.value = 'thinking'
     const payload = { agent_slug: slug, message: trimmed }
     if (agentConversationId.value) payload.conversation_id = agentConversationId.value
@@ -134,6 +146,22 @@ export function useAgents({ error, bindTabToActivePane }) {
         if (p?.conversation_id) agentConversationId.value = p.conversation_id
         debugLog.push({ source: 'agent', action: 'started',
           detail: `convo=${p?.conversation_id || '?'} agent=${p?.agent || '?'}` })
+      }),
+      // Another user's question in a shared conversation. The worker excludes
+      // the originating socket only, so the same user's other sessions also
+      // receive this. Guard on conversation_id so one thread's messages never
+      // leak into whichever thread is currently on screen.
+      workerSocket.on('agent', 'user_turn', (p) => {
+        if (p?.conversation_id && p.conversation_id !== agentConversationId.value) return
+        agentMessages.value.push({
+          kind: 'user',
+          text: p?.text ?? '',
+          images: Array.isArray(p?.images) ? p.images : null,
+          user_id: p?.user_id ?? null,
+          name: p?.name ?? null,
+        })
+        debugLog.push({ source: 'agent', action: 'user_turn',
+          detail: `convo=${p?.conversation_id || '?'} user=${p?.user_id || '?'}` })
       }),
       // Incremental assistant output. `delta` is reply text; `reasoning_delta`
       // is the model's thinking (Qwen3/DeepSeek). Both accumulate onto a single

@@ -81,9 +81,9 @@
       >
         <!-- User — left-aligned, avatar + name, same language as ChatPane -->
         <div v-if="m.kind === 'user'" class="flex items-start gap-2">
-          <Avatar :id="selfLabel" :name="selfLabel" />
+          <Avatar :id="m.user_id != null ? m.user_id : selfLabel" :name="userLabel(m)" />
           <div class="flex flex-col min-w-0 gap-1">
-            <span class="text-ui-md font-semibold">{{ selfLabel }}</span>
+            <span class="text-ui-md font-semibold">{{ userLabel(m) }}</span>
             <div
               v-if="m.images && m.images.length"
               class="flex flex-wrap gap-1 max-w-full"
@@ -278,6 +278,14 @@ const timeline = computed(() => {
 // + initials fallback; no avatar image is actually wired anywhere yet.
 const selfUser  = computed(() => authService.currentUser || null)
 const selfLabel = computed(() => selfUser.value?.name || selfUser.value?.email || 'you')
+
+// Per-message author label: the worker injects user_id + name for user turns;
+// fall back to the viewer only for legacy rows that predate #79.
+function userLabel(m) {
+  if (m?.name) return m.name
+  if (m?.user_id != null) return String(m.user_id)
+  return selfLabel.value
+}
 
 const activeAgent = computed(() =>
   agents.value.find(a => a.slug === store.agentSelectedSlug) || null

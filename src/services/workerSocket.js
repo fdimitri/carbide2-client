@@ -36,7 +36,9 @@ const getWorkerUrl = () => {
 // floors and, for now, only WARN on a mismatch (advisory — still connect).
 // PROTOCOL 3: session/delete + client_version tagging, per-terminal uuid. All
 // additive — MIN_SERVER stays 1.
-const PROTOCOL   = 3
+// PROTOCOL 4: agent/user_turn broadcast (shared conversations, #80) + per-message
+// author on agent user messages (#79). Additive — MIN_SERVER stays 1.
+const PROTOCOL   = 4
 const MIN_SERVER = 1
 
 const RECONNECT_BASE_MS  = 1000
