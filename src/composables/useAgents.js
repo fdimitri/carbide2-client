@@ -64,6 +64,13 @@ export function useAgents({ error, bindTabToActivePane }) {
     })
   }
 
+  function stop() {
+    if (!agentConversationId.value) return
+    workerSocket.send('agent', 'stop', { conversation_id: agentConversationId.value })
+    debugLog.push({ source: 'agent', action: 'stop',
+      detail: `convo=${agentConversationId.value}` })
+  }
+
   function currentUserName() {
     const u = authService.currentUser
     return u?.name || u?.email || 'you'
@@ -214,6 +221,26 @@ export function useAgents({ error, bindTabToActivePane }) {
           severity: r && r.error ? 'error' : 'ok',
           action: 'tool_result', detail: `${p?.tool || '?'} ${summary}` })
       }),
+      workerSocket.on('agent', 'stopped', (p) => {
+        _flushStream()
+        const live = liveStreamMsg()
+        if (live) {
+          live.streaming = false
+          if (live.text) {
+            // Keep the partial reply; flag it so AgentPane shows a "stopped"
+            // marker without discarding what already streamed.
+            live.stopped = true
+          } else {
+            live.text = '(stopped)'
+            live.muted = true
+          }
+        } else {
+          agentMessages.value.push({ kind: 'assistant', text: '(stopped)', muted: true })
+        }
+        agentStatus.value = 'idle'
+        debugLog.push({ source: 'agent', action: 'stopped',
+          detail: `convo=${p?.conversation_id || '?'} turn=${p?.turn ?? '?'}` })
+      }),
       workerSocket.on('agent', 'done', (p) => {
         _flushStream()
         const finish    = p?.finish_reason || null
@@ -310,7 +337,7 @@ export function useAgents({ error, bindTabToActivePane }) {
     agentList, agentSelectedSlug, agentConversationId, agentMessages, agentStatus,
     agentRecent, agentVisibility, agentOwnerUserId, agentOwnerIsSelf,
     openAgentPane, selectAgent, resetConversation, send,
-    loadConversation, setVisibility,
+    loadConversation, setVisibility, stop,
     registerHandlers,
   }
 }

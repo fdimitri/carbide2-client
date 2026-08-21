@@ -113,6 +113,7 @@
               @agent-pick="agents.selectAgent"
               @agent-load="agents.loadConversation"
               @agent-set-visibility="agents.setVisibility"
+              @agent-stop="agents.stop"
             />
             <Splitter
               v-else
@@ -146,6 +147,7 @@
                   @agent-pick="agents.selectAgent"
                   @agent-load="agents.loadConversation"
                   @agent-set-visibility="agents.setVisibility"
+                  @agent-stop="agents.stop"
                 />
               </SplitterPanel>
             </Splitter>

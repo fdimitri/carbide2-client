@@ -100,6 +100,7 @@
         @agent-pick="(slug) => emit('agent-pick', slug)"
         @agent-load="(id) => emit('agent-load', id)"
         @agent-set-visibility="(vis) => emit('agent-set-visibility', vis)"
+        @agent-stop="emit('agent-stop')"
       />
     </div>
 
@@ -273,6 +274,7 @@ const emit = defineEmits([
   'agent-pick',
   'agent-load',
   'agent-set-visibility',
+  'agent-stop',
 ])
 
 function onTabBarDrop(event) {

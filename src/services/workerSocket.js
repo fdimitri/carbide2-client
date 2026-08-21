@@ -38,7 +38,8 @@ const getWorkerUrl = () => {
 // additive — MIN_SERVER stays 1.
 // PROTOCOL 4: agent/user_turn broadcast (shared conversations, #80) + per-message
 // author on agent user messages (#79). Additive — MIN_SERVER stays 1.
-const PROTOCOL   = 4
+// PROTOCOL 5: agent/stop + agent/stopping + agent/stopped (#83). Additive.
+const PROTOCOL   = 5
 const MIN_SERVER = 1
 
 const RECONNECT_BASE_MS  = 1000

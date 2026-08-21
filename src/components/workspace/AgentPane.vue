@@ -59,6 +59,13 @@
         class="text-ui-xs opacity-60 italic"
         :title="'Owned by another user — read-only view'"
       >watching</span>
+      <UiButton
+        size="xs"
+        variant="warn"
+        :disabled="store.agentStatus !== 'thinking'"
+        title="Stop the agent (interrupt model + tool activity)"
+        @click="onStop"
+      >Stop</UiButton>
     </PaneToolbar>
 
     <!-- Timeline -->
@@ -132,6 +139,11 @@
                   class="self-start text-ui-2xs uppercase tracking-wider px-1.5 py-0 rounded-ui-xs border border-amber-600/60 text-amber-400 font-semibold"
                   title="Model hit its max_tokens / context limit before finishing. Increase the model's context window or max_tokens in your provider."
                 >truncated</span>
+                <span
+                  v-if="item.stopped"
+                  class="self-start text-ui-2xs uppercase tracking-wider px-1.5 py-0 rounded-ui-xs border border-amber-600/60 text-amber-400 font-semibold"
+                  title="Stopped by a project member"
+                >stopped</span>
                 <details
                   v-if="item.reasoning"
                   class="text-ui-xs rounded-ui-sm bg-white/[0.05]"
@@ -175,7 +187,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick, onMounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { renderMarkdownBlocks } from '../../utils/markdown'
 import UiButton from '../ui/UiButton.vue'
@@ -187,7 +199,7 @@ import authService from '../../services/authService'
 const props = defineProps({
   connected: { type: Boolean, default: false },
 })
-const emit = defineEmits(['agent-send', 'agent-reset', 'agent-pick', 'agent-load', 'agent-set-visibility'])
+const emit = defineEmits(['agent-send', 'agent-reset', 'agent-pick', 'agent-load', 'agent-set-visibility', 'agent-stop'])
 
 const store    = useWorkspaceStore()
 const scrollEl = ref(null)
@@ -224,7 +236,8 @@ function turnSig(items) {
       for (const t of it.tools) s += t.done ? 'd' : 'p'
     } else {
       s += 'X' + (it.text || '').length + ':' + (it.reasoning || '').length +
-           ':' + (it.streaming ? 1 : 0) + ':' + (it.truncated ? 1 : 0) + ':' + (it.muted ? 1 : 0)
+           ':' + (it.streaming ? 1 : 0) + ':' + (it.truncated ? 1 : 0) + ':' + (it.muted ? 1 : 0) +
+           ':' + (it.stopped ? 1 : 0)
     }
     s += '|'
   }
@@ -260,7 +273,7 @@ const timeline = computed(() => {
         if (last && last.type === 'tools') last.tools.push(m)
         else turn.items.push({ type: 'tools', tools: [m] })
       } else {
-        turn.items.push({ type: 'text', text: m.text, reasoning: m.reasoning, truncated: m.truncated, muted: m.muted, streaming: m.streaming })
+        turn.items.push({ type: 'text', text: m.text, reasoning: m.reasoning, truncated: m.truncated, muted: m.muted, streaming: m.streaming, stopped: m.stopped })
       }
     } else {
       turn = null
@@ -307,6 +320,7 @@ function onComposerSend(text, images) {
 
 function onReset()  { emit('agent-reset') }
 function onPickAgent(slug) { emit('agent-pick', slug) }
+function onStop()   { emit('agent-stop') }
 
 function onPickConversation(id) {
   if (!id) { emit('agent-reset'); return }
@@ -382,24 +396,60 @@ function toolNames(tools) {
   return parts.join(', ')
 }
 
-// Auto-scroll that follows streaming output. The watcher can't key off
-// messages.length alone: streaming deltas (reasoning + reply) mutate the last
-// message in place, and the final `done` updates that same message rather than
-// pushing a new row — so length never changes mid-turn. Key off the tail
-// message's content lengths too so the pane tracks reasoning as it arrives and
-// lands on the reply.
+// ── Scroll management ────────────────────────────────────────────────────
+// Default position is the newest content (bottom). We remember an explicit
+// scrollTop only when the user scrolls AWAY from the bottom (they're reading
+// older content); otherwise the position is just "bottom", so content growth
+// while away doesn't leave a stale pixel offset. Positions are keyed per
+// conversation id.
 const STICK_PX = 48
 let pinned = true
+const scrollPositions = new Map()   // conversationId -> scrollTop (only when not at bottom)
+
+function convoKey() {
+  return store.agentConversationId || '__new__'
+}
 
 function atBottom() {
   const el = scrollEl.value
-  if (!el) return true
+  if (!el || el.clientHeight === 0) return true
   return el.scrollHeight - el.scrollTop - el.clientHeight <= STICK_PX
 }
 
+function scrollToBottom() {
+  const el = scrollEl.value
+  if (el && el.clientHeight > 0) el.scrollTop = el.scrollHeight
+}
+
+function savePosition() {
+  const el = scrollEl.value
+  if (!el || el.clientHeight === 0) return
+  if (atBottom()) scrollPositions.delete(convoKey())
+  else scrollPositions.set(convoKey(), el.scrollTop)
+}
+
+function applyPosition() {
+  const el = scrollEl.value
+  if (!el || el.clientHeight === 0) return
+  const saved = scrollPositions.get(convoKey())
+  if (saved != null) {
+    el.scrollTop = saved
+    pinned = false
+  } else {
+    scrollToBottom()
+    pinned = true
+  }
+}
+
 // Only unpin when the user actively scrolls away from the bottom, so we never
-// yank them back while they're reading earlier output.
-function onScroll() { pinned = atBottom() }
+// yank them back while they're reading earlier output. Ignore scroll events
+// while hidden (v-show collapses clientHeight to 0).
+function onScroll() {
+  const el = scrollEl.value
+  if (!el || el.clientHeight === 0) return
+  pinned = atBottom()
+  savePosition()
+}
 
 const scrollSignal = computed(() => {
   const arr  = messages.value
@@ -408,18 +458,48 @@ const scrollSignal = computed(() => {
   return `${arr.length}:${tail}`
 })
 
+// Follow streaming + new user turns when pinned (e.g. sending a question).
 watch(scrollSignal, async () => {
   if (!pinned) return
   await nextTick()
-  const el = scrollEl.value
-  if (el) el.scrollTop = el.scrollHeight
+  scrollToBottom()
 })
 
-// Opening the pane (or switching to it) mid-stream should land at the bottom.
+// Conversation switch: restore the remembered position for that conversation,
+// or default to the bottom (newest content) for a first visit.
+watch(() => store.agentConversationId, async () => {
+  await nextTick()
+  applyPosition()
+})
+
+// When the pane is re-shown after being hidden with v-show, its clientHeight
+// goes 0 -> real; re-apply the remembered position (which was a no-op while
+// hidden). Also covers the initial mount.
+let lastClientHeight = 0
+function onResizeObserved() {
+  const el = scrollEl.value
+  if (!el) return
+  const h = el.clientHeight
+  if (h > 0 && lastClientHeight === 0) applyPosition()
+  lastClientHeight = h
+}
+
+let resizeObserver = null
+
 onMounted(async () => {
   await nextTick()
-  const el = scrollEl.value
-  if (el) el.scrollTop = el.scrollHeight
+  applyPosition()
+  if (scrollEl.value && typeof ResizeObserver !== 'undefined') {
+    resizeObserver = new ResizeObserver(onResizeObserved)
+    resizeObserver.observe(scrollEl.value)
+  }
+})
+
+onBeforeUnmount(() => {
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+    resizeObserver = null
+  }
 })
 </script>
 
