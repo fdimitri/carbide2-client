@@ -88,22 +88,32 @@ export function useSessionSync({ bindActiveSurface = null, storageKey = null } =
     })
   }
 
-  // Replace the ENTIRE server doc with our freshly normalized one. loadDoc()->
-  // toDoc() has already dropped keys this build doesn't understand, so this is a
-  // garbage-collection pass that a diff-patch stream can't do (a diff never
-  // mentions a defunct key, so it lingers forever). Fired after resuming a
-  // session whose stored signature differs from ours.
-  function resync() {
+  // Replace the ENTIRE server doc with a round-tripped one. This is an EXPLICIT
+  // affordance (force load/save round-trip), not a default resolution. With
+  // sanitize:false (default) unknown keys are preserved; with sanitize:true the
+  // doc is pruned to this build's known shape (the deliberate cleanup path).
+  function resync({ sanitize = false } = {}) {
     if (!store.subscribed || !store.isProducer() || !store.sessionUuid) return
-    const doc = store.toDoc()
+    const doc = store.toDoc({ sanitize })
     lastSentDoc = doc
-    logWs('send', SESSION_CS, 'resync', {})
+    logWs('send', SESSION_CS, 'resync', { sanitize })
     workerSocket.send(SESSION_CS, 'resync', {
       session_uuid: store.sessionUuid,
       doc,
       client_sha: CLIENT_SHA,
       doc_version: SESSION_DOC_VERSION,
     })
+  }
+
+  // Explicit sanitize: whole-doc round-trip that DROPS unknown keys. This is
+  // the deliberate prune path, primarily for rapid dev.
+  function sanitize() {
+    resync({ sanitize: true })
+  }
+
+  // Rapid-dev: report unknown/unparseable keys in the last loaded doc.
+  function listUnknown() {
+    return store.listUnknown()
   }
 
   function scheduleFlush() {
@@ -132,7 +142,13 @@ export function useSessionSync({ bindActiveSurface = null, storageKey = null } =
     applyingRemote = true
     try {
       store.loadDoc(payload?.doc)
-      store.setSession({ session_uuid: payload?.session_uuid, name: payload?.name, role })
+      store.setSession({
+        session_uuid: payload?.session_uuid,
+        name: payload?.name,
+        role,
+        version_history: payload?.version_history,
+        forked_from: payload?.forked_from,
+      })
     } finally {
       applyingRemote = false
     }
@@ -144,13 +160,10 @@ export function useSessionSync({ bindActiveSurface = null, storageKey = null } =
   function onCreated(payload)  { hydrate(payload, 'producer') }
   function onResumed(payload)  {
     hydrate(payload, 'producer')
-    // If we resumed a session last written by a different build (SHA) or an
-    // incompatible doc shape (doc_version), re-emit our normalized doc: this
-    // drops any defunct keys the old build left behind and re-stamps the
-    // signature to us. Same-signature resumes skip it (no-op churn avoided).
-    const sha  = payload?.client_sha ?? null
-    const docV = payload?.doc_version ?? null
-    if (sha !== CLIENT_SHA || docV !== SESSION_DOC_VERSION) resync()
+    // ADR "Session Document Versioning & Degradation": resync is NOT the default
+    // on signature/version mismatch. client_sha mismatch alone does nothing;
+    // doc_version mismatch patch-preserves (no full-doc rewrite). The explicit
+    // resync/sanitize affordance below is opt-in.
   }
   // A watcher's initial state also arrives as a snapshot; role stays whatever the
   // subscribe flow set (watcher). Default to 'watcher' if unset.
@@ -303,6 +316,7 @@ export function useSessionSync({ bindActiveSurface = null, storageKey = null } =
   return {
     start, stop,
     create, resume, subscribe, unsubscribe, list, remove,
+    resync, sanitize, listUnknown,
     ensureSession,
     // exposed for tests / manual flush
     _flush: flush,

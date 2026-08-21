@@ -505,9 +505,10 @@ const dockItems = computed(() => ([
 // ── Session picker (server-authoritative browser sessions, ADR-002) ───────────
 function sessionOptionLabel(s) {
   const base = s.name || `Session ${String(s.session_uuid).slice(0, 8)}`
-  if (s.session_uuid === currentSessionUuid.value) return `${base} (current)`
-  if (s.in_use) return `${base} (in use)`
-  return base
+  const branch = s.forked_from ? '↳ ' : ''
+  if (s.session_uuid === currentSessionUuid.value) return `${branch}${base} (current)`
+  if (s.in_use) return `${branch}${base} (in use)`
+  return `${branch}${base}`
 }
 
 // Dropdown options: the current session plus every resumable one. A session
@@ -543,6 +544,7 @@ const sessionOptions = computed(() =>
       clientVersion:   s.client_version || null,
       docIncompatible,
       buildDiffers,
+      forkedFrom:      s.forked_from ?? null,
       warningTitle,
     }
   })
@@ -716,6 +718,14 @@ onMounted(async () => {
     // Register session/* handlers + start the layout emitter BEFORE connecting
     // so the created/resumed/snapshot frames are caught.
     sessionSync.start()
+
+    // Rapid-dev console helpers (not permanent API): inspect unknown/unparseable
+    // keys, or prune the doc to this build's known shape.
+    window.__carbideSession = {
+      listUnknown: () => sessionSync.listUnknown(),
+      pruneDoc: () => sessionSync.sanitize(),
+      resync: (opts) => sessionSync.resync(opts),
+    }
 
     workerSocket.connect(() => getWsToken(projectId))
     // Intentionally do not auto-open any file; explorer will populate from server.

@@ -41,6 +41,12 @@ export const SESSION_CS          = 'session' // commandSet name (worker ROUTES)
 export const SESSION_DOC_VERSION = 1          // bump on a breaking doc-shape change
 export const PANE_SLOTS          = 4          // usePanes keeps 4 fixed pane slots
 
+// Tab kinds this build can render/parse. Anything else is "from the future" and
+// is preserved raw (kept in the doc, not rendered) rather than dropped.
+export const KNOWN_TAB_KINDS = new Set([
+  'file', 'channel', 'terminal', 'settings', 'debug', 'agent', 'agent-config',
+])
+
 // Server → client messages (see session_handlers.rb):
 //   session/created   { session_uuid, name, doc, forked_from }
 //   session/resumed   { session_uuid, name, doc }
@@ -104,6 +110,42 @@ export function diffSessionDoc(prev, next) {
   return patch
 }
 
+// Deep-merge `known` over `base` such that keys present in `base` but absent
+// from `known` survive (patch-preserve). Objects merge recursively; arrays of
+// objects with a `key` field (tabs) merge element-wise by key; other arrays
+// merge by index. Returns a fresh object/array; never mutates inputs.
+function mergeDoc(base, known) {
+  if (Array.isArray(base) && Array.isArray(known)) {
+    if (known.length && known[0] && typeof known[0] === 'object' && 'key' in known[0]) {
+      const out = []
+      // Preserve raw tabs whose KIND this build doesn't understand (§2: keep in
+      // doc, don't render). They are not in `known` (the render model) but must
+      // not be dropped.
+      for (const b of base) {
+        if (b && typeof b === 'object' && typeof b.kind === 'string' && !KNOWN_TAB_KINDS.has(b.kind)) {
+          out.push(b)
+        }
+      }
+      // Known tabs: the client's list is authoritative for add/close/reorder.
+      // Each known tab still merges unknown per-tab FIELDS from its raw twin.
+      for (const k of known) {
+        const raw = base.find((b) => b && typeof b === 'object' && b.key === k.key)
+        out.push(raw ? mergeDoc(raw, k) : k)
+      }
+      return out
+    }
+    return known.map((k, i) => (i < base.length ? mergeDoc(base[i], k) : k))
+  }
+  if (base && known && typeof base === 'object' && typeof known === 'object') {
+    const out = { ...base }
+    for (const key of Object.keys(known)) {
+      out[key] = (key in base) ? mergeDoc(base[key], known[key]) : known[key]
+    }
+    return out
+  }
+  return known
+}
+
 export const useSessionStore = defineStore('session', () => {
   // ── Identity / role ─────────────────────────────────────────────────────────
   const sessionUuid = ref(null)          // server-assigned uuid, null until create/resume
@@ -111,6 +153,9 @@ export const useSessionStore = defineStore('session', () => {
   const role        = ref(null)          // 'producer' | 'watcher' | null
   const subscribed  = ref(false)         // true once create/resume/subscribe acked
   const rev         = ref(null)          // last server-acked revision (updated_at float)
+  const versionHistory = ref([])         // ordered SESSION_DOC_VERSIONs that wrote this doc
+  const forkedFrom     = ref(null)       // parent session_uuid when this is a fork
+  const rawDoc         = ref(null)       // last loaded wire doc (unknown keys preserved)
 
   // ── Authoritative layout (runtime/array form) ───────────────────────────────
   const layout          = ref('one')
@@ -127,7 +172,7 @@ export const useSessionStore = defineStore('session', () => {
   const isWatcher  = () => role.value === 'watcher'
 
   // ── Serialize runtime → wire doc (create payload / diff base) ───────────────
-  function toDoc() {
+  function toDoc({ sanitize = false } = {}) {
     const panesObj = {}
     for (let i = 0; i < PANE_SLOTS; i++) {
       const p = panes.value[i] || emptyPane()
@@ -136,16 +181,20 @@ export const useSessionStore = defineStore('session', () => {
         tabs: (p.tabs || []).map((t) => ({ key: t.key, kind: t.kind, id: t.id, label: t.label })),
       }
     }
-    return {
+    const known = {
       v: SESSION_DOC_VERSION,
       layout: layout.value,
       activePaneIndex: activePaneIndex.value,
       panes: panesObj,
     }
+    // Preserve unknown keys from the last loaded doc by default (§2). Only an
+    // explicit sanitize (or no loaded doc) emits the bare known shape.
+    if (sanitize || !rawDoc.value || typeof rawDoc.value !== 'object') return known
+    return mergeDoc(rawDoc.value, known)
   }
 
   // ── Hydrate runtime ← wire doc (session/created|resumed|snapshot) ───────────
-  function loadDoc(doc) {
+  function loadDoc(doc, { sanitize = false } = {}) {
     const d = doc && typeof doc === 'object' ? doc : {}
     layout.value          = typeof d.layout === 'string' ? d.layout : 'one'
     activePaneIndex.value = Number.isInteger(d.activePaneIndex) ? d.activePaneIndex : 0
@@ -163,6 +212,9 @@ export const useSessionStore = defineStore('session', () => {
       }
     }
     panes.value = fresh
+    // Keep the full wire doc so toDoc({sanitize:false}) can round-trip unknown
+    // keys. Explicit sanitize drops it.
+    rawDoc.value = sanitize ? null : d
   }
 
   // ── Apply inbound wire ops → runtime (watcher side / echo) ──────────────────
@@ -216,10 +268,12 @@ export const useSessionStore = defineStore('session', () => {
   }
 
   // ── Metadata setters (called from the session/* message handlers) ───────────
-  function setSession({ session_uuid, name: n, role: r } = {}) {
+  function setSession({ session_uuid, name: n, role: r, version_history, forked_from } = {}) {
     if (session_uuid !== undefined) sessionUuid.value = session_uuid
     if (n !== undefined) name.value = n
     if (r !== undefined) role.value = r
+    if (version_history !== undefined) versionHistory.value = Array.isArray(version_history) ? version_history : []
+    if (forked_from !== undefined) forkedFrom.value = forked_from ?? null
     subscribed.value = true
   }
 
@@ -227,12 +281,53 @@ export const useSessionStore = defineStore('session', () => {
 
   function setSessions(list) { sessions.value = Array.isArray(list) ? list : [] }
 
+  // Rapid-dev inspection: report what this build doesn't recognize in the last
+  // loaded doc, split into unknown keys vs known-but-unparseable values. Best
+  // effort — not permanent API.
+  function listUnknown() {
+    const d = rawDoc.value && typeof rawDoc.value === 'object' ? rawDoc.value : {}
+    const TOP_KNOWN  = new Set(['v', 'layout', 'activePaneIndex', 'panes'])
+    const PANE_KNOWN = new Set(['activeTab', 'tabs'])
+    const TAB_KNOWN  = new Set(['key', 'kind', 'id', 'label'])
+    const unknownTop        = Object.keys(d).filter((k) => !TOP_KNOWN.has(k))
+    const unknownPaneFields = []
+    const unknownTabFields  = []
+    const unparseableTabs   = []
+    const src = d.panes && typeof d.panes === 'object' ? d.panes : {}
+    for (const pk of Object.keys(src)) {
+      const pane = src[pk]
+      if (!pane || typeof pane !== 'object') continue
+      for (const k of Object.keys(pane)) if (!PANE_KNOWN.has(k)) unknownPaneFields.push(`${pk}.${k}`)
+      const tabs = Array.isArray(pane.tabs) ? pane.tabs : []
+      for (const t of tabs) {
+        if (!t || typeof t !== 'object') continue
+        for (const k of Object.keys(t)) if (!TAB_KNOWN.has(k)) unknownTabFields.push(`${pk}.${k}`)
+        if (typeof t.key !== 'string' || !/^[a-z-]+:.+/.test(t.key)) unparseableTabs.push(`${pk}: ${t.key}`)
+      }
+    }
+    return {
+      unknownTop,
+      unknownPaneFields,
+      unknownTabFields,
+      unparseableTabs,
+      counts: {
+        unknownTop: unknownTop.length,
+        unknownPaneFields: unknownPaneFields.length,
+        unknownTabFields: unknownTabFields.length,
+        unparseableTabs: unparseableTabs.length,
+      },
+    }
+  }
+
   function reset() {
     sessionUuid.value = null
     name.value        = null
     role.value        = null
     subscribed.value  = false
     rev.value         = null
+    versionHistory.value = []
+    forkedFrom.value     = null
+    rawDoc.value         = null
     layout.value          = 'one'
     activePaneIndex.value = 0
     panes.value           = emptyPanes()
@@ -242,6 +337,7 @@ export const useSessionStore = defineStore('session', () => {
   return {
     // identity
     sessionUuid, name, role, subscribed, rev,
+    versionHistory, forkedFrom, rawDoc,
     isProducer, isWatcher,
     // layout state
     layout, activePaneIndex, panes,
@@ -249,6 +345,8 @@ export const useSessionStore = defineStore('session', () => {
     sessions,
     // (de)serialization + patch application
     toDoc, loadDoc, applyOps,
+    // inspection (rapid-dev)
+    listUnknown,
     // metadata
     setSession, setRev, setSessions, reset,
   }
