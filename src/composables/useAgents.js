@@ -1,8 +1,11 @@
 // useAgents — talk to worker-side LLM agents over the existing WS.
 //
 // Wire format (worker/worker.rb handle_agent + worker/agent_session.rb):
-//   send: {cs:'agent', cmd:'list',    payload:{}}
-//   send: {cs:'agent', cmd:'ask',     payload:{agent_slug, message, conversation_id?}}
+//   send: {cs:'agent', cmd:'list',        payload:{}}
+//   send: {cs:'agent', cmd:'ask',         payload:{agent_slug, message, conversation_id?}}
+//   send: {cs:'agent', cmd:'load',        payload:{conversation_id}}
+//   send: {cs:'agent', cmd:'subscribe',   payload:{conversation_id}}
+//   send: {cs:'agent', cmd:'unsubscribe', payload:{conversation_id}}
 //   recv: {cs:'agent', cmd:'list',         payload:{agents:[…]}}
 //   recv: {cs:'agent', cmd:'started',      payload:{conversation_id, agent}}
 //   recv: {cs:'agent', cmd:'tool_call',    payload:{tool, args, call_id, conversation_id, agent}}
@@ -10,8 +13,9 @@
 //   recv: {cs:'agent', cmd:'done',         payload:{content, turn, conversation_id, agent}}
 //   recv: {cs:'agent', cmd:'error',        payload:{message, conversation_id?, agent?}}
 //
-// MVP: one conversation per project. To support multiple, key state by
-// conversation_id and add a tab-per-conversation.
+// Live agent state is keyed by conversation_id in workspaceStore; this
+// composable routes every inbound frame into the right conversation's map
+// entry (#85).
 import { storeToRefs } from 'pinia'
 import workerSocket from '../services/workerSocket'
 import authService from '../services/authService'
@@ -22,9 +26,8 @@ export function useAgents({ error, bindTabToActivePane }) {
   const store    = useWorkspaceStore()
   const debugLog = useDebugLogStore()
   const {
-    agentList, agentListLoaded, agentSelectedSlug, agentConversationId,
-    agentMessages, agentStatus,
-    agentRecent, agentVisibility, agentOwnerUserId, agentOwnerIsSelf,
+    agentList, agentListLoaded, agentRecent,
+    agentMessagesByConversation, agentStatusByConversation, agentMetaByConversation,
   } = storeToRefs(store)
 
   function openAgentPane() {
@@ -35,40 +38,36 @@ export function useAgents({ error, bindTabToActivePane }) {
     workerSocket.send('agent', 'recent', { limit: 25 })
   }
 
-  function selectAgent(slug) {
-    if (slug === agentSelectedSlug.value) return
-    agentSelectedSlug.value = slug
-    // New agent = new conversation. Worker will assign a fresh id.
-    resetConversation()
-  }
+  // Per-conversation accessors (canonical map, shared across panes).
+  function messages(conversationId) { return store.agentMessagesFor(conversationId) }
+  function status(conversationId)    { return store.agentStatusFor(conversationId) }
+  function meta(conversationId)      { return store.agentMetaFor(conversationId) }
 
-  function resetConversation() {
-    agentConversationId.value = null
-    agentMessages.value       = []
-    agentStatus.value         = 'idle'
-    agentVisibility.value     = null
-    agentOwnerUserId.value    = null
-    agentOwnerIsSelf.value    = true
+  function selectAgent(conversationId, slug) {
+    if (!conversationId) return
+    meta(conversationId).agentSlug = slug
+    // New agent = new conversation. Worker will assign a fresh id; the caller
+    // (pane) owns resetting its tab key to the fresh agent:<uuid>.
   }
 
   function loadConversation(conversationId) {
     if (!conversationId) return
     workerSocket.send('agent', 'load', { conversation_id: conversationId })
+    workerSocket.send('agent', 'subscribe', { conversation_id: conversationId })
   }
 
-  function setVisibility(visibility) {
-    if (!agentConversationId.value) return
+  function setVisibility(conversationId, visibility) {
+    if (!conversationId) return
     workerSocket.send('agent', 'set_visibility', {
-      conversation_id: agentConversationId.value,
+      conversation_id: conversationId,
       visibility,
     })
   }
 
-  function stop() {
-    if (!agentConversationId.value) return
-    workerSocket.send('agent', 'stop', { conversation_id: agentConversationId.value })
-    debugLog.push({ source: 'agent', action: 'stop',
-      detail: `convo=${agentConversationId.value}` })
+  function stop(conversationId) {
+    if (!conversationId) return
+    workerSocket.send('agent', 'stop', { conversation_id: conversationId })
+    debugLog.push({ source: 'agent', action: 'stop', detail: `convo=${conversationId}` })
   }
 
   function currentUserName() {
@@ -76,66 +75,64 @@ export function useAgents({ error, bindTabToActivePane }) {
     return u?.name || u?.email || 'you'
   }
 
-  function send(text, images = null) {
+  // The asker's local user turn. The worker broadcasts the same turn to other
+  // subscribers, so only the origin pushes it locally.
+  function send(conversationId, text, images = null) {
     const trimmed = (text || '').trim()
     const hasImages = Array.isArray(images) && images.length > 0
     if (!trimmed && !hasImages) return
-    const slug = agentSelectedSlug.value
-    if (!slug) {
-      error.value = 'Pick an agent first.'
-      return
-    }
-    agentMessages.value.push({
+    const slug = meta(conversationId).agentSlug
+    if (!slug) { error.value = 'Pick an agent first.'; return }
+    messages(conversationId).push({
       kind: 'user',
       text: trimmed,
       images: hasImages ? images : null,
       user_id: store.currentUserId,
       name: currentUserName(),
     })
-    agentStatus.value = 'thinking'
+    agentStatusByConversation.value[conversationId] = 'thinking'
     const payload = { agent_slug: slug, message: trimmed }
-    if (agentConversationId.value) payload.conversation_id = agentConversationId.value
-    if (hasImages) payload.images = images   // [{mime, base64}, ...]
+    if (conversationId) payload.conversation_id = conversationId
+    if (hasImages) payload.images = images
     workerSocket.send('agent', 'ask', payload)
     debugLog.push({ source: 'agent', action: 'ask',
-      detail: `slug=${slug} convo=${agentConversationId.value || '(new)'} chars=${trimmed.length}${hasImages ? ` images=${images.length}` : ''}` })
+      detail: `slug=${slug} convo=${conversationId || '(new)'} chars=${trimmed.length}${hasImages ? ` images=${images.length}` : ''}` })
   }
 
   function registerHandlers(offHandlers) {
-    // The in-progress streamed assistant message (reactive proxy) when the last
-    // message is one still streaming, else null. Streaming appends deltas to it;
-    // tool_call/done finalize it (streaming=false) so it stops being reused.
-    function liveStreamMsg() {
-      const arr = agentMessages.value
+    // Throttled streaming buffer per conversation. Commits deltas to the
+    // in-progress assistant message ~every 40ms; flushed before a tool_call/
+    // done/stopped finalizes the turn.
+    const pending = {}   // conversationId => { text, reason }
+    const timers  = {}
+
+    function liveStreamMsg(cid) {
+      const arr = messages(cid)
       const last = arr[arr.length - 1]
       return (last && last.kind === 'assistant' && last.streaming) ? last : null
     }
 
-    // Throttle streamed deltas: accumulate in a plain buffer and commit to the
-    // reactive message at most ~every 40ms, so a fast token stream triggers
-    // ~25 re-renders/sec instead of one per token. Flushed synchronously before
-    // a tool_call/done finalizes the turn so no trailing text is dropped.
-    let _pendText = ''
-    let _pendReason = ''
-    let _flushTimer = null
-    function _commitStream() {
-      _flushTimer = null
-      const msg = liveStreamMsg()
-      if (!msg) { _pendText = ''; _pendReason = ''; return }
-      if (_pendText)   { msg.text = (msg.text || '') + _pendText; _pendText = '' }
-      if (_pendReason) { msg.reasoning = (msg.reasoning || '') + _pendReason; _pendReason = '' }
-    }
-    function _flushStream() {
-      if (_flushTimer) { clearTimeout(_flushTimer); _flushTimer = null }
-      _commitStream()
+    function commitStream(cid) {
+      timers[cid] = null
+      const msg = liveStreamMsg(cid)
+      const p = pending[cid]
+      if (!msg) { if (p) { p.text = ''; p.reason = '' }; return }
+      if (p) {
+        if (p.text)   { msg.text = (msg.text || '') + p.text; p.text = '' }
+        if (p.reason) { msg.reasoning = (msg.reasoning || '') + p.reason; p.reason = '' }
+      }
     }
 
+    function flushStream(cid) {
+      if (timers[cid]) { clearTimeout(timers[cid]); timers[cid] = null }
+      commitStream(cid)
+    }
+
+    function pushAssistant(cid, obj) { messages(cid).push({ kind: 'assistant', ...obj }) }
+
     offHandlers.push(
-      // The worker assigns a fresh session on every (re)connect (e.g. after a
-      // worker restart), so re-request the agent list whenever the socket
-      // comes up. Without this, an agent pane opened before the socket was
-      // ready — or one that outlived a worker restart — would keep showing an
-      // empty list. Mirrors ExplorerPane's tree refresh on 'system:connected'.
+      // The worker assigns a fresh session on every (re)connect; re-request
+      // the catalog + recent list whenever the socket comes up.
       workerSocket.on('system', 'connected', () => {
         workerSocket.send('agent', 'list', {})
         workerSocket.send('agent', 'recent', { limit: 25 })
@@ -143,24 +140,20 @@ export function useAgents({ error, bindTabToActivePane }) {
       workerSocket.on('agent', 'list', (p) => {
         agentList.value = Array.isArray(p?.agents) ? p.agents : []
         agentListLoaded.value = true
-        // Default to first 'coder' or whatever's enabled if nothing picked.
-        if (!agentSelectedSlug.value && agentList.value.length) {
-          const preferred = agentList.value.find(a => a.role === 'coder') || agentList.value[0]
-          agentSelectedSlug.value = preferred.slug
-        }
       }),
       workerSocket.on('agent', 'started', (p) => {
-        if (p?.conversation_id) agentConversationId.value = p.conversation_id
+        const cid = p?.conversation_id
+        if (cid) store.ensureAgentConversation(cid)
         debugLog.push({ source: 'agent', action: 'started',
-          detail: `convo=${p?.conversation_id || '?'} agent=${p?.agent || '?'}` })
+          detail: `convo=${cid || '?'} agent=${p?.agent || '?'}` })
       }),
-      // Another user's question in a shared conversation. The worker excludes
-      // the originating socket only, so the same user's other sessions also
-      // receive this. Guard on conversation_id so one thread's messages never
-      // leak into whichever thread is currently on screen.
       workerSocket.on('agent', 'user_turn', (p) => {
-        if (p?.conversation_id && p.conversation_id !== agentConversationId.value) return
-        agentMessages.value.push({
+        const cid = p?.conversation_id
+        if (!cid) return
+        // The sender already pushed this locally; only other subscribers
+        // receive it. Routing is by conversation id, so it can't leak into
+        // another thread.
+        messages(cid).push({
           kind: 'user',
           text: p?.text ?? '',
           images: Array.isArray(p?.images) ? p.images : null,
@@ -168,31 +161,25 @@ export function useAgents({ error, bindTabToActivePane }) {
           name: p?.name ?? null,
         })
         debugLog.push({ source: 'agent', action: 'user_turn',
-          detail: `convo=${p?.conversation_id || '?'} user=${p?.user_id || '?'}` })
+          detail: `convo=${cid} user=${p?.user_id || '?'}` })
       }),
-      // Incremental assistant output. `delta` is reply text; `reasoning_delta`
-      // is the model's thinking (Qwen3/DeepSeek). Both accumulate onto a single
-      // in-progress assistant message that the timeline renders live.
       workerSocket.on('agent', 'stream', (p) => {
-        if (!liveStreamMsg()) {
-          agentMessages.value.push({ kind: 'assistant', text: '', reasoning: '', streaming: true })
-        }
-        if (p?.delta != null)           _pendText   += String(p.delta)
-        if (p?.reasoning_delta != null) _pendReason += String(p.reasoning_delta)
-        if (!_flushTimer) _flushTimer = setTimeout(_commitStream, 40)
-        agentStatus.value = 'thinking'
+        const cid = p?.conversation_id
+        if (!cid) return
+        if (!liveStreamMsg(cid)) pushAssistant(cid, { text: '', reasoning: '', streaming: true })
+        if (!pending[cid]) pending[cid] = { text: '', reason: '' }
+        if (p?.delta != null)           pending[cid].text   += String(p.delta)
+        if (p?.reasoning_delta != null) pending[cid].reason += String(p.reasoning_delta)
+        if (!timers[cid]) timers[cid] = setTimeout(() => commitStream(cid), 40)
+        agentStatusByConversation.value[cid] = 'thinking'
       }),
       workerSocket.on('agent', 'tool_call', (p) => {
-        // A tool-call ends the assistant's text turn; stop streaming into it.
-        _flushStream()
-        const live = liveStreamMsg()
+        const cid = p?.conversation_id
+        if (!cid) return
+        flushStream(cid)
+        const live = liveStreamMsg(cid)
         if (live) live.streaming = false
-        agentMessages.value.push({
-          kind: 'tool_call',
-          id:   p?.call_id,
-          name: p?.tool,
-          args: p?.args,
-        })
+        messages(cid).push({ kind: 'tool_call', id: p?.call_id, name: p?.tool, args: p?.args })
         let argSummary = ''
         try { argSummary = JSON.stringify(p?.args || {}) } catch { argSummary = '?' }
         if (argSummary.length > 120) argSummary = argSummary.slice(0, 117) + '…'
@@ -200,12 +187,9 @@ export function useAgents({ error, bindTabToActivePane }) {
           detail: `${p?.tool || '?'}(${argSummary})` })
       }),
       workerSocket.on('agent', 'tool_result', (p) => {
-        agentMessages.value.push({
-          kind:   'tool_result',
-          id:     p?.call_id,
-          name:   p?.tool,
-          result: p?.result,
-        })
+        const cid = p?.conversation_id
+        if (!cid) return
+        messages(cid).push({ kind: 'tool_result', id: p?.call_id, name: p?.tool, result: p?.result })
         const r = p?.result
         let summary = ''
         if (r && typeof r === 'object') {
@@ -214,130 +198,112 @@ export function useAgents({ error, bindTabToActivePane }) {
           else if (Array.isArray(r.entries)) summary = `entries=${r.entries.length}`
           else if (typeof r.content === 'string') summary = `bytes=${r.content.length}${r.truncated?' trunc':''}`
           else summary = Object.keys(r).slice(0,4).join(',')
-        } else if (typeof r === 'string') {
-          summary = `len=${r.length}`
-        }
-        debugLog.push({ source: 'agent',
-          severity: r && r.error ? 'error' : 'ok',
+        } else if (typeof r === 'string') summary = `len=${r.length}`
+        debugLog.push({ source: 'agent', severity: r && r.error ? 'error' : 'ok',
           action: 'tool_result', detail: `${p?.tool || '?'} ${summary}` })
       }),
       workerSocket.on('agent', 'stopped', (p) => {
-        _flushStream()
-        const live = liveStreamMsg()
+        const cid = p?.conversation_id
+        if (!cid) return
+        flushStream(cid)
+        const live = liveStreamMsg(cid)
         if (live) {
           live.streaming = false
-          if (live.text) {
-            // Keep the partial reply; flag it so AgentPane shows a "stopped"
-            // marker without discarding what already streamed.
-            live.stopped = true
-          } else {
-            live.text = '(stopped)'
-            live.muted = true
-          }
+          if (live.text) { live.stopped = true }
+          else { live.text = '(stopped)'; live.muted = true }
         } else {
-          agentMessages.value.push({ kind: 'assistant', text: '(stopped)', muted: true })
+          pushAssistant(cid, { text: '(stopped)', muted: true })
         }
-        agentStatus.value = 'idle'
+        agentStatusByConversation.value[cid] = 'idle'
         debugLog.push({ source: 'agent', action: 'stopped',
-          detail: `convo=${p?.conversation_id || '?'} turn=${p?.turn ?? '?'}` })
+          detail: `convo=${cid} turn=${p?.turn ?? '?'}` })
       }),
       workerSocket.on('agent', 'done', (p) => {
-        _flushStream()
+        const cid = p?.conversation_id
+        if (!cid) return
+        flushStream(cid)
         const finish    = p?.finish_reason || null
         const reasoning = p?.reasoning || null
         const truncated = finish === 'length'
-        // If we streamed this turn, finalize the in-progress message with the
-        // server's authoritative content/reasoning instead of appending a
-        // duplicate. Otherwise (non-streaming fallback) push a fresh message.
-        const live = liveStreamMsg()
+        const live = liveStreamMsg(cid)
         if (live) {
-          live.streaming     = false
+          live.streaming = false
           live.finish_reason = finish
-          live.truncated     = truncated
-          if (reasoning)  live.reasoning = reasoning
+          live.truncated = truncated
+          if (reasoning) live.reasoning = reasoning
           if (p?.content) live.text = String(p.content)
           if (!live.text) {
             if (truncated) { live.text = '(response truncated — increase model context window)'; live.muted = true }
             else           { live.text = '(no reply)'; live.muted = true }
           }
         } else if (p?.content) {
-          agentMessages.value.push({
-            kind: 'assistant', text: String(p.content),
-            finish_reason: finish, reasoning, truncated,
-          })
+          pushAssistant(cid, { text: String(p.content), finish_reason: finish, reasoning, truncated })
         } else if (truncated) {
-          // Model was cut off before it could emit any visible text. This is
-          // the case that used to render as a misleading "(no reply)" —
-          // typically caused by too-small context window in LM Studio /
-          // llama.cpp. The reasoning_content may still be useful so we
-          // attach it.
-          agentMessages.value.push({
-            kind: 'assistant',
-            text: '(response truncated — increase model context window)',
-            finish_reason: finish, reasoning, truncated: true, muted: true,
-          })
+          pushAssistant(cid, { text: '(response truncated — increase model context window)', finish_reason: finish, reasoning, truncated: true, muted: true })
         } else {
-          // The model finished its turn without producing any reply text
-          // (e.g. tool-only turn with finish_reason='stop'). Render a faint
-          // marker so the user knows the agent is no longer working.
-          agentMessages.value.push({
-            kind: 'assistant', text: '(no reply)',
-            finish_reason: finish, reasoning, muted: true,
-          })
+          pushAssistant(cid, { text: '(no reply)', finish_reason: finish, reasoning, muted: true })
         }
-        agentStatus.value = 'idle'
+        agentStatusByConversation.value[cid] = 'idle'
         debugLog.push({ source: 'agent',
           severity: truncated ? 'warn' : (p?.content ? 'ok' : 'warn'),
           action: 'done',
           detail: `turn=${p?.turn ?? '?'} finish=${finish || '?'} chars=${(p?.content || '').length}${reasoning ? ` reasoning=${reasoning.length}` : ''}` })
-        // Bump the recent list so this convo (or its updated timestamp)
-        // appears in the dropdown for everyone in the project.
         workerSocket.send('agent', 'recent', { limit: 25 })
       }),
       workerSocket.on('agent', 'error', (p) => {
+        const cid = p?.conversation_id
         const msg = p?.message || 'agent error'
-        agentMessages.value.push({ kind: 'error', text: msg })
-        agentStatus.value = 'error'
+        if (cid) {
+          messages(cid).push({ kind: 'error', text: msg })
+          agentStatusByConversation.value[cid] = 'error'
+        }
         debugLog.push({ source: 'agent', severity: 'error', action: 'error', detail: msg })
       }),
       workerSocket.on('agent', 'recent', (p) => {
         agentRecent.value = Array.isArray(p?.conversations) ? p.conversations : []
       }),
       workerSocket.on('agent', 'loaded', (p) => {
-        agentConversationId.value = p?.conversation_id || null
-        agentMessages.value       = Array.isArray(p?.messages) ? p.messages : []
-        agentStatus.value         = 'idle'
-        agentVisibility.value     = p?.visibility || 'project'
-        agentOwnerUserId.value    = p?.owner_user_id ?? null
-        agentOwnerIsSelf.value    = !!p?.owner_is_self
-        // Switch the agent picker to match the loaded conversation.
-        if (p?.agent && p.agent !== agentSelectedSlug.value) {
-          agentSelectedSlug.value = p.agent
-        }
+        const cid = p?.conversation_id
+        if (!cid) return
+        store.ensureAgentConversation(cid)
+        const arr = agentMessagesByConversation.value[cid]
+        arr.splice(0, arr.length, ...(Array.isArray(p?.messages) ? p.messages : []))
+        agentStatusByConversation.value[cid] = 'idle'
+        const m = meta(cid)
+        m.visibility = p?.visibility || 'project'
+        m.ownerUserId = p?.owner_user_id ?? null
+        m.ownerIsSelf = !!p?.owner_is_self
+        if (p?.agent) m.agentSlug = p.agent
         debugLog.push({ source: 'agent', action: 'loaded',
-          detail: `convo=${p?.conversation_id} msgs=${(p?.messages || []).length} vis=${p?.visibility}` })
+          detail: `convo=${cid} msgs=${(p?.messages || []).length} vis=${p?.visibility}` })
       }),
       workerSocket.on('agent', 'visibility_changed', (p) => {
-        // Update current convo if it matches; refresh recent dropdown.
-        if (p?.conversation_id === agentConversationId.value) {
-          agentVisibility.value = p.visibility
-        }
-        const row = agentRecent.value.find(c => c.conversation_id === p?.conversation_id)
+        const cid = p?.conversation_id
+        if (!cid) return
+        const m = meta(cid)
+        if (m) m.visibility = p.visibility
+        const row = agentRecent.value.find(c => c.conversation_id === cid)
         if (row) row.visibility = p.visibility
-        // Re-pull recents in case a private->project flip newly exposes a row
-        // (or project->private hides one for non-owners).
         workerSocket.send('agent', 'recent', { limit: 25 })
         debugLog.push({ source: 'agent', action: 'visibility_changed',
-          detail: `convo=${p?.conversation_id} -> ${p?.visibility}` })
+          detail: `convo=${cid} -> ${p?.visibility}` })
+      }),
+      workerSocket.on('agent', 'subscribed', (p) => {
+        debugLog.push({ source: 'agent', action: 'subscribed',
+          detail: `convo=${p?.conversation_id || '?'}` })
+      }),
+      workerSocket.on('agent', 'unsubscribed', (p) => {
+        debugLog.push({ source: 'agent', action: 'unsubscribed',
+          detail: `convo=${p?.conversation_id || '?'}` })
       }),
     )
   }
 
   return {
-    agentList, agentSelectedSlug, agentConversationId, agentMessages, agentStatus,
-    agentRecent, agentVisibility, agentOwnerUserId, agentOwnerIsSelf,
-    openAgentPane, selectAgent, resetConversation, send,
-    loadConversation, setVisibility, stop,
+    agentList, agentListLoaded, agentRecent,
+    agentMessagesByConversation, agentStatusByConversation, agentMetaByConversation,
+    messages, status, meta,
+    openAgentPane, selectAgent, loadConversation, setVisibility, stop, send,
     registerHandlers,
   }
 }
