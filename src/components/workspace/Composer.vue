@@ -78,6 +78,8 @@ import UiButton from '../ui/UiButton.vue'
 
 const props = defineProps({
   connected: { type: Boolean, default: false },
+  agentSlug: { type: String, default: null },
+  agentStatus: { type: String, default: 'idle' },
 })
 const emit = defineEmits(['send'])
 
@@ -254,17 +256,17 @@ function onDrop(ev) {
 }
 
 const activeAgentName = computed(() => {
-  const a = (store.agentList || []).find(x => x.slug === store.agentSelectedSlug)
+  const a = (store.agentList || []).find(x => x.slug === props.agentSlug)
   return a?.name || 'agent'
 })
 
 const canSend = computed(() =>
-  props.connected && !!store.agentSelectedSlug && store.agentStatus !== 'thinking'
+  props.connected && !!props.agentSlug && props.agentStatus !== 'thinking'
 )
 const placeholder = computed(() => {
   if (!props.connected) return 'Disconnected.'
-  if (!store.agentSelectedSlug) return 'Pick an agent above.'
-  if (store.agentStatus === 'thinking') return 'Waiting for agent…'
+  if (!props.agentSlug) return 'Pick an agent above.'
+  if (props.agentStatus === 'thinking') return 'Waiting for agent…'
   return `Ask ${activeAgentName.value}…`
 })
 

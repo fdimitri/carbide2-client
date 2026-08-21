@@ -31,7 +31,7 @@ export function useAgents({ error, bindTabToActivePane }) {
   } = storeToRefs(store)
 
   function openAgentPane() {
-    bindTabToActivePane('agent', 0, 'Agent')
+    bindTabToActivePane('agent', '', 'Agent')
     // Refresh list each time the pane is opened (cheap, helps if admin
     // toggled an agent's enabled flag mid-session).
     workerSocket.send('agent', 'list', {})

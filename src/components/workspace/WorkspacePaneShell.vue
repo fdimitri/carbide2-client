@@ -95,12 +95,13 @@
     <div class="flex flex-col flex-1 overflow-hidden" v-show="activeTabKind === 'agent'">
       <AgentPane
         :connected="store.wsConnected"
-        @agent-send="(text, images) => emit('agent-send', text, images)"
-        @agent-reset="emit('agent-reset')"
-        @agent-pick="(slug) => emit('agent-pick', slug)"
+        :conversation-id="activeAgentConversationId"
+        @agent-send="(text, images) => emit('agent-send', activeAgentConversationId, text, images)"
+        @agent-reset="emit('agent-reset', activeAgentConversationId)"
+        @agent-pick="(slug) => emit('agent-pick', activeAgentConversationId, slug)"
         @agent-load="(id) => emit('agent-load', id)"
-        @agent-set-visibility="(vis) => emit('agent-set-visibility', vis)"
-        @agent-stop="emit('agent-stop')"
+        @agent-set-visibility="(vis) => emit('agent-set-visibility', activeAgentConversationId, vis)"
+        @agent-stop="emit('agent-stop', activeAgentConversationId)"
       />
     </div>
 
@@ -204,6 +205,12 @@ const activeSettingsProjectId = computed(() => {
 const activeChatChannelId = computed(() => {
   if (activeTabKind.value !== 'channel') return null
   return Number((effectiveActiveKey.value || '').split(':')[1]) || null
+})
+
+const activeAgentConversationId = computed(() => {
+  if (activeTabKind.value !== 'agent') return null
+  const id = (effectiveActiveKey.value || '').split(':').slice(1).join(':') || null
+  return id || null
 })
 
 const paneMessages = computed(() => {

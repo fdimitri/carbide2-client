@@ -9,7 +9,7 @@
     <PaneToolbar class="text-ui-md">
       <label class="opacity-70">Agent:</label>
       <select
-        :value="store.agentSelectedSlug || ''"
+        :value="selectedSlug || ''"
         @change="onPickAgent($event.target.value)"
         :disabled="!agents.length"
         class="px-1.5 py-1 rounded-ui-xs border monaco-input-bg monaco-input-fg monaco-input-border outline-none"
@@ -23,11 +23,11 @@
         {{ activeAgentMeta }}
       </span>
       <span class="ml-auto flex items-center gap-2">
-        <span v-if="store.agentStatus === 'thinking'" class="text-ui-xs opacity-70 italic">thinking…</span>
+        <span v-if="convoStatus === 'thinking'" class="text-ui-xs opacity-70 italic">thinking…</span>
         <UiButton
           size="xs"
           @click="onReset"
-          :disabled="store.agentStatus === 'thinking'"
+          :disabled="convoStatus === 'thinking'"
           title="Start a fresh conversation"
         >New</UiButton>
       </span>
@@ -37,7 +37,7 @@
     <PaneToolbar class="text-ui-sm">
       <label class="opacity-70">Conversation:</label>
       <select
-        :value="store.agentConversationId || ''"
+        :value="convId || ''"
         @change="onPickConversation($event.target.value)"
         class="flex-1 min-w-0 px-1.5 py-0.5 rounded-ui-xs border monaco-input-bg monaco-input-fg monaco-input-border outline-none"
       >
@@ -47,22 +47,22 @@
         </option>
       </select>
       <UiButton
-        v-if="store.agentConversationId && store.agentOwnerIsSelf"
+        v-if="convId && convoMeta.ownerIsSelf"
         size="xs"
         @click="onToggleVisibility"
-        :title="store.agentVisibility === 'project' ? 'Click to make private' : 'Click to share with project'"
+        :title="convoMeta.visibility === 'project' ? 'Click to make private' : 'Click to share with project'"
       >
-        {{ store.agentVisibility === 'project' ? '🌐 shared' : '🔒 private' }}
+        {{ convoMeta.visibility === 'project' ? '🌐 shared' : '🔒 private' }}
       </UiButton>
       <span
-        v-else-if="store.agentConversationId && !store.agentOwnerIsSelf"
+        v-else-if="convId && !convoMeta.ownerIsSelf"
         class="text-ui-xs opacity-60 italic"
         :title="'Owned by another user — read-only view'"
       >watching</span>
       <UiButton
         size="xs"
         variant="warn"
-        :disabled="store.agentStatus !== 'thinking'"
+        :disabled="convoStatus !== 'thinking'"
         title="Stop the agent (interrupt model + tool activity)"
         @click="onStop"
       >Stop</UiButton>
@@ -70,10 +70,10 @@
 
     <!-- Timeline -->
     <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-2 min-h-0" ref="scrollEl" @scroll="onScroll">
-      <div v-if="!messages.length && !store.agentSelectedSlug && store.agentListLoaded && !agents.length" class="flex-1 grid place-items-center monaco-line-fg p-4 text-ui-lg">
+      <div v-if="!messages.length && !selectedSlug && store.agentListLoaded && !agents.length" class="flex-1 grid place-items-center monaco-line-fg p-4 text-ui-lg">
         No agents seeded. Run <code>rails db:seed</code>.
       </div>
-      <div v-else-if="!messages.length && !store.agentSelectedSlug" class="flex-1 grid place-items-center monaco-line-fg p-4 text-ui-lg">
+      <div v-else-if="!messages.length && !selectedSlug" class="flex-1 grid place-items-center monaco-line-fg p-4 text-ui-lg">
         Loading agents…
       </div>
       <div v-else-if="!messages.length" class="flex-1 grid place-items-center monaco-line-fg p-4 text-ui-lg">
@@ -112,7 +112,7 @@
 
         <!-- Assistant turn — one Coder header, then its tool calls + reply -->
         <div v-else-if="m.kind === 'assistant_turn'" class="flex items-start gap-2">
-          <Avatar :id="store.agentSelectedSlug || activeAgentName" :name="activeAgentName" />
+          <Avatar :id="selectedSlug || activeAgentName" :name="activeAgentName" />
           <div class="flex flex-col min-w-0 gap-1">
             <span class="text-ui-md font-semibold">{{ activeAgentName }}</span>
             <template v-for="(item, ii) in m.items" :key="ii">
@@ -182,7 +182,7 @@
     </div>
 
     <!-- Composer (isolated so typing doesn't re-render the timeline) -->
-    <Composer :connected="connected" @send="onComposerSend" />
+    <Composer :connected="connected" :agent-slug="selectedSlug" :agent-status="convoStatus" @send="onComposerSend" />
   </div>
 </template>
 
@@ -198,14 +198,19 @@ import authService from '../../services/authService'
 
 const props = defineProps({
   connected: { type: Boolean, default: false },
+  conversationId: { type: String, default: null },
 })
-const emit = defineEmits(['agent-send', 'agent-reset', 'agent-pick', 'agent-load', 'agent-set-visibility', 'agent-stop'])
+const emit = defineEmits(['agent-send', 'agent-reset', 'agent-pick', 'agent-load', 'agent-set-visibility', 'agent-stop', 'agent-create'])
 
 const store    = useWorkspaceStore()
 const scrollEl = ref(null)
 
 const agents   = computed(() => store.agentList || [])
-const messages = computed(() => store.agentMessages || [])
+const convId   = computed(() => props.conversationId || null)
+const messages = computed(() => store.agentMessagesFor(convId.value))
+const convoStatus = computed(() => store.agentStatusFor(convId.value))
+const convoMeta   = computed(() => store.agentMetaFor(convId.value))
+const selectedSlug = computed(() => convoMeta.value.agentSlug)
 
 // Merge each tool_call with its matching tool_result (same call id) into a
 // single row, so a tool invocation reads as one line — name(args) → summary —
@@ -301,7 +306,7 @@ function userLabel(m) {
 }
 
 const activeAgent = computed(() =>
-  agents.value.find(a => a.slug === store.agentSelectedSlug) || null
+  agents.value.find(a => a.slug === selectedSlug.value) || null
 )
 const activeAgentName = computed(() => activeAgent.value?.name || 'agent')
 const activeAgentMeta = computed(() => {
@@ -324,12 +329,12 @@ function onStop()   { emit('agent-stop') }
 
 function onPickConversation(id) {
   if (!id) { emit('agent-reset'); return }
-  if (id === store.agentConversationId) return
+  if (id === convId.value) return
   emit('agent-load', id)
 }
 
 function onToggleVisibility() {
-  const next = store.agentVisibility === 'project' ? 'private' : 'project'
+  const next = convoMeta.value.visibility === 'project' ? 'private' : 'project'
   emit('agent-set-visibility', next)
 }
 
@@ -407,7 +412,7 @@ let pinned = true
 const scrollPositions = new Map()   // conversationId -> scrollTop (only when not at bottom)
 
 function convoKey() {
-  return store.agentConversationId || '__new__'
+  return convId.value || '__new__'
 }
 
 function atBottom() {
@@ -467,7 +472,7 @@ watch(scrollSignal, async () => {
 
 // Conversation switch: restore the remembered position for that conversation,
 // or default to the bottom (newest content) for a first visit.
-watch(() => store.agentConversationId, async () => {
+watch(() => props.conversationId, async () => {
   await nextTick()
   applyPosition()
 })

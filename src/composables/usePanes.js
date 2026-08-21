@@ -76,10 +76,9 @@ export function usePanes({ activePane, pendingNavigation }) {
   function parseTabKey(key) {
     if (!key || typeof key !== 'string' || !key.includes(':')) return null
     const [kind, rawId] = key.split(':')
-    // file paths and terminal UUIDs are string identities; only channels use a
-    // numeric id. Terminals are keyed by their stable UUID (never the reusable
-    // integer id) so a recycled integer can't collide with a stale tab ref.
-    if (kind === 'file' || kind === 'terminal') return { kind, id: rawId }
+    // file paths, terminal UUIDs, and agent conversation UUIDs are string
+    // identities. channels use numeric id; agent-config/debug stay :0 singletons.
+    if (kind === 'file' || kind === 'terminal' || kind === 'agent') return { kind, id: rawId }
     return { kind, id: Number(rawId) }
   }
 
