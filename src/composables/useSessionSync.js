@@ -40,7 +40,7 @@ const EMIT_DEBOUNCE_MS = 200
 //   localStorage key under which we remember the last session_uuid we owned, so
 //   a full page reload can silently re-resume it (if it isn't in use elsewhere).
 //   A mid-life WS drop doesn't need it — the store keeps sessionUuid in memory.
-export function useSessionSync({ bindActiveSurface = null, storageKey = null } = {}) {
+export function useSessionSync({ bindActiveSurface = null, storageKey = null, onHydrated = null } = {}) {
   const store = useSessionStore()
 
   // The last wire doc we've reconciled with the server — the diff baseline. Also
@@ -155,6 +155,9 @@ export function useSessionSync({ bindActiveSurface = null, storageKey = null } =
     lastSentDoc = store.toDoc()
     if (role === 'producer') persistUuid(store.sessionUuid)
     bindActiveSurfaces()
+    // Hydrate-only hook (NOT called on every patch): used for surfaces whose
+    // re-bind is expensive (agent load+subscribe) rather than cheap/idempotent.
+    if (typeof onHydrated === 'function') onHydrated(store)
   }
 
   function onCreated(payload)  { hydrate(payload, 'producer') }

@@ -22,7 +22,7 @@ import authService from '../services/authService'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import { useDebugLogStore } from '../stores/debugLogStore'
 
-export function useAgents({ error, bindTabToActivePane }) {
+export function useAgents({ error, bindTabToActivePane, onConversationLoaded = null }) {
   const store    = useWorkspaceStore()
   const debugLog = useDebugLogStore()
   const {
@@ -54,6 +54,27 @@ export function useAgents({ error, bindTabToActivePane }) {
     if (!conversationId) return
     workerSocket.send('agent', 'load', { conversation_id: conversationId })
     workerSocket.send('agent', 'subscribe', { conversation_id: conversationId })
+  }
+
+  // Ref-counted unsubscribe: callers increment/decrement per pane tab reference.
+  // The worker subscription is released only at 0 refs; the buffered transcript
+  // is released at 0 refs too.
+  const refCounts = new Map()
+  function retain(conversationId) {
+    if (!conversationId) return
+    const n = refCounts.get(conversationId) || 0
+    refCounts.set(conversationId, n + 1)
+  }
+  function release(conversationId) {
+    if (!conversationId) return
+    const n = refCounts.get(conversationId) || 0
+    if (n <= 1) {
+      refCounts.delete(conversationId)
+      workerSocket.send('agent', 'unsubscribe', { conversation_id: conversationId })
+      store.releaseAgentConversation(conversationId)
+    } else {
+      refCounts.set(conversationId, n - 1)
+    }
   }
 
   // Message-less create: worker mints the UUID, resolves the promise with it.
@@ -305,6 +326,7 @@ export function useAgents({ error, bindTabToActivePane }) {
         m.ownerUserId = p?.owner_user_id ?? null
         m.ownerIsSelf = !!p?.owner_is_self
         if (p?.agent) m.agentSlug = p.agent
+        if (typeof onConversationLoaded === 'function') onConversationLoaded(cid, p?.agent || null)
         debugLog.push({ source: 'agent', action: 'loaded',
           detail: `convo=${cid} msgs=${(p?.messages || []).length} vis=${p?.visibility}` })
       }),
@@ -335,6 +357,7 @@ export function useAgents({ error, bindTabToActivePane }) {
     agentMessagesByConversation, agentStatusByConversation, agentMetaByConversation,
     messages, status, meta,
     openAgentPane, selectAgent, loadConversation, createConversation,
+    retain, release,
     setVisibility, stop, send, releaseAgentConversation: store.releaseAgentConversation,
     registerHandlers,
   }

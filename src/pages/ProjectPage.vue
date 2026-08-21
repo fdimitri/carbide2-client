@@ -99,7 +99,7 @@
               @pane-drop="onPaneDrop"
               @set-active-pane="setActivePane($event)"
               @activate-tab="activatePaneTab"
-              @close-tab="closePaneTab"
+              @close-tab="handleCloseTab"
               @tab-drag-start="onTabDragStart"
               @tab-drop="onTabDrop"
               @rename-terminal="renameSelectedTerminal"
@@ -111,7 +111,7 @@
               @agent-send="handleAgentSend"
               @agent-reset="handleAgentReset"
               @agent-pick="handleAgentPick"
-              @agent-load="agents.loadConversation"
+              @agent-load="handleAgentLoad"
               @agent-set-visibility="agents.setVisibility"
               @agent-stop="agents.stop"
             />
@@ -133,7 +133,7 @@
                   @pane-drop="onPaneDrop"
                   @set-active-pane="setActivePane($event)"
                   @activate-tab="activatePaneTab"
-                  @close-tab="closePaneTab"
+                  @close-tab="handleCloseTab"
                   @tab-drag-start="onTabDragStart"
                   @tab-drop="onTabDrop"
                   @rename-terminal="renameSelectedTerminal"
@@ -145,7 +145,7 @@
                   @agent-send="handleAgentSend"
                   @agent-reset="handleAgentReset"
                   @agent-pick="handleAgentPick"
-                  @agent-load="agents.loadConversation"
+                  @agent-load="handleAgentLoad"
                   @agent-set-visibility="agents.setVisibility"
                   @agent-stop="agents.stop"
                 />
@@ -312,6 +312,18 @@ const sessionSync = useSessionSync({
   bindActiveSurface: (tab) => {
     if (tab?.kind === 'channel') selectChannelNode(tab.id, { skipPaneTab: true })
   },
+  onHydrated: (sessionStore) => {
+    // Rehydrate each pane's ACTIVE agent tab (bounded: one per pane). This is
+    // hydrate/resume-only; inactive agent tabs bind on activation.
+    for (const pane of sessionStore.panes) {
+      const key = pane?.activeTab
+      if (!key || !key.startsWith('agent:')) continue
+      const id = key.slice('agent:'.length)
+      if (!id) continue
+      agents.loadConversation(id)
+      agents.retain(id)
+    }
+  },
 })
 
 // Reactive session identity + picker list (populated by session/list).
@@ -354,7 +366,17 @@ const {
   registerHandlers: registerChatHandlers, init: initChat, cleanup: cleanupChat,
 } = chat
 
-const agents = useAgents({ error, bindTabToActivePane })
+const agents = useAgents({ error, bindTabToActivePane,
+  onConversationLoaded: (cid, slug) => {
+    // Backfill the authoritative agent slug onto every tab referencing cid.
+    if (!slug) return
+    for (const pane of panes.value) {
+      for (const t of (pane.tabs || [])) {
+        if (t.kind === 'agent' && t.id === cid) t.agentSlug = slug
+      }
+    }
+  },
+})
 const { registerHandlers: registerAgentHandlers } = agents
 
 // Resolve the active agent tab in a pane (the tab whose key === pane.activeTab
@@ -375,6 +397,22 @@ function handleAgentPick(paneIndex, conversationId, slug) {
   if (conversationId) agents.selectAgent(conversationId, slug)
 }
 
+function handleAgentLoad(id) {
+  if (!id) return
+  agents.loadConversation(id)
+  agents.retain(id)
+}
+
+function handleCloseTab(paneIndex, key) {
+  // If the closed tab was an agent:<uuid>, release its reference. At 0 refs the
+  // worker subscription is dropped and the buffered transcript is released.
+  if (typeof key === 'string' && key.startsWith('agent:')) {
+    const cid = key.slice('agent:'.length)
+    if (cid) agents.release(cid)
+  }
+  closePaneTab(paneIndex, key)
+}
+
 async function handleAgentSend(paneIndex, conversationId, text, images) {
   const tab = activeAgentTab(paneIndex)
   if (!tab) return
@@ -388,16 +426,17 @@ async function handleAgentSend(paneIndex, conversationId, text, images) {
     tab.id  = cid
     pane.activeTab = tab.key
     agents.selectAgent(cid, tab.agentSlug)
+    agents.retain(cid)
   }
   agents.send(cid, text, images)
 }
 
 function handleAgentReset(paneIndex, conversationId) {
   // A "new conversation" replaces this pane's agent tab with a fresh one,
-  // dropping any buffered state for the old id.
+  // dropping the reference to the old conversation.
   const pane = panes.value[paneIndex]
   if (!pane) return
-  if (conversationId) agents.releaseAgentConversation?.(conversationId)
+  if (conversationId) agents.release(conversationId)
   const label = 'Agent'
   const key = 'agent:'
   pane.tabs = (pane.tabs || []).filter((t) => t.kind !== 'agent' || t.key !== pane.activeTab)
