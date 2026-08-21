@@ -41,6 +41,36 @@ export const SESSION_CS          = 'session' // commandSet name (worker ROUTES)
 export const SESSION_DOC_VERSION = 1          // bump on a breaking doc-shape change
 export const PANE_SLOTS          = 4          // usePanes keeps 4 fixed pane slots
 
+// Placeholder large-jump threshold for the distance gate (#86). The real
+// threshold is deliberately undefined until we have the facts of a real problem.
+export const LARGE_JUMP_THRESHOLD = 5
+
+// Decide whether a session row is a "large jump" relative to this client.
+// Consults doc_version AND version_history (a chimera doc touched by a far-future
+// version is still a large jump even if its last writer demoted it). A row with
+// forked_from set was produced by a deliberate fork (consent-by-lineage), so the
+// gate does not re-trigger.
+export function sessionGateInfo(session) {
+  const current = SESSION_DOC_VERSION
+  const versions = new Set()
+  if (session?.doc_version != null) versions.add(Number(session.doc_version))
+  for (const v of (session?.version_history || [])) {
+    if (v != null) versions.add(Number(v))
+  }
+  let maxFuture = current
+  for (const v of versions) {
+    if (Number.isFinite(v) && v > maxFuture) maxFuture = v
+  }
+  const distance = maxFuture - current
+  return {
+    distance,
+    largeJump: distance >= LARGE_JUMP_THRESHOLD,
+    forkedFrom: session?.forked_from ?? null,
+    // A large jump only gates the load if it wasn't already a deliberate fork.
+    gated: distance >= LARGE_JUMP_THRESHOLD && !session?.forked_from,
+  }
+}
+
 // Tab kinds this build can render/parse. Anything else is "from the future" and
 // is preserved raw (kept in the doc, not rendered) rather than dropped.
 export const KNOWN_TAB_KINDS = new Set([

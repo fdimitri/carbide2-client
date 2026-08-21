@@ -21,7 +21,7 @@
 import { watch } from 'vue'
 import workerSocket from '../services/workerSocket'
 import { logInfo, logWs } from '../services/log'
-import { useSessionStore, diffSessionDoc, SESSION_CS, SESSION_DOC_VERSION } from '../stores/sessionStore'
+import { useSessionStore, diffSessionDoc, sessionGateInfo, SESSION_CS, SESSION_DOC_VERSION } from '../stores/sessionStore'
 import { VERSION, CLIENT_SHA } from '../version'
 
 // Coalesce a burst of layout mutations (a drag, a multi-step layout switch) into
@@ -200,15 +200,17 @@ export function useSessionSync({ bindActiveSurface = null, storageKey = null } =
     // the same SESSION_DOC_VERSION. A differing build SHA alone is fine to resume
     // (the picker still flags it); a differing doc_version is not our first pick.
     const matches = (s) => (s.doc_version ?? null) === SESSION_DOC_VERSION
-    // Prefer: the exact session we last owned (if version-compatible and free),
-    // then the newest free version-MATCHING session, then any free session
-    // (mismatch is resumable — the picker flags it — but not our first choice),
-    // else start fresh.
+    // Auto-resume must not silently drive a fork: a large-jump (gated) session is
+    // skipped unless it is already a deliberate fork (consent-by-lineage).
+    const loadable = (s) => !sessionGateInfo(s).gated
+    // Prefer: the exact session we last owned (if version-compatible, loadable,
+    // and free), then the newest free version-MATCHING loadable session, then any
+    // free loadable session, else start fresh.
     const pick =
-      list.find((s) => s.session_uuid === preferred && !s.in_use && matches(s)) ||
-      list.find((s) => !s.in_use && matches(s)) ||
-      list.find((s) => s.session_uuid === preferred && !s.in_use) ||
-      list.find((s) => !s.in_use)
+      list.find((s) => s.session_uuid === preferred && !s.in_use && matches(s) && loadable(s)) ||
+      list.find((s) => !s.in_use && matches(s) && loadable(s)) ||
+      list.find((s) => s.session_uuid === preferred && !s.in_use && loadable(s)) ||
+      list.find((s) => !s.in_use && loadable(s))
     if (pick) resume(pick.session_uuid)
     else      create()
   }

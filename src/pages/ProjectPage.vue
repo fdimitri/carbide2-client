@@ -258,7 +258,7 @@ import { listProjects, getWsToken, uploadProjectFile, importProjectFromDisk } fr
 import { storeToRefs } from 'pinia'
 import { usePanes, PANE_COUNTS } from '../composables/usePanes'
 import { useSessionSync } from '../composables/useSessionSync'
-import { useSessionStore, SESSION_DOC_VERSION } from '../stores/sessionStore'
+import { useSessionStore, sessionGateInfo, SESSION_DOC_VERSION } from '../stores/sessionStore'
 import { CLIENT_SHA } from '../version'
 import { useTerminals } from '../composables/useTerminals'
 import { useChat } from '../composables/useChat'
@@ -556,9 +556,26 @@ function onSessionSelect(event) {
 
 function switchSession(uuid) {
   if (!uuid || uuid === currentSessionUuid.value) return
+  const s = sessionList.value.find((x) => x.session_uuid === uuid)
+  if (!s) return
+  // Distance gate (#86): a far-future doc is not loaded in place; offer a fork.
+  // Consent-by-lineage: a session we already forked bypasses the gate.
+  const g = sessionGateInfo(s)
+  if (g.gated) {
+    forkSession(s)
+    return
+  }
   // resume → server replies session/resumed → useSessionSync hydrates the store,
   // re-baselines the emitter, and re-binds the active surfaces.
   sessionSync.resume(uuid)
+}
+
+function forkSession(s) {
+  const label = s.name || `Session ${String(s.session_uuid).slice(0, 8)}`
+  const msg = `"${label}" uses a much newer session-document version (v${s.doc_version ?? '?'}) than this client.\n\n` +
+    'Try opening a faithful fork instead? (Unrecommended, but allowed.)'
+  if (!window.confirm(msg)) return
+  sessionSync.create({ fromUuid: s.session_uuid })
 }
 
 function deleteSession(uuid) {
