@@ -56,6 +56,25 @@ export function useAgents({ error, bindTabToActivePane }) {
     workerSocket.send('agent', 'subscribe', { conversation_id: conversationId })
   }
 
+  // Message-less create: worker mints the UUID, resolves the promise with it.
+  // Callers await this before sending the first ask (avoids temp-key promotion).
+  const pendingCreates = new Map()  // slug -> resolve fn(s)
+  function createConversation(slug) {
+    return new Promise((resolve, reject) => {
+      if (!slug) { reject(new Error('no agent slug')); return }
+      const waiters = pendingCreates.get(slug) || []
+      waiters.push(resolve)
+      pendingCreates.set(slug, waiters)
+      workerSocket.send('agent', 'create', { agent_slug: slug })
+      // Safety net: don't leave a waiter hanging forever if ack is lost.
+      setTimeout(() => {
+        const list = pendingCreates.get(slug) || []
+        const i = list.indexOf(resolve)
+        if (i >= 0) { list.splice(i, 1); reject(new Error('agent/create timed out')) }
+      }, 8000)
+    })
+  }
+
   function setVisibility(conversationId, visibility) {
     if (!conversationId) return
     workerSocket.send('agent', 'set_visibility', {
@@ -146,6 +165,18 @@ export function useAgents({ error, bindTabToActivePane }) {
         if (cid) store.ensureAgentConversation(cid)
         debugLog.push({ source: 'agent', action: 'started',
           detail: `convo=${cid || '?'} agent=${p?.agent || '?'}` })
+      }),
+      workerSocket.on('agent', 'created', (p) => {
+        const cid = p?.conversation_id
+        const slug = p?.agent
+        if (cid) store.ensureAgentConversation(cid)
+        if (slug && pendingCreates.has(slug)) {
+          const waiters = pendingCreates.get(slug)
+          pendingCreates.delete(slug)
+          waiters.forEach((resolve) => resolve(cid))
+        }
+        debugLog.push({ source: 'agent', action: 'created',
+          detail: `convo=${cid || '?'} agent=${slug || '?'}` })
       }),
       workerSocket.on('agent', 'user_turn', (p) => {
         const cid = p?.conversation_id
@@ -303,7 +334,8 @@ export function useAgents({ error, bindTabToActivePane }) {
     agentList, agentListLoaded, agentRecent,
     agentMessagesByConversation, agentStatusByConversation, agentMetaByConversation,
     messages, status, meta,
-    openAgentPane, selectAgent, loadConversation, setVisibility, stop, send,
+    openAgentPane, selectAgent, loadConversation, createConversation,
+    setVisibility, stop, send,
     registerHandlers,
   }
 }
