@@ -199,6 +199,7 @@ import authService from '../../services/authService'
 const props = defineProps({
   connected: { type: Boolean, default: false },
   conversationId: { type: String, default: null },
+  agentSlug: { type: String, default: null },
 })
 const emit = defineEmits(['agent-send', 'agent-reset', 'agent-pick', 'agent-load', 'agent-set-visibility', 'agent-stop', 'agent-create'])
 
@@ -210,7 +211,7 @@ const convId   = computed(() => props.conversationId || null)
 const messages = computed(() => store.agentMessagesFor(convId.value))
 const convoStatus = computed(() => store.agentStatusFor(convId.value))
 const convoMeta   = computed(() => store.agentMetaFor(convId.value))
-const selectedSlug = computed(() => convoMeta.value.agentSlug)
+const selectedSlug = computed(() => props.agentSlug || convoMeta.value.agentSlug || null)
 
 // Merge each tool_call with its matching tool_result (same call id) into a
 // single row, so a tool invocation reads as one line — name(args) → summary —

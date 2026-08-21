@@ -335,7 +335,7 @@ export function useAgents({ error, bindTabToActivePane }) {
     agentMessagesByConversation, agentStatusByConversation, agentMetaByConversation,
     messages, status, meta,
     openAgentPane, selectAgent, loadConversation, createConversation,
-    setVisibility, stop, send,
+    setVisibility, stop, send, releaseAgentConversation: store.releaseAgentConversation,
     registerHandlers,
   }
 }

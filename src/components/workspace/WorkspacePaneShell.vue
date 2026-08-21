@@ -96,9 +96,10 @@
       <AgentPane
         :connected="store.wsConnected"
         :conversation-id="activeAgentConversationId"
-        @agent-send="(text, images) => emit('agent-send', activeAgentConversationId, text, images)"
-        @agent-reset="emit('agent-reset', activeAgentConversationId)"
-        @agent-pick="(slug) => emit('agent-pick', activeAgentConversationId, slug)"
+        :agent-slug="activeAgentSlug"
+        @agent-send="(text, images) => emit('agent-send', paneIndex, activeAgentConversationId, text, images)"
+        @agent-reset="emit('agent-reset', paneIndex, activeAgentConversationId)"
+        @agent-pick="(slug) => emit('agent-pick', paneIndex, activeAgentConversationId, slug)"
         @agent-load="(id) => emit('agent-load', id)"
         @agent-set-visibility="(vis) => emit('agent-set-visibility', activeAgentConversationId, vis)"
         @agent-stop="emit('agent-stop', activeAgentConversationId)"
@@ -211,6 +212,12 @@ const activeAgentConversationId = computed(() => {
   if (activeTabKind.value !== 'agent') return null
   const id = (effectiveActiveKey.value || '').split(':').slice(1).join(':') || null
   return id || null
+})
+
+const activeAgentSlug = computed(() => {
+  if (activeTabKind.value !== 'agent') return null
+  const tab = props.pane?.tabs?.find((t) => t.key === effectiveActiveKey.value)
+  return tab?.agentSlug || null
 })
 
 const paneMessages = computed(() => {

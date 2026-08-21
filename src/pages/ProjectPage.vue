@@ -108,9 +108,9 @@
               @leave-call="rtc.leaveCall"
               @toggle-mic="rtc.toggleMic"
               @toggle-cam="rtc.toggleCam"
-              @agent-send="agents.send"
-              @agent-reset="agents.resetConversation"
-              @agent-pick="agents.selectAgent"
+              @agent-send="handleAgentSend"
+              @agent-reset="handleAgentReset"
+              @agent-pick="handleAgentPick"
               @agent-load="agents.loadConversation"
               @agent-set-visibility="agents.setVisibility"
               @agent-stop="agents.stop"
@@ -142,9 +142,9 @@
                   @leave-call="rtc.leaveCall"
                   @toggle-mic="rtc.toggleMic"
                   @toggle-cam="rtc.toggleCam"
-                  @agent-send="agents.send"
-                  @agent-reset="agents.resetConversation"
-                  @agent-pick="agents.selectAgent"
+                  @agent-send="handleAgentSend"
+                  @agent-reset="handleAgentReset"
+                  @agent-pick="handleAgentPick"
                   @agent-load="agents.loadConversation"
                   @agent-set-visibility="agents.setVisibility"
                   @agent-stop="agents.stop"
@@ -357,6 +357,54 @@ const {
 const agents = useAgents({ error, bindTabToActivePane })
 const { registerHandlers: registerAgentHandlers } = agents
 
+// Resolve the active agent tab in a pane (the tab whose key === pane.activeTab
+// and kind === 'agent').
+function activeAgentTab(paneIndex) {
+  const pane = panes.value[paneIndex]
+  if (!pane) return null
+  return (pane.tabs || []).find((t) => t.kind === 'agent' && t.key === pane.activeTab) || null
+}
+
+// Option B: the agent slug lives on the tab (per ADR v2 shape). For a fresh
+// `agent:` tab, pick just records the slug; the conversation is created on first
+// send, and the tab key is rewritten to `agent:<uuid>`.
+function handleAgentPick(paneIndex, conversationId, slug) {
+  const tab = activeAgentTab(paneIndex)
+  if (!tab) return
+  tab.agentSlug = slug
+  if (conversationId) agents.selectAgent(conversationId, slug)
+}
+
+async function handleAgentSend(paneIndex, conversationId, text, images) {
+  const tab = activeAgentTab(paneIndex)
+  if (!tab) return
+  let cid = conversationId
+  if (!cid) {
+    if (!tab.agentSlug) { error.value = 'Pick an agent first.'; return }
+    cid = await agents.createConversation(tab.agentSlug)
+    // Promote the fresh tab to its worker-assigned id.
+    const pane = panes.value[paneIndex]
+    tab.key = `agent:${cid}`
+    tab.id  = cid
+    pane.activeTab = tab.key
+    agents.selectAgent(cid, tab.agentSlug)
+  }
+  agents.send(cid, text, images)
+}
+
+function handleAgentReset(paneIndex, conversationId) {
+  // A "new conversation" replaces this pane's agent tab with a fresh one,
+  // dropping any buffered state for the old id.
+  const pane = panes.value[paneIndex]
+  if (!pane) return
+  if (conversationId) agents.releaseAgentConversation?.(conversationId)
+  const label = 'Agent'
+  const key = 'agent:'
+  pane.tabs = (pane.tabs || []).filter((t) => t.kind !== 'agent' || t.key !== pane.activeTab)
+  pane.tabs.push({ key, kind: 'agent', id: '', label, agentSlug: null })
+  pane.activeTab = key
+}
+
 const rtc = useRtc({ error })
 const { registerHandlers: registerRtcHandlers, cleanup: cleanupRtc } = rtc
 
@@ -487,7 +535,7 @@ const menuItems = computed(() => ([
     label: 'Agent',
     items: [
       { label: 'Open Agent Pane', icon: 'pi pi-sparkles', command: () => agents.openAgentPane() },
-      { label: 'New Conversation', icon: 'pi pi-refresh',  command: () => agents.resetConversation() },
+      { label: 'New Conversation', icon: 'pi pi-refresh',  command: () => handleAgentReset(activePaneIndex.value, null) },
       { separator: true },
       { label: 'Configure Agents…', icon: 'pi pi-sliders-h', command: () => bindTabToActivePane('agent-config', 0, 'Agent Config') },
     ]
