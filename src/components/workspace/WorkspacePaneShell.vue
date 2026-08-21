@@ -65,16 +65,16 @@
          stable uuid so it stays mounted for the tab's lifetime. Inactive tabs
          are hidden with v-show (not destroyed), so switching never remounts /
          rejoins / replays scrollback (#89). -->
-    <template v-for="tab in terminalTabs" :key="tab.uuid">
+    <template v-for="tab in terminalTabs" :key="tab.id">
       <div
         class="flex flex-col flex-1 overflow-hidden"
-        v-show="activeTabKind === 'terminal' && activeTerminalUuid === tab.uuid"
+        v-show="activeTabKind === 'terminal' && activeTerminalUuid === tab.id"
       >
         <TerminalPane
-          :terminal-id="terminalIdFor(tab.uuid)"
-          :active="paneIndex === activePaneIndex && activeTabKind === 'terminal' && activeTerminalUuid === tab.uuid"
-          :agent-busy="agentStateFor(tab.uuid).busy"
-          :agent-busy-until-ms="agentStateFor(tab.uuid).untilMs"
+          :terminal-id="terminalIdFor(tab.id)"
+          :active="paneIndex === activePaneIndex && activeTabKind === 'terminal' && activeTerminalUuid === tab.id"
+          :agent-busy="agentStateFor(tab.id).busy"
+          :agent-busy-until-ms="agentStateFor(tab.id).untilMs"
         />
       </div>
     </template>
@@ -169,6 +169,7 @@ const activeTerminalUuid = computed(() => {
 })
 
 // All terminal tabs in this pane (each gets a persistent renderer, #89).
+// For terminal tabs, `id` IS the stable uuid (see useTerminals.selectTerminalNode).
 const terminalTabs = computed(() =>
   (props.pane?.tabs || []).filter((t) => t.kind === 'terminal' && t.id)
 )
