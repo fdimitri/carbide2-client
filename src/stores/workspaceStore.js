@@ -40,27 +40,48 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const activeCalls      = ref({})
 
   // ── Agents (LLM tool-call sessions) ────────────────────────────────────────
-  // Single conversation per project for now. AgentPane reads/writes these
-  // directly; useAgents composable owns the WS handlers.
+  // Catalog + recent list are shared; live state is keyed by conversation id
+  // so multiple panes/conversations can coexist without cross-talk (#85).
   const agentList            = ref([])     // [{ slug, name, role, model, tools, description }]
   const agentListLoaded      = ref(false)  // true once an agent/list reply has arrived
-  const agentSelectedSlug    = ref(null)   // which agent the user is talking to
-  const agentConversationId  = ref(null)   // assigned by worker via agent/started
-  const agentMessages        = ref([])     // unified timeline:
-  //   { kind: 'user',          text }
-  //   { kind: 'assistant',     text }
-  //   { kind: 'tool_call',     id, name, args }
-  //   { kind: 'tool_result',   id, name, result }
-  //   { kind: 'system',        text }
-  //   { kind: 'error',         text }
-  const agentStatus          = ref('idle') // 'idle' | 'thinking' | 'error'
-  // Recent project-visible conversations (plus owner's privates).
-  // Server-pushed via 'agent/recent' on pane open + after activity.
+  const agentMessagesByConversation = ref({})  // { [conversation_id]: Message[] }
+  const agentStatusByConversation   = ref({})  // { [conversation_id]: 'idle'|'thinking'|'error' }
+  const agentMetaByConversation     = ref({})  // { [conversation_id]: { visibility, ownerUserId, ownerIsSelf, agentSlug } }
   const agentRecent          = ref([])
-  // Visibility of the currently-loaded conversation: 'project' | 'private' | null
-  const agentVisibility      = ref(null)
-  const agentOwnerUserId     = ref(null)   // who started current convo
-  const agentOwnerIsSelf     = ref(true)   // can we edit visibility / post?
+
+  function ensureAgentConversation(id) {
+    if (id == null || id === '') return null
+    const cid = String(id)
+    if (!agentMessagesByConversation.value[cid]) agentMessagesByConversation.value[cid] = []
+    if (!agentStatusByConversation.value[cid]) agentStatusByConversation.value[cid] = 'idle'
+    if (!agentMetaByConversation.value[cid]) {
+      agentMetaByConversation.value[cid] = { visibility: null, ownerUserId: null, ownerIsSelf: true, agentSlug: null }
+    }
+    return cid
+  }
+
+  function agentMessagesFor(id) {
+    const cid = ensureAgentConversation(id)
+    return cid ? agentMessagesByConversation.value[cid] : []
+  }
+
+  function agentStatusFor(id) {
+    const cid = ensureAgentConversation(id)
+    return cid ? agentStatusByConversation.value[cid] : 'idle'
+  }
+
+  function agentMetaFor(id) {
+    const cid = ensureAgentConversation(id)
+    return cid ? agentMetaByConversation.value[cid] : { visibility: null, ownerUserId: null, ownerIsSelf: true, agentSlug: null }
+  }
+
+  function releaseAgentConversation(id) {
+    if (id == null) return
+    const cid = String(id)
+    delete agentMessagesByConversation.value[cid]
+    delete agentStatusByConversation.value[cid]
+    delete agentMetaByConversation.value[cid]
+  }
 
   // ── Identity ───────────────────────────────────────────────────────────────
   // Name of the project currently open in the workspace. Set by ProjectPage on
@@ -90,14 +111,15 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     activeCalls,
     agentList,
     agentListLoaded,
-    agentSelectedSlug,
-    agentConversationId,
-    agentMessages,
-    agentStatus,
+    agentMessagesByConversation,
+    agentStatusByConversation,
+    agentMetaByConversation,
+    ensureAgentConversation,
+    agentMessagesFor,
+    agentStatusFor,
+    agentMetaFor,
+    releaseAgentConversation,
     agentRecent,
-    agentVisibility,
-    agentOwnerUserId,
-    agentOwnerIsSelf,
     projectName,
   }
 })
