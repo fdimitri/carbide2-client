@@ -100,7 +100,7 @@
         @agent-send="(text, images) => emit('agent-send', paneIndex, activeAgentConversationId, text, images)"
         @agent-reset="emit('agent-reset', paneIndex, activeAgentConversationId)"
         @agent-pick="(slug) => emit('agent-pick', paneIndex, activeAgentConversationId, slug)"
-        @agent-load="(id) => emit('agent-load', id)"
+        @agent-load="onAgentLoad"
         @agent-set-visibility="(vis) => emit('agent-set-visibility', activeAgentConversationId, vis)"
         @agent-stop="emit('agent-stop', activeAgentConversationId)"
       />
@@ -219,6 +219,19 @@ const activeAgentSlug = computed(() => {
   const tab = props.pane?.tabs?.find((t) => t.key === effectiveActiveKey.value)
   return tab?.agentSlug || null
 })
+
+// Picking a conversation from the pane's dropdown rewrites this pane's agent tab
+// key to agent:<id> (per-pane identity) before asking ProjectPage to load it.
+function onAgentLoad(id) {
+  if (!id) return
+  const tab = props.pane?.tabs?.find((t) => t.kind === 'agent' && t.key === effectiveActiveKey.value)
+  if (tab) {
+    tab.key = `agent:${id}`
+    tab.id  = id
+    props.pane.activeTab = tab.key
+  }
+  emit('agent-load', id)
+}
 
 const paneMessages = computed(() => {
   const cid = activeChatChannelId.value
