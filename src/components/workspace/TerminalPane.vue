@@ -185,15 +185,16 @@ watch(
   { immediate: true }
 )
 
-// On re-activation, focus the terminal but DO NOT fit/resize. The
-// ResizeObserver + window resize already handle real size changes; fitting
-// on every show was both wasteful and the likely trigger for the query-
-// response leak (#87).
+// On re-activation, focus + fit the terminal. fitTerminalSoon is 0×0-guarded,
+// so it no-ops while hidden and fits once the pane is actually visible. This
+// gives a second chance to fit beyond the ResizeObserver, without the old
+// unbounded fit-on-every-show churn.
 watch(
   () => props.active,
   async (active) => {
     if (!active || !xterm) return
     await nextTick()
+    fitTerminalSoon()
     xterm.focus()
   }
 )
