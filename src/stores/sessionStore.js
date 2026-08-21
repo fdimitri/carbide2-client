@@ -38,7 +38,7 @@ import { ref } from 'vue'
 
 // ── Wire-protocol constants ──────────────────────────────────────────────────
 export const SESSION_CS          = 'session' // commandSet name (worker ROUTES)
-export const SESSION_DOC_VERSION = 1          // bump on a breaking doc-shape change
+export const SESSION_DOC_VERSION = 2          // v2: agent tabs carry agent:<uuid> + agentSlug/composerHeightPx
 export const PANE_SLOTS          = 4          // usePanes keeps 4 fixed pane slots
 
 // Placeholder large-jump threshold for the distance gate (#86). The real
@@ -176,6 +176,21 @@ function mergeDoc(base, known) {
   return known
 }
 
+function serializeTab(t) {
+  const out = { key: t.key, kind: t.kind, id: t.id, label: t.label }
+  if (t.agentSlug != null) out.agentSlug = t.agentSlug
+  if (t.composerHeightPx != null) out.composerHeightPx = t.composerHeightPx
+  return out
+}
+
+function deserializeTab(t) {
+  return {
+    key: t.key, kind: t.kind, id: t.id, label: t.label,
+    agentSlug: t.agentSlug ?? null,
+    composerHeightPx: t.composerHeightPx ?? null,
+  }
+}
+
 export const useSessionStore = defineStore('session', () => {
   // ── Identity / role ─────────────────────────────────────────────────────────
   const sessionUuid = ref(null)          // server-assigned uuid, null until create/resume
@@ -208,7 +223,7 @@ export const useSessionStore = defineStore('session', () => {
       const p = panes.value[i] || emptyPane()
       panesObj[String(i)] = {
         activeTab: p.activeTab ?? null,
-        tabs: (p.tabs || []).map((t) => ({ key: t.key, kind: t.kind, id: t.id, label: t.label })),
+        tabs: (p.tabs || []).map(serializeTab),
       }
     }
     const known = {
@@ -235,9 +250,7 @@ export const useSessionStore = defineStore('session', () => {
       if (p && typeof p === 'object') {
         fresh[i] = {
           activeTab: p.activeTab ?? null,
-          tabs: Array.isArray(p.tabs)
-            ? p.tabs.map((t) => ({ key: t.key, kind: t.kind, id: t.id, label: t.label }))
-            : [],
+          tabs: Array.isArray(p.tabs) ? p.tabs.map(deserializeTab) : [],
         }
       }
     }
@@ -284,13 +297,13 @@ export const useSessionStore = defineStore('session', () => {
       } else if (field === 'tabs') {
         pane.tabs = isDelete || !Array.isArray(op.value)
           ? []
-          : op.value.map((t) => ({ key: t.key, kind: t.kind, id: t.id, label: t.label }))
+          : op.value.map(deserializeTab)
       } else if (field === undefined) {
         // Replace an entire pane object.
         if (isDelete) { panes.value[idx] = emptyPane(); return }
         const v = op.value && typeof op.value === 'object' ? op.value : {}
         pane.activeTab = v.activeTab ?? null
-        pane.tabs = Array.isArray(v.tabs) ? v.tabs.map((t) => ({ key: t.key, kind: t.kind, id: t.id, label: t.label })) : []
+        pane.tabs = Array.isArray(v.tabs) ? v.tabs.map(deserializeTab) : []
       }
       panes.value[idx] = pane
     }
@@ -318,7 +331,7 @@ export const useSessionStore = defineStore('session', () => {
     const d = rawDoc.value && typeof rawDoc.value === 'object' ? rawDoc.value : {}
     const TOP_KNOWN  = new Set(['v', 'layout', 'activePaneIndex', 'panes'])
     const PANE_KNOWN = new Set(['activeTab', 'tabs'])
-    const TAB_KNOWN  = new Set(['key', 'kind', 'id', 'label'])
+    const TAB_KNOWN  = new Set(['key', 'kind', 'id', 'label', 'agentSlug', 'composerHeightPx'])
     const unknownTop        = Object.keys(d).filter((k) => !TOP_KNOWN.has(k))
     const unknownPaneFields = []
     const unknownTabFields  = []
