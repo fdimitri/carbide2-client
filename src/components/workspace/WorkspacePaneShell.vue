@@ -61,24 +61,39 @@
       />
     </div>
 
-    <div class="flex flex-col flex-1 overflow-hidden" v-show="activeTabKind === 'terminal'">
+    <!-- Terminal tabs: one TerminalPane per open terminal tab, keyed by the
+         stable uuid so it stays mounted for the tab's lifetime. Inactive tabs
+         are hidden with v-show (not destroyed), so switching never remounts /
+         rejoins / replays scrollback (#89). A tab whose terminal no longer
+         resolves to a live entry is unmounted entirely — otherwise the stale
+         xterm stays visible and splits the pane with the defunct overlay. -->
+    <template v-for="tab in terminalTabs" :key="tab.id">
       <div
-        v-if="terminalDefunct"
-        class="flex flex-col flex-1 items-center justify-center text-center text-muted p-4 gap-2"
+        v-if="terminalIdFor(tab.id) != null"
+        class="flex flex-col flex-1 overflow-hidden"
+        v-show="activeTabKind === 'terminal' && activeTerminalUuid === tab.id"
       >
-        <i class="pi pi-times-circle text-2xl" />
-        <div>This terminal has ended and is no longer available.</div>
-        <div class="text-ui-xs">Close this tab and open a new terminal.</div>
+        <TerminalPane
+          :terminal-id="terminalIdFor(tab.id)"
+          :active="paneIndex === activePaneIndex && activeTabKind === 'terminal' && activeTerminalUuid === tab.id"
+          :agent-busy="agentStateFor(tab.id).busy"
+          :agent-busy-until-ms="agentStateFor(tab.id).untilMs"
+        />
       </div>
-      <TerminalPane
-        v-else
-        :key="`term-${paneIndex}-${activeTerminalUuid || 'none'}`"
-        :terminal-id="activeTerminalId"
-        :active="paneIndex === activePaneIndex"
-        :agent-busy="activeTerminalAgentState.busy"
-        :agent-busy-until-ms="activeTerminalAgentState.untilMs"
-      />
+    </template>
+
+    <!-- Defunct active terminal: the tab's uuid no longer resolves to a live
+         terminal. Show this only when the active tab is a terminal and there
+         is no corresponding tab renderer. -->
+    <div
+      v-if="terminalDefunct"
+      class="flex flex-col flex-1 items-center justify-center text-center text-muted p-4 gap-2"
+    >
+      <i class="pi pi-times-circle text-2xl" />
+      <div>This terminal has ended and is no longer available.</div>
+      <div class="text-ui-xs">Close this tab and open a new terminal.</div>
     </div>
+
 
     <div class="flex flex-col flex-1 overflow-hidden" v-show="activeTabKind === 'settings'">
       <ProjectSettingsPane
@@ -95,11 +110,14 @@
     <div class="flex flex-col flex-1 overflow-hidden" v-show="activeTabKind === 'agent'">
       <AgentPane
         :connected="store.wsConnected"
-        @agent-send="(text, images) => emit('agent-send', text, images)"
-        @agent-reset="emit('agent-reset')"
-        @agent-pick="(slug) => emit('agent-pick', slug)"
-        @agent-load="(id) => emit('agent-load', id)"
-        @agent-set-visibility="(vis) => emit('agent-set-visibility', vis)"
+        :conversation-id="activeAgentConversationId"
+        :agent-slug="activeAgentSlug"
+        @agent-send="(text, images) => emit('agent-send', paneIndex, activeAgentConversationId, text, images)"
+        @agent-reset="emit('agent-reset', paneIndex, activeAgentConversationId)"
+        @agent-pick="(slug) => emit('agent-pick', paneIndex, activeAgentConversationId, slug)"
+        @agent-load="onAgentLoad"
+        @agent-set-visibility="(vis) => emit('agent-set-visibility', activeAgentConversationId, vis)"
+        @agent-stop="emit('agent-stop', activeAgentConversationId)"
       />
     </div>
 
@@ -153,41 +171,32 @@ const activeTerminalUuid = computed(() => {
   return (effectiveActiveKey.value || '').split(':').slice(1).join(':') || null
 })
 
-// Resolve the tab's stable uuid to the live terminal entry (and thus its
-// reusable integer id used by the live protocol). Null when the terminal no
-// longer exists.
-const activeTerminalEntry = computed(() => {
-  const uuid = activeTerminalUuid.value
-  if (!uuid) return null
-  return (store.terminalList || []).find((t) => t.uuid === uuid) || null
-})
-
-const activeTerminalId = computed(() => {
-  const e = activeTerminalEntry.value
-  return e ? Number(e.id) : null
-})
-
-// Defunct = the tab references a terminal uuid that isn't in the (already
-// loaded) terminal list, i.e. its shell has exited. Gated on terminalsLoaded
-// so a tab doesn't flash "defunct" before the first term/list arrives.
-const terminalDefunct = computed(() =>
-  activeTabKind.value === 'terminal' &&
-  !!activeTerminalUuid.value &&
-  store.terminalsLoaded &&
-  !activeTerminalEntry.value
+// All terminal tabs in this pane (each gets a persistent renderer, #89).
+// For terminal tabs, `id` IS the stable uuid (see useTerminals.selectTerminalNode).
+const terminalTabs = computed(() =>
+  (props.pane?.tabs || []).filter((t) => t.kind === 'terminal' && t.id)
 )
 
-// Pull the agent-lock state for whichever terminal this pane currently
-// shows so TerminalPane can render the busy overlay. Store-driven so it
-// reactively updates when the worker rebroadcasts term/list.
-const activeTerminalAgentState = computed(() => {
-  const tid = activeTerminalId.value
-  if (!tid) return { busy: false, untilMs: null }
-  const t = (store.terminalList || []).find((x) => Number(x.id) === Number(tid))
-  return {
-    busy:    !!t?.agent_busy,
-    untilMs: Number(t?.agent_busy_until_ms) || null,
-  }
+// Resolve a terminal tab's stable uuid to the live terminal entry's integer id.
+function terminalIdFor(uuid) {
+  const e = (store.terminalList || []).find((t) => t.uuid === uuid)
+  return e ? Number(e.id) : null
+}
+
+function agentStateFor(uuid) {
+  const e = (store.terminalList || []).find((t) => t.uuid === uuid)
+  if (!e) return { busy: false, untilMs: null }
+  return { busy: !!e.agent_busy, untilMs: Number(e.agent_busy_until_ms) || null }
+}
+
+// Defunct = the ACTIVE tab references a terminal uuid that isn't in the (already
+// loaded) terminal list, i.e. its shell has exited. Gated on terminalsLoaded so
+// a tab doesn't flash "defunct" before the first term/list arrives.
+const terminalDefunct = computed(() => {
+  if (activeTabKind.value !== 'terminal') return false
+  const uuid = activeTerminalUuid.value
+  if (!uuid || !store.terminalsLoaded) return false
+  return !(store.terminalList || []).some((t) => t.uuid === uuid)
 })
 
 const activeFileId = computed(() => {
@@ -204,6 +213,34 @@ const activeChatChannelId = computed(() => {
   if (activeTabKind.value !== 'channel') return null
   return Number((effectiveActiveKey.value || '').split(':')[1]) || null
 })
+
+const activeAgentConversationId = computed(() => {
+  if (activeTabKind.value !== 'agent') return null
+  const id = (effectiveActiveKey.value || '').split(':').slice(1).join(':') || null
+  return id || null
+})
+
+const activeAgentSlug = computed(() => {
+  if (activeTabKind.value !== 'agent') return null
+  const tab = props.pane?.tabs?.find((t) => t.key === effectiveActiveKey.value)
+  return tab?.agentSlug || null
+})
+
+// Picking a conversation from the pane's dropdown rewrites this pane's agent tab
+// key to agent:<id> (per-pane identity) before asking ProjectPage to load it.
+// The previous conversation's reference is released so switching doesn't leak a
+// worker subscription + buffered transcript per switch.
+function onAgentLoad(id) {
+  if (!id) return
+  const tab = props.pane?.tabs?.find((t) => t.kind === 'agent' && t.key === effectiveActiveKey.value)
+  const oldId = tab?.id || null
+  if (tab) {
+    tab.key = `agent:${id}`
+    tab.id  = id
+    props.pane.activeTab = tab.key
+  }
+  emit('agent-load', id, oldId)
+}
 
 const paneMessages = computed(() => {
   const cid = activeChatChannelId.value
@@ -273,6 +310,7 @@ const emit = defineEmits([
   'agent-pick',
   'agent-load',
   'agent-set-visibility',
+  'agent-stop',
 ])
 
 function onTabBarDrop(event) {

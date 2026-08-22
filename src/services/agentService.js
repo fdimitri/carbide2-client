@@ -26,3 +26,14 @@ export async function updateAgent(id, patch) {
   const res = await authService.api.patch(`agents/${id}`, patch)
   return res.data
 }
+
+// Create a new agent. `payload` must include a unique `slug`; api_key is only
+// sent when non-blank. Used for both a blank new agent and a clone.
+export async function createAgent(payload) {
+  const res = await authService.api.post('agents', payload)
+  return res.data
+}
+
+export async function deleteAgent(id) {
+  await authService.api.delete(`agents/${id}`)
+}

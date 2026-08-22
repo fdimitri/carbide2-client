@@ -27,8 +27,43 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   }
 })
 
+// Memoize by source string. Called inline from templates (v-html), so during
+// agent streaming it would otherwise re-parse every message on every token —
+// O(n²) marked+DOMPurify work that pins the CPU and churns memory. The cache is
+// bounded so long sessions don't leak.
+const _cache = new Map()
+const _CACHE_MAX = 500
+
 export function renderMarkdown(src) {
   if (src == null) return ''
-  const raw = marked.parse(String(src))
-  return DOMPurify.sanitize(raw, { USE_PROFILES: { html: true } })
+  const key = String(src)
+  const hit = _cache.get(key)
+  if (hit !== undefined) return hit
+  const html = DOMPurify.sanitize(marked.parse(key), { USE_PROFILES: { html: true } })
+  if (_cache.size >= _CACHE_MAX) _cache.delete(_cache.keys().next().value)
+  _cache.set(key, html)
+  return html
+}
+
+// Split markdown into top-level blocks for progressive streaming render.
+// marked's lexer is fence/table/list aware, so we never split inside a code
+// block. Each completed block is parsed+sanitized once (cached above) and can
+// be frozen with v-memo; only the growing final block is re-touched per token.
+// While `streaming`, that final block is returned as plain text so a half-typed
+// fence or bold doesn't flash broken markdown — it settles to real markdown as
+// soon as the next block starts (or the turn finishes).
+export function renderMarkdownBlocks(src, streaming = false) {
+  if (src == null) return []
+  const text = String(src)
+  let tokens
+  try { tokens = marked.lexer(text) }
+  catch { return [{ key: 0, kind: 'html', content: renderMarkdown(text) }] }
+  const blocks = tokens.filter((t) => t.raw && t.raw.trim())
+  const out = []
+  for (let i = 0; i < blocks.length; i++) {
+    const raw = blocks[i].raw
+    if (streaming && i === blocks.length - 1) out.push({ key: i, kind: 'text', content: raw })
+    else out.push({ key: i, kind: 'html', content: renderMarkdown(raw) })
+  }
+  return out
 }

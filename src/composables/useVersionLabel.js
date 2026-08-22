@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue'
-import { VERSION, BUILD_META } from '../version'
+import { DISPLAY_VERSION, BUILD_META } from '../version'
 import authService from '../services/authService'
 
 // Version label composition.
@@ -42,7 +42,7 @@ const versionLabel = computed(() => {
   push('server', comp.server)
   push('worker', comp.worker)
   push('control', comp.control)
-  return parts.length ? `v${VERSION} (${parts.join(' ')})` : `v${VERSION}`
+  return parts.length ? `${DISPLAY_VERSION} (${parts.join(' ')})` : DISPLAY_VERSION
 })
 
 // Reactive version label that starts from the baked client SHA and fills in the

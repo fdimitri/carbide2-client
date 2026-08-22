@@ -57,31 +57,38 @@
       </template>
     </Menubar>
 
-    <div class="workspace-main-grid flex-1 min-h-0 overflow-hidden">
-      <ExplorerPane
-        ref="explorerPane"
-        :terminal-list="terminalList"
-        :chat-channels="chatChannels"
-        :pane-layout="paneLayout"
-        :active-pane-index="activePaneIndex"
-        :is-joined-channel="isJoinedChannel"
-        @open-file="onExplorerOpenFile"
-        @open-terminal="onExplorerOpenTerminal"
-        @open-channel="onExplorerOpenChannel"
-        @open-in-pane="onExplorerOpenInPane"
-        @create-terminal="openCreateTerminalDialogTracked"
-        @create-channel="openCreateChannelDialog"
-        @rename-terminal="renameTerminalById"
-        @destroy-terminal="destroyTerminalById"
-        @set-terminal-agent-accessible="(e) => setAgentAccessible(e.id, e.enabled)"
-        @start-recording-terminal="startRecording"
-        @stop-recording-terminal="stopRecording"
-        @open-recordings="openRecordingsDialog"
-        @join-channel="joinChannelFromContext"
-        @leave-channel="leaveChannelFromContext"
-        @open-upload="onExplorerOpenUpload"
-        @open-debug="openDebugPane"
-      />
+    <div class="workspace-main-grid flex-1 min-h-0 overflow-hidden" :style="{ '--explorer-width': explorerWidth + 'px' }">
+      <div class="relative flex min-w-0 min-h-0">
+        <ExplorerPane
+          ref="explorerPane"
+          :terminal-list="terminalList"
+          :chat-channels="chatChannels"
+          :pane-layout="paneLayout"
+          :active-pane-index="activePaneIndex"
+          :is-joined-channel="isJoinedChannel"
+          @open-file="onExplorerOpenFile"
+          @open-terminal="onExplorerOpenTerminal"
+          @open-channel="onExplorerOpenChannel"
+          @open-in-pane="onExplorerOpenInPane"
+          @create-terminal="openCreateTerminalDialogTracked"
+          @create-channel="openCreateChannelDialog"
+          @rename-terminal="renameTerminalById"
+          @destroy-terminal="destroyTerminalById"
+          @set-terminal-agent-accessible="(e) => setAgentAccessible(e.id, e.enabled)"
+          @start-recording-terminal="startRecording"
+          @stop-recording-terminal="stopRecording"
+          @open-recordings="openRecordingsDialog"
+          @join-channel="joinChannelFromContext"
+          @leave-channel="leaveChannelFromContext"
+          @open-upload="onExplorerOpenUpload"
+          @open-debug="openDebugPane"
+        />
+        <div
+          class="explorer-resizer"
+          :class="{ 'is-active': explorerResizing }"
+          @mousedown.prevent="startExplorerResize"
+        ></div>
+      </div>
 
       <section class="flex flex-col flex-1 w-full h-full min-w-0 min-h-0 gap-0">
         <Splitter :key="paneLayout" :layout="layoutConfig.outer" class="workspace-splitter flex-1 min-h-0 min-w-0">
@@ -99,7 +106,7 @@
               @pane-drop="onPaneDrop"
               @set-active-pane="setActivePane($event)"
               @activate-tab="activatePaneTab"
-              @close-tab="closePaneTab"
+              @close-tab="handleCloseTab"
               @tab-drag-start="onTabDragStart"
               @tab-drop="onTabDrop"
               @rename-terminal="renameSelectedTerminal"
@@ -108,11 +115,12 @@
               @leave-call="rtc.leaveCall"
               @toggle-mic="rtc.toggleMic"
               @toggle-cam="rtc.toggleCam"
-              @agent-send="agents.send"
-              @agent-reset="agents.resetConversation"
-              @agent-pick="agents.selectAgent"
-              @agent-load="agents.loadConversation"
+              @agent-send="handleAgentSend"
+              @agent-reset="handleAgentReset"
+              @agent-pick="handleAgentPick"
+              @agent-load="handleAgentLoad"
               @agent-set-visibility="agents.setVisibility"
+              @agent-stop="agents.stop"
             />
             <Splitter
               v-else
@@ -132,7 +140,7 @@
                   @pane-drop="onPaneDrop"
                   @set-active-pane="setActivePane($event)"
                   @activate-tab="activatePaneTab"
-                  @close-tab="closePaneTab"
+                  @close-tab="handleCloseTab"
                   @tab-drag-start="onTabDragStart"
                   @tab-drop="onTabDrop"
                   @rename-terminal="renameSelectedTerminal"
@@ -141,11 +149,12 @@
                   @leave-call="rtc.leaveCall"
                   @toggle-mic="rtc.toggleMic"
                   @toggle-cam="rtc.toggleCam"
-                  @agent-send="agents.send"
-                  @agent-reset="agents.resetConversation"
-                  @agent-pick="agents.selectAgent"
-                  @agent-load="agents.loadConversation"
+                  @agent-send="handleAgentSend"
+                  @agent-reset="handleAgentReset"
+                  @agent-pick="handleAgentPick"
+                  @agent-load="handleAgentLoad"
                   @agent-set-visibility="agents.setVisibility"
+                  @agent-stop="agents.stop"
                 />
               </SplitterPanel>
             </Splitter>
@@ -256,7 +265,7 @@ import { listProjects, getWsToken, uploadProjectFile, importProjectFromDisk } fr
 import { storeToRefs } from 'pinia'
 import { usePanes, PANE_COUNTS } from '../composables/usePanes'
 import { useSessionSync } from '../composables/useSessionSync'
-import { useSessionStore, SESSION_DOC_VERSION } from '../stores/sessionStore'
+import { useSessionStore, sessionGateInfo, SESSION_DOC_VERSION } from '../stores/sessionStore'
 import { CLIENT_SHA } from '../version'
 import { useTerminals } from '../composables/useTerminals'
 import { useChat } from '../composables/useChat'
@@ -287,6 +296,37 @@ const activePane  = ref('terminal')
 const pendingNavigation = ref(null)
 const offHandlers = []
 const explorerPane = ref(null)
+
+// Explorer sidebar width (px). The drag handle mutates this; the grid's
+// --explorer-width CSS var tracks it so the workspace columns reflow live.
+const EXPLORER_MIN = 180
+const EXPLORER_MAX = 720
+const explorerWidth    = ref(300)
+const explorerResizing = ref(false)
+let explorerResizeState = null
+
+function startExplorerResize(e) {
+  explorerResizing.value = true
+  explorerResizeState = { startX: e.clientX, startW: explorerWidth.value }
+  // Suppress text selection while dragging; restore on release.
+  document.body.style.userSelect = 'none'
+  document.body.style.cursor = 'col-resize'
+  window.addEventListener('mousemove', onExplorerResizeMove)
+  window.addEventListener('mouseup', endExplorerResize)
+}
+function onExplorerResizeMove(e) {
+  if (!explorerResizeState) return
+  const next = explorerResizeState.startW + (e.clientX - explorerResizeState.startX)
+  explorerWidth.value = Math.round(Math.min(EXPLORER_MAX, Math.max(EXPLORER_MIN, next)))
+}
+function endExplorerResize() {
+  window.removeEventListener('mousemove', onExplorerResizeMove)
+  window.removeEventListener('mouseup', endExplorerResize)
+  explorerResizing.value = false
+  explorerResizeState = null
+  document.body.style.userSelect = ''
+  document.body.style.cursor = ''
+}
 const workspaceStore = useWorkspaceStore()
 const { wsConnected, joinedChatChannels: storeJoinedChatChannels } = storeToRefs(workspaceStore)
 const debugLog = useDebugLogStore()
@@ -300,6 +340,11 @@ const {
   onTabDragStart, onTabDrop, onPaneDrop,
 } = usePanes({ activePane, pendingNavigation })
 
+// Track agent conversations retained by hydrate/resume. Each hydrate releases
+// the prior set and re-retains the current active set, so reconnect and session
+// switch don't accumulate refs (a single tab close must still reach 0).
+const hydrateRetained = new Set()
+
 // Server-authoritative browser session (ADR-002). usePanes already mutates the
 // session store; this emitter diffs + ships those changes and, on connect,
 // resumes the last/most-recent free session or creates a new one. Chat is the
@@ -309,6 +354,27 @@ const sessionSync = useSessionSync({
   storageKey: `carbide_session:${projectId}`,
   bindActiveSurface: (tab) => {
     if (tab?.kind === 'channel') selectChannelNode(tab.id, { skipPaneTab: true })
+  },
+  onHydrated: (sessionStore) => {
+    // Rehydrate each pane's ACTIVE agent tab (bounded: one per pane). This is
+    // hydrate/resume-only; inactive agent tabs bind on activation.
+    //
+    // Release every conversation the PREVIOUS hydrate retained, then retain the
+    // current set. Without the release, reconnect and session switch accumulate
+    // refs so a single tab close never reaches 0 (and never unsubscribes).
+    for (const id of [...hydrateRetained]) agents.release(id)
+    hydrateRetained.clear()
+
+    for (const pane of sessionStore.panes) {
+      const key = pane?.activeTab
+      if (!key || !key.startsWith('agent:')) continue
+      const id = key.slice('agent:'.length)
+      if (!id) continue
+      const tab = (pane.tabs || []).find((t) => t.key === key) || null
+      agents.loadConversation(id)
+      bindAgentTab(tab, id)
+      hydrateRetained.add(id)
+    }
   },
 })
 
@@ -352,8 +418,132 @@ const {
   registerHandlers: registerChatHandlers, init: initChat, cleanup: cleanupChat,
 } = chat
 
-const agents = useAgents({ error, bindTabToActivePane })
+const agents = useAgents({ error, bindTabToActivePane,
+  onConversationLoaded: (cid, slug) => {
+    // Backfill the authoritative agent slug onto every tab referencing cid.
+    if (!slug) return
+    for (const pane of panes.value) {
+      for (const t of (pane.tabs || [])) {
+        if (t.kind === 'agent' && t.id === cid) t.agentSlug = slug
+      }
+    }
+  },
+})
 const { registerHandlers: registerAgentHandlers } = agents
+
+// One ref per open agent TAB, not per activation. A tab is "bound" the first
+// time it is loaded (hydrate, create, picker load, or first activation) and
+// unbound when it closes/resets/switches. Keyed on the TAB OBJECT (WeakSet) so
+// two tabs that share one conversation each hold their own ref in useAgents'
+// per-conversation refcount — and re-activating a tab doesn't double-retain.
+const boundAgentTabs = new WeakSet()
+
+function bindAgentTab(tab, id) {
+  if (!tab || !id) return
+  if (boundAgentTabs.has(tab)) return
+  agents.retain(id)
+  boundAgentTabs.add(tab)
+}
+
+function unbindAgentTab(tab, id) {
+  if (!tab || !id) return
+  if (!boundAgentTabs.has(tab)) return
+  boundAgentTabs.delete(tab)
+  hydrateRetained.delete(id)
+  agents.release(id)
+}
+
+// Resolve the active agent tab in a pane (the tab whose key === pane.activeTab
+// and kind === 'agent').
+function activeAgentTab(paneIndex) {
+  const pane = panes.value[paneIndex]
+  if (!pane) return null
+  return (pane.tabs || []).find((t) => t.kind === 'agent' && t.key === pane.activeTab) || null
+}
+
+// Option B: the agent slug lives on the tab (per ADR v2 shape). For a fresh
+// `agent:` tab, pick just records the slug; the conversation is created on first
+// send, and the tab key is rewritten to `agent:<uuid>`. Changing the agent on an
+// EXISTING conversation starts a fresh one — the old id is released and the tab
+// is rewritten back to a bare `agent:` key so the next send creates new.
+function handleAgentPick(paneIndex, conversationId, slug) {
+  const tab = activeAgentTab(paneIndex)
+  if (!tab) return
+  const pane = panes.value[paneIndex]
+  if (conversationId) {
+    unbindAgentTab(tab, conversationId)
+    tab.key = 'agent:'
+    tab.id = ''
+    pane.activeTab = tab.key
+  }
+  tab.agentSlug = slug
+}
+
+function handleAgentLoad(id, oldId) {
+  const tab = activeAgentTab(activePaneIndex.value)
+  if (oldId && oldId !== id) unbindAgentTab(tab, oldId)
+  if (!id) return
+  agents.loadConversation(id)
+  bindAgentTab(tab, id)
+}
+
+// Activating an existing agent tab rehydrates that conversation the same way
+// hydrate does for the active tab: load + subscribe + retain. Idempotent per tab
+// via bindAgentTab, so re-activating a tab doesn't double-retain or re-load.
+function selectAgentNode(id) {
+  if (!id) return
+  const tab = activeAgentTab(activePaneIndex.value)
+  if (tab && boundAgentTabs.has(tab)) return
+  agents.loadConversation(id)
+  bindAgentTab(tab, id)
+}
+
+function handleCloseTab(paneIndex, key) {
+  // If the closed tab was an agent:<uuid>, release its reference. At 0 refs the
+  // worker subscription is dropped and the buffered transcript is released.
+  if (typeof key === 'string' && key.startsWith('agent:')) {
+    const cid = key.slice('agent:'.length)
+    if (cid) {
+      const tab = (panes.value[paneIndex]?.tabs || []).find((t) => t.key === key)
+      unbindAgentTab(tab, cid)
+    }
+  }
+  closePaneTab(paneIndex, key)
+}
+
+async function handleAgentSend(paneIndex, conversationId, text, images) {
+  const tab = activeAgentTab(paneIndex)
+  if (!tab) return
+  let cid = conversationId
+  if (!cid) {
+    if (!tab.agentSlug) { error.value = 'Pick an agent first.'; return }
+    cid = await agents.createConversation(tab.agentSlug)
+    // Promote the fresh tab to its worker-assigned id.
+    const pane = panes.value[paneIndex]
+    tab.key = `agent:${cid}`
+    tab.id  = cid
+    pane.activeTab = tab.key
+    agents.selectAgent(cid, tab.agentSlug)
+    bindAgentTab(tab, cid)
+  }
+  agents.send(cid, text, images)
+}
+
+function handleAgentReset(paneIndex, conversationId) {
+  // A "new conversation" replaces this pane's agent tab with a fresh one,
+  // dropping the reference to the old conversation.
+  const pane = panes.value[paneIndex]
+  if (!pane) return
+  if (conversationId) {
+    const tab = activeAgentTab(paneIndex)
+    unbindAgentTab(tab, conversationId)
+  }
+  const label = 'Agent'
+  const key = 'agent:'
+  pane.tabs = (pane.tabs || []).filter((t) => t.kind !== 'agent' || t.key !== pane.activeTab)
+  pane.tabs.push({ key, kind: 'agent', id: '', label, agentSlug: null })
+  pane.activeTab = key
+}
 
 const rtc = useRtc({ error })
 const { registerHandlers: registerRtcHandlers, cleanup: cleanupRtc } = rtc
@@ -485,7 +675,7 @@ const menuItems = computed(() => ([
     label: 'Agent',
     items: [
       { label: 'Open Agent Pane', icon: 'pi pi-sparkles', command: () => agents.openAgentPane() },
-      { label: 'New Conversation', icon: 'pi pi-refresh',  command: () => agents.resetConversation() },
+      { label: 'New Conversation', icon: 'pi pi-refresh',  command: () => handleAgentReset(activePaneIndex.value, activeAgentTab(activePaneIndex.value)?.id || null) },
       { separator: true },
       { label: 'Configure Agents…', icon: 'pi pi-sliders-h', command: () => bindTabToActivePane('agent-config', 0, 'Agent Config') },
     ]
@@ -503,9 +693,10 @@ const dockItems = computed(() => ([
 // ── Session picker (server-authoritative browser sessions, ADR-002) ───────────
 function sessionOptionLabel(s) {
   const base = s.name || `Session ${String(s.session_uuid).slice(0, 8)}`
-  if (s.session_uuid === currentSessionUuid.value) return `${base} (current)`
-  if (s.in_use) return `${base} (in use)`
-  return base
+  const branch = s.forked_from ? '↳ ' : ''
+  if (s.session_uuid === currentSessionUuid.value) return `${branch}${base} (current)`
+  if (s.in_use) return `${branch}${base} (in use)`
+  return `${branch}${base}`
 }
 
 // Dropdown options: the current session plus every resumable one. A session
@@ -541,6 +732,7 @@ const sessionOptions = computed(() =>
       clientVersion:   s.client_version || null,
       docIncompatible,
       buildDiffers,
+      forkedFrom:      s.forked_from ?? null,
       warningTitle,
     }
   })
@@ -552,9 +744,26 @@ function onSessionSelect(event) {
 
 function switchSession(uuid) {
   if (!uuid || uuid === currentSessionUuid.value) return
+  const s = sessionList.value.find((x) => x.session_uuid === uuid)
+  if (!s) return
+  // Distance gate (#86): a far-future doc is not loaded in place; offer a fork.
+  // Consent-by-lineage: a session we already forked bypasses the gate.
+  const g = sessionGateInfo(s)
+  if (g.gated) {
+    forkSession(s)
+    return
+  }
   // resume → server replies session/resumed → useSessionSync hydrates the store,
   // re-baselines the emitter, and re-binds the active surfaces.
   sessionSync.resume(uuid)
+}
+
+function forkSession(s) {
+  const label = s.name || `Session ${String(s.session_uuid).slice(0, 8)}`
+  const msg = `"${label}" uses a much newer session-document version (v${s.doc_version ?? '?'}) than this client.\n\n` +
+    'Try opening a faithful fork instead? (Unrecommended, but allowed.)'
+  if (!window.confirm(msg)) return
+  sessionSync.create({ fromUuid: s.session_uuid })
 }
 
 function deleteSession(uuid) {
@@ -598,6 +807,7 @@ watch(pendingNavigation, async (pending) => {
   if (kind === 'terminal')      await selectTerminalNode(id, opts)
   else if (kind === 'channel')  await selectChannelNode(id, opts)
   else if (kind === 'file')     selectFileNode(id, opts)
+  else if (kind === 'agent')    selectAgentNode(id)
 })
 
 // ── ExplorerPane event handlers ───────────────────────────────────────────────
@@ -715,6 +925,14 @@ onMounted(async () => {
     // so the created/resumed/snapshot frames are caught.
     sessionSync.start()
 
+    // Rapid-dev console helpers (not permanent API): inspect unknown/unparseable
+    // keys, or prune the doc to this build's known shape.
+    window.__carbideSession = {
+      listUnknown: () => sessionSync.listUnknown(),
+      pruneDoc: () => sessionSync.sanitize(),
+      resync: (opts) => sessionSync.resync(opts),
+    }
+
     workerSocket.connect(() => getWsToken(projectId))
     // Intentionally do not auto-open any file; explorer will populate from server.
   } catch (e) {
@@ -723,6 +941,8 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('mousemove', onExplorerResizeMove)
+  window.removeEventListener('mouseup', endExplorerResize)
   offHandlers.forEach(off => off())
   workspaceStore.projectName = ''
   sessionSync.stop()

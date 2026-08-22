@@ -131,9 +131,13 @@ pre.out {
   font-size: 0.78rem; margin: 0 0 1rem;
 }
 pre.out .cmt { color: var(--color-muted); }
-pre.out.log {
-  max-height: 26rem; overflow-y: auto; white-space: pre-wrap; word-break: break-word;
+/* xterm sizes itself to its host, so the host needs a real height. */
+.out.log {
+  height: 26rem; padding: 0.75rem; overflow: hidden;
+  background: var(--color-bg-input); border: 1px solid var(--color-line);
+  border-radius: 8px; margin: 0 0 1rem;
 }
+.out.log .xterm-viewport { background: transparent !important; }
 .head {
   font-size: var(--text-label, 0.7rem); text-transform: uppercase;
   letter-spacing: 0.06em; color: var(--color-muted); margin-bottom: 0.4rem;

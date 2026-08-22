@@ -6,6 +6,8 @@
 // Build-free ES module — see index.html.
 
 import { createApp, ref, computed, watch, onMounted, nextTick } from 'vue'
+import { Terminal } from 'xterm'
+import { FitAddon } from 'xterm-addon-fit'
 
 const api = async (path, body) => {
   const res = await fetch(path, body
@@ -231,6 +233,7 @@ const App = {
       exitCode.value = null
       deploying.value = true
       tab.value = 'log'
+      term?.clear()
       poll()
     }
 
@@ -241,13 +244,47 @@ const App = {
       if (snap.chunk) {
         log.value += snap.chunk
         logOffset.value = snap.offset
-        await nextTick()
-        if (logBox.value) logBox.value.scrollTop = logBox.value.scrollHeight
+        term?.write(snap.chunk)
       }
       deploying.value = snap.running
       exitCode.value = snap.exit
       if (snap.running) setTimeout(poll, 700)
     }
+
+    // deploy.rb writes ANSI, so the log pane is a real terminal rather than a
+    // <pre>. The element only exists while the log tab is open, so the buffer
+    // is replayed from `log` whenever it is rebuilt.
+    let term = null
+    let fit = null
+    let termResize = null
+    const openTerm = async () => {
+      await nextTick()
+      if (term || !logBox.value) return
+      term = new Terminal({
+        convertEol: true, cursorBlink: false, disableStdin: true,
+        fontSize: 12, scrollback: 20_000,
+        fontFamily: 'ui-monospace, Menlo, Consolas, monospace',
+        theme: { background: '#00000000' }
+      })
+      fit = new FitAddon()
+      term.loadAddon(fit)
+      term.open(logBox.value)
+      try { fit.fit() } catch { /* pre-layout */ }
+      if (log.value) term.write(log.value)
+      termResize?.disconnect()
+      termResize = new ResizeObserver(() => { try { fit?.fit() } catch { /* detached */ } })
+      termResize.observe(logBox.value)
+    }
+
+    const closeTerm = () => {
+      termResize?.disconnect()
+      termResize = null
+      try { term?.dispose() } catch { /* already gone */ }
+      term = null
+      fit = null
+    }
+
+    watch(tab, (t) => (t === 'log' ? openTerm() : closeTerm()))
 
     const flash = (msg) => { toast.value = msg; setTimeout(() => { toast.value = '' }, 2500) }
 
@@ -557,7 +594,7 @@ const App = {
     </template>
 
     <template v-else>
-      <pre class="out log" ref="logBox">{{ log || 'starting…' }}</pre>
+      <div class="out log" ref="logBox"></div>
       <div class="warnline" v-if="deploying">! deploy running — closing this page won't stop it.</div>
       <div class="warnline" v-else-if="exitCode">! deploy exited {{ exitCode }} — see the log above.</div>
     </template>

@@ -1,7 +1,6 @@
 <template>
   <aside id="pane-explorer" class="border-r border-line bg-gradient-to-b from-bg-2/95 to-bg-1/95 flex flex-col min-h-0 min-w-0">
     <PaneHeader title="Explorer" />
-    <input v-model="explorerSearch" class="mx-2.5 mt-2.5 mb-1.5 px-2.5 py-2 text-ui-md bg-bg-1 border border-line text-text rounded-ui-md focus:outline-none focus:border-accent-bright" placeholder="Filter explorer..." />
 
     <!-- Empty-project banner: project has no files yet -> offer git clone.
          Hidden as soon as the tree has any entry. -->
@@ -24,7 +23,6 @@
         selectionMode="single"
         :filter="true"
         filterMode="lenient"
-        :filterValue="explorerSearch"
         @node-select="onExplorerNodeSelect"
         @node-context-menu="onExplorerNodeContextMenuEvent"
       >
@@ -182,7 +180,6 @@ const emit = defineEmits([
 ])
 
 // ── State ─────────────────────────────────────────────────────────────────────
-const explorerSearch        = ref('')
 const selectedFileId        = ref(null)
 const openedFileIds         = ref(new Set())
 const openedTerminalIds     = ref(new Set())

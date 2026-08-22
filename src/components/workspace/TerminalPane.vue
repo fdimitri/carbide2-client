@@ -61,15 +61,22 @@ let xterm = null
 let fitAddon = null
 let terminalResizeObserver = null
 let boundTerminalId = null
+let joinedTerminalId = null  // the terminal id we've already sent term/join for
 let applyingRemoteResize = false
 const deadTerminalIds = new Set()  // ids whose shell has exited; don't try to re-join
 
 const onWindowResize = () => fitTerminalSoon()
 
+// Fit to the container, but never while hidden (0×0). The ResizeObserver
+// re-fires when the pane becomes visible with a real size, so a hidden fit
+// is unnecessary and can push a bogus 0×0 resize to the worker (#88).
 function fitTerminalSoon() {
+  const el = terminalContainer.value
+  if (!el || el.clientWidth === 0 || el.clientHeight === 0) return
   requestAnimationFrame(() => {
+    const el2 = terminalContainer.value
+    if (!el2 || el2.clientWidth === 0 || el2.clientHeight === 0) return
     fitAddon?.fit()
-    requestAnimationFrame(() => fitAddon?.fit())
   })
 }
 
@@ -105,7 +112,15 @@ function ensureXterm() {
 async function bindTerminal(terminalId) {
   const nextId = Number(terminalId)
   if (!nextId) return
-  const sameAsBound = nextId === Number(boundTerminalId)
+  // Idempotent: join each terminal exactly once. With the per-tab model a
+  // TerminalPane is keyed by uuid, so this normally runs once at mount.
+  if (nextId === joinedTerminalId) {
+    if (props.active) {
+      await nextTick()
+      xterm?.focus()
+    }
+    return
+  }
   boundTerminalId = nextId
   await nextTick()
   if (!ensureXterm()) return
@@ -119,10 +134,8 @@ async function bindTerminal(terminalId) {
     }
     return
   }
-  // Only reset on a fresh bind — re-activating the same tab shouldn't
-  // wipe scrollback.
-  if (!sameAsBound) xterm.reset()
   workerSocket.send('term', 'join', { terminal_id: boundTerminalId })
+  joinedTerminalId = nextId
   if (props.active) {
     await nextTick()
     xterm.focus()
@@ -164,7 +177,7 @@ watch(
   async (nextId) => {
     if (!nextId) {
       boundTerminalId = null
-      xterm?.reset()
+      joinedTerminalId = null
       return
     }
     await bindTerminal(nextId)
@@ -172,6 +185,10 @@ watch(
   { immediate: true }
 )
 
+// On re-activation, focus + fit the terminal. fitTerminalSoon is 0×0-guarded,
+// so it no-ops while hidden and fits once the pane is actually visible. This
+// gives a second chance to fit beyond the ResizeObserver, without the old
+// unbounded fit-on-every-show churn.
 watch(
   () => props.active,
   async (active) => {
@@ -183,9 +200,10 @@ watch(
 )
 
 onMounted(async () => {
-  if (props.terminalId) {
-    await bindTerminal(props.terminalId)
-  }
+  // NOTE: bindTerminal is NOT called here. The immediate watch on
+  // props.terminalId already runs it after the DOM is mounted (bindTerminal
+  // awaits nextTick before ensureXterm). Calling it again here caused a
+  // double term/join on initial mount.
   // 1Hz tick is enough for a countdown badge; we throw it away when
   // the component unmounts to avoid leaking a timer per pane.
   nowTimer = setInterval(() => { nowMs.value = Date.now() }, 1000)
