@@ -59,6 +59,8 @@
         @input="onInputResize"
         @paste="onPaste"
         :placeholder="placeholder"
+        :class="fieldSizing && !barHeight ? 'field-sizing-content' : ''"
+        :style="textareaStyle"
         class="flex-1 px-2.5 py-2 text-ui-lg rounded-ui-sm outline-none font-[inherit] border monaco-input-bg monaco-input-fg monaco-input-border focus:monaco-focus-border placeholder:monaco-line-fg resize-none min-h-0"
       ></textarea>
       <UiButton
@@ -99,6 +101,36 @@ const MAX_AUTO_LINES = 4
 const MIN_BAR_HEIGHT = 48
 const MAX_BAR_FRACTION = 0.8
 
+// Native autosize (Chromium 123+): `field-sizing: content` grows the textarea
+// with its content without JS measuring scrollHeight on every keystroke. We
+// still cap it at MAX_AUTO_LINES via max-height (the field then scrolls
+// internally). Other browsers fall back to the manual measure below.
+const fieldSizing = typeof CSS !== 'undefined' && typeof CSS.supports === 'function' &&
+  CSS.supports('field-sizing', 'content')
+
+// Auto-mode height cap (px) — recomputed once at mount / after the web font
+// resolves (line-height changes), not on every keystroke.
+const autoMaxHeight = ref(null)
+
+const textareaStyle = computed(() => {
+  if (barHeight.value || autoMaxHeight.value == null) return {}
+  return { maxHeight: `${autoMaxHeight.value}px` }
+})
+
+function lineMetrics() {
+  const el = inputEl.value
+  if (!el) return null
+  const cs = window.getComputedStyle(el)
+  const lineH = parseFloat(cs.lineHeight) || 24
+  const pad = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0)
+  return { lineH, pad }
+}
+
+function updateAutoMaxHeight() {
+  const m = lineMetrics()
+  if (m) autoMaxHeight.value = m.lineH * MAX_AUTO_LINES + m.pad
+}
+
 function workspaceScope() {
   let base = '/'
   if (typeof document !== 'undefined') {
@@ -134,15 +166,28 @@ function clampHeight(h) {
 }
 
 function autoGrow() {
-  if (barHeight.value) return   // manual mode: fill the fixed bar
+  if (barHeight.value) return   // manual mode: flex fills the fixed bar
   const el = inputEl.value
   if (!el) return
+  if (fieldSizing) {
+    // Native sizing handles growth; only keep the cap current. No
+    // scrollHeight/height reads in the per-keystroke path.
+    updateAutoMaxHeight()
+    return
+  }
+  // Fallback (no field-sizing): measure and set an explicit height.
   el.style.height = 'auto'
-  const cs = window.getComputedStyle(el)
-  const lineH = parseFloat(cs.lineHeight) || 24
-  const pad = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0)
-  const maxH = lineH * MAX_AUTO_LINES + pad
-  el.style.height = `${Math.min(el.scrollHeight, maxH)}px`
+  const m = lineMetrics()
+  if (!m) return
+  const oneLine = m.lineH + m.pad
+  const maxH = m.lineH * MAX_AUTO_LINES + m.pad
+  // Before the first layout (or with web fonts still loading) scrollHeight
+  // can read 0 even for a non-empty/one-line textarea — don't collapse the
+  // box to 0px on that transient read; floor at one line.
+  const measured = el.scrollHeight
+  const target = measured > 0 ? Math.min(measured, maxH) : oneLine
+  el.style.height = `${Math.max(oneLine, target)}px`
+  autoMaxHeight.value = maxH
 }
 
 // Keep the caret in view while typing (sliding window). Only auto-scroll when
@@ -289,7 +334,12 @@ function onSend() {
 
 onMounted(() => {
   // Set the initial 1-line height (a textarea without rows defaults taller).
-  autoGrow()
+  // Defer one frame so the element has real layout, then re-run once web fonts
+  // resolve (line-height can change after the font swaps in).
+  requestAnimationFrame(() => {
+    autoGrow()
+    if (document.fonts?.ready) document.fonts.ready.then(() => autoGrow())
+  })
 })
 
 onBeforeUnmount(() => {
@@ -297,3 +347,9 @@ onBeforeUnmount(() => {
   window.removeEventListener('mouseup', onResizeEnd)
 })
 </script>
+
+<style scoped>
+.field-sizing-content {
+  field-sizing: content;
+}
+</style>

@@ -57,31 +57,38 @@
       </template>
     </Menubar>
 
-    <div class="workspace-main-grid flex-1 min-h-0 overflow-hidden">
-      <ExplorerPane
-        ref="explorerPane"
-        :terminal-list="terminalList"
-        :chat-channels="chatChannels"
-        :pane-layout="paneLayout"
-        :active-pane-index="activePaneIndex"
-        :is-joined-channel="isJoinedChannel"
-        @open-file="onExplorerOpenFile"
-        @open-terminal="onExplorerOpenTerminal"
-        @open-channel="onExplorerOpenChannel"
-        @open-in-pane="onExplorerOpenInPane"
-        @create-terminal="openCreateTerminalDialogTracked"
-        @create-channel="openCreateChannelDialog"
-        @rename-terminal="renameTerminalById"
-        @destroy-terminal="destroyTerminalById"
-        @set-terminal-agent-accessible="(e) => setAgentAccessible(e.id, e.enabled)"
-        @start-recording-terminal="startRecording"
-        @stop-recording-terminal="stopRecording"
-        @open-recordings="openRecordingsDialog"
-        @join-channel="joinChannelFromContext"
-        @leave-channel="leaveChannelFromContext"
-        @open-upload="onExplorerOpenUpload"
-        @open-debug="openDebugPane"
-      />
+    <div class="workspace-main-grid flex-1 min-h-0 overflow-hidden" :style="{ '--explorer-width': explorerWidth + 'px' }">
+      <div class="relative flex min-w-0 min-h-0">
+        <ExplorerPane
+          ref="explorerPane"
+          :terminal-list="terminalList"
+          :chat-channels="chatChannels"
+          :pane-layout="paneLayout"
+          :active-pane-index="activePaneIndex"
+          :is-joined-channel="isJoinedChannel"
+          @open-file="onExplorerOpenFile"
+          @open-terminal="onExplorerOpenTerminal"
+          @open-channel="onExplorerOpenChannel"
+          @open-in-pane="onExplorerOpenInPane"
+          @create-terminal="openCreateTerminalDialogTracked"
+          @create-channel="openCreateChannelDialog"
+          @rename-terminal="renameTerminalById"
+          @destroy-terminal="destroyTerminalById"
+          @set-terminal-agent-accessible="(e) => setAgentAccessible(e.id, e.enabled)"
+          @start-recording-terminal="startRecording"
+          @stop-recording-terminal="stopRecording"
+          @open-recordings="openRecordingsDialog"
+          @join-channel="joinChannelFromContext"
+          @leave-channel="leaveChannelFromContext"
+          @open-upload="onExplorerOpenUpload"
+          @open-debug="openDebugPane"
+        />
+        <div
+          class="explorer-resizer"
+          :class="{ 'is-active': explorerResizing }"
+          @mousedown.prevent="startExplorerResize"
+        ></div>
+      </div>
 
       <section class="flex flex-col flex-1 w-full h-full min-w-0 min-h-0 gap-0">
         <Splitter :key="paneLayout" :layout="layoutConfig.outer" class="workspace-splitter flex-1 min-h-0 min-w-0">
@@ -289,6 +296,37 @@ const activePane  = ref('terminal')
 const pendingNavigation = ref(null)
 const offHandlers = []
 const explorerPane = ref(null)
+
+// Explorer sidebar width (px). The drag handle mutates this; the grid's
+// --explorer-width CSS var tracks it so the workspace columns reflow live.
+const EXPLORER_MIN = 180
+const EXPLORER_MAX = 720
+const explorerWidth    = ref(300)
+const explorerResizing = ref(false)
+let explorerResizeState = null
+
+function startExplorerResize(e) {
+  explorerResizing.value = true
+  explorerResizeState = { startX: e.clientX, startW: explorerWidth.value }
+  // Suppress text selection while dragging; restore on release.
+  document.body.style.userSelect = 'none'
+  document.body.style.cursor = 'col-resize'
+  window.addEventListener('mousemove', onExplorerResizeMove)
+  window.addEventListener('mouseup', endExplorerResize)
+}
+function onExplorerResizeMove(e) {
+  if (!explorerResizeState) return
+  const next = explorerResizeState.startW + (e.clientX - explorerResizeState.startX)
+  explorerWidth.value = Math.round(Math.min(EXPLORER_MAX, Math.max(EXPLORER_MIN, next)))
+}
+function endExplorerResize() {
+  window.removeEventListener('mousemove', onExplorerResizeMove)
+  window.removeEventListener('mouseup', endExplorerResize)
+  explorerResizing.value = false
+  explorerResizeState = null
+  document.body.style.userSelect = ''
+  document.body.style.cursor = ''
+}
 const workspaceStore = useWorkspaceStore()
 const { wsConnected, joinedChatChannels: storeJoinedChatChannels } = storeToRefs(workspaceStore)
 const debugLog = useDebugLogStore()
@@ -839,6 +877,8 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('mousemove', onExplorerResizeMove)
+  window.removeEventListener('mouseup', endExplorerResize)
   offHandlers.forEach(off => off())
   workspaceStore.projectName = ''
   sessionSync.stop()

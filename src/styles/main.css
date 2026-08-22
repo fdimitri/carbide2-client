@@ -306,9 +306,27 @@ html.theme-green {
 /* Shared structural one-offs to keep templates free of arbitrary unit literals. */
 .workspace-main-grid {
   display: grid;
-  grid-template-columns: 300px minmax(0, 1fr);
+  grid-template-columns: var(--explorer-width, 300px) minmax(0, 1fr);
   position: relative;
   z-index: 1;
+}
+
+/* Drag handle on the explorer's right edge. Rendered absolutely inside the
+   explorer's grid column wrapper so it doesn't add a third grid track. */
+.explorer-resizer {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 5;
+  touch-action: none;
+}
+.explorer-resizer:hover,
+.explorer-resizer.is-active {
+  background: var(--color-accent);
+  opacity: 0.6;
 }
 
 @media (max-width: 980px) {
@@ -371,6 +389,10 @@ html.theme-green {
 }
 
 /* Explorer Tree */
+.explorer-file-tree {
+  height: 100%;
+  background: linear-gradient(200deg, rgba(63, 94, 251, 0.05) 0%, rgba(0, 0, 0, 1) 100%);
+}
 .explorer-file-tree .p-tree-root {
   padding: 0.2rem;
 }
@@ -378,6 +400,8 @@ html.theme-green {
   border-radius: 0.3rem;
   padding: 0.25rem 0.35rem;
   color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 0.95em;
 }
 .explorer-file-tree .p-tree-node-content:hover {
   background: rgba(74, 110, 157, 0.35);

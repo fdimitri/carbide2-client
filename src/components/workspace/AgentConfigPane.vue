@@ -183,6 +183,20 @@
                 </UiField>
               </div>
             </div>
+            <UiField
+              label="Reasoning effort"
+              class="mt-3"
+              label-class="block text-ui-md text-text mb-1"
+              compact
+              hint="Provider-dependent. Leave unset for the model default (DeepSeek defaults to high). Sent as the reasoning_effort request field."
+            >
+              <UiInput as="select" v-model="form.reasoning_effort" class="w-full">
+                <option value="">unset (provider default)</option>
+                <option value="low">low</option>
+                <option value="medium">medium</option>
+                <option value="high">high</option>
+              </UiInput>
+            </UiField>
           </section>
           <!-- ── Orchestration ────────────────────────────────── -->
           <section class="mb-7">
@@ -294,6 +308,7 @@ function loadForm(agent) {
     enabled:            agent.enabled ?? true,
     temperature:        s.temperature ?? 0.2,
     max_tokens:         s.max_tokens ?? 2048,
+    reasoning_effort:   s.reasoning_effort ?? '',
     max_turns:          agent.max_turns ?? null,
   }
   savedOk.value   = false
@@ -431,6 +446,9 @@ async function save() {
       sampling:           {
         temperature: form.value.temperature,
         max_tokens:  form.value.max_tokens,
+        ...(form.value.reasoning_effort
+          ? { reasoning_effort: form.value.reasoning_effort }
+          : {}),
       },
     }
     // Only send api_key when the admin typed one (blank preserves the stored key).

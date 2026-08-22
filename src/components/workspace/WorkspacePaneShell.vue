@@ -64,9 +64,12 @@
     <!-- Terminal tabs: one TerminalPane per open terminal tab, keyed by the
          stable uuid so it stays mounted for the tab's lifetime. Inactive tabs
          are hidden with v-show (not destroyed), so switching never remounts /
-         rejoins / replays scrollback (#89). -->
+         rejoins / replays scrollback (#89). A tab whose terminal no longer
+         resolves to a live entry is unmounted entirely — otherwise the stale
+         xterm stays visible and splits the pane with the defunct overlay. -->
     <template v-for="tab in terminalTabs" :key="tab.id">
       <div
+        v-if="terminalIdFor(tab.id) != null"
         class="flex flex-col flex-1 overflow-hidden"
         v-show="activeTabKind === 'terminal' && activeTerminalUuid === tab.id"
       >

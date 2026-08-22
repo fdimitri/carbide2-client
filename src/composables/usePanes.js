@@ -82,7 +82,31 @@ export function usePanes({ activePane, pendingNavigation }) {
     return { kind, id: Number(rawId) }
   }
 
+  function focusExistingTerminal(id) {
+    // A terminal tab's identity is its stable uuid (or a numeric id fallback
+    // when the uuid wasn't resolvable yet). Before opening a terminal, scan
+    // every pane for an existing tab for that terminal and activate it in
+    // place — opening the same terminal twice produces two panes both writing
+    // to the same PTY (double-render, duplicate term/join), so this is a hard
+    // no-op rather than a second tab.
+    const want = String(id)
+    for (let p = 0; p < panes.value.length; p++) {
+      const pane = panes.value[p]
+      if (!pane) continue
+      const found = (pane.tabs || []).find(
+        (t) => t.kind === 'terminal' && t.id != null && String(t.id) === want
+      )
+      if (found) {
+        activePaneIndex.value = p
+        pane.activeTab = found.key
+        return true
+      }
+    }
+    return false
+  }
+
   function bindTabToActivePane(kind, id, label) {
+    if (kind === 'terminal' && focusExistingTerminal(id)) return
     const pane = panes.value[activePaneIndex.value]
     const key  = `${kind}:${id}`
     if (!pane.tabs.find((t) => t.key === key)) {
@@ -92,6 +116,7 @@ export function usePanes({ activePane, pendingNavigation }) {
   }
 
   function bindTabToPane(targetPaneIndex, kind, id, label) {
+    if (kind === 'terminal' && focusExistingTerminal(id)) return
     const pane = panes.value[targetPaneIndex]
     if (!pane) return
     activePaneIndex.value = targetPaneIndex

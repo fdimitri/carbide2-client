@@ -84,7 +84,6 @@
         v-for="m in timeline"
         :key="m._uid"
         v-memo="[m._sig]"
-        class="cv-row"
       >
         <!-- User — left-aligned, avatar + name, same language as ChatPane -->
         <div v-if="m.kind === 'user'" class="flex items-start gap-2">
@@ -147,7 +146,8 @@
                 <details
                   v-if="item.reasoning"
                   class="text-ui-xs rounded-ui-sm bg-white/[0.05]"
-                  :open="item.streaming"
+                  :open="reasoningIsOpen(m._uid, ii, item.streaming)"
+                  @toggle="onReasoningToggle(m._uid, ii, $event)"
                 >
                   <summary class="cursor-pointer select-none font-mono opacity-45 hover:opacity-75 marker:opacity-30 px-2 py-0.5 truncate">reasoning · {{ item.reasoning.length }} chars<span v-if="item.streaming" class="opacity-60"> · thinking…</span></summary>
                   <!-- Progressive markdown: finished blocks parse once and
@@ -179,6 +179,12 @@
         </div>
         <div v-else class="text-ui-sm opacity-60 italic">{{ m.text }}</div>
       </div>
+      <!-- Bottom sentinel: autoscroll anchors to this element via
+           scrollIntoView instead of reading scrollHeight and writing
+           scrollTop. Always rendered as the last child of the scroll
+           container so the browser resolves real geometry and scrolls
+           atomically (no forced layout read in the stream hot path). -->
+      <div ref="bottomRef" class="h-px shrink-0" aria-hidden="true"></div>
     </div>
 
     <!-- Composer (isolated so typing doesn't re-render the timeline) -->
@@ -292,6 +298,25 @@ const timeline = computed(() => {
   }
   return out
 })
+
+// Reasoning disclosure open state. Defaults to open-while-streaming and
+// closed once the turn finalizes; a user's manual toggle is remembered per
+// reasoning block (keyed by turn uid + item index) so expanding it survives
+// the streaming→done collapse instead of being yanked shut (#64 follow-up).
+const reasoningOpen = ref(new Map())   // "turnUid:itemIndex" -> boolean (user override)
+
+function reasoningIsOpen(turnUid, itemIndex, streaming) {
+  const key = `${turnUid}:${itemIndex}`
+  const m = reasoningOpen.value
+  return m.has(key) ? m.get(key) : streaming
+}
+
+function onReasoningToggle(turnUid, itemIndex, event) {
+  const key = `${turnUid}:${itemIndex}`
+  const next = new Map(reasoningOpen.value)
+  next.set(key, event.currentTarget?.open ?? false)
+  reasoningOpen.value = next
+}
 
 // Signed-in user, for the user-message avatar. Mirrors ChatPane's colour-from-id
 // + initials fallback; no avatar image is actually wired anywhere yet.
@@ -411,6 +436,7 @@ function toolNames(tools) {
 const STICK_PX = 48
 let pinned = true
 const scrollPositions = new Map()   // conversationId -> scrollTop (only when not at bottom)
+const bottomRef = ref(null)
 
 function convoKey() {
   return convId.value || '__new__'
@@ -422,9 +448,25 @@ function atBottom() {
   return el.scrollHeight - el.scrollTop - el.clientHeight <= STICK_PX
 }
 
+// Scroll by anchoring the bottom sentinel to the end of the scrollport.
+// scrollIntoView does the layout + scroll atomically, so this never forces
+// a JS-side geometry read before the write (scrollTop = scrollHeight does).
 function scrollToBottom() {
-  const el = scrollEl.value
-  if (el && el.clientHeight > 0) el.scrollTop = el.scrollHeight
+  bottomRef.value?.scrollIntoView({ block: 'end' })
+}
+
+// Coalesce autoscroll to at most once per animation frame. The stream commits
+// ~25 batches/sec (40ms throttle); scrolling each batch is wasteful and each
+// scroll invalidation re-triggers layout anyway.
+let scrollRaf = null
+function scheduleScrollToBottom() {
+  if (!pinned || scrollRaf != null) return
+  scrollRaf = requestAnimationFrame(() => {
+    scrollRaf = null
+    // Re-check at frame time: the user may have scrolled up between the
+    // schedule call and this frame. Only follow the sentinel if still pinned.
+    if (pinned) scrollToBottom()
+  })
 }
 
 function savePosition() {
@@ -468,7 +510,7 @@ const scrollSignal = computed(() => {
 watch(scrollSignal, async () => {
   if (!pinned) return
   await nextTick()
-  scrollToBottom()
+  scheduleScrollToBottom()
 })
 
 // Conversation switch: restore the remembered position for that conversation,
@@ -480,13 +522,20 @@ watch(() => props.conversationId, async () => {
 
 // When the pane is re-shown after being hidden with v-show, its clientHeight
 // goes 0 -> real; re-apply the remembered position (which was a no-op while
-// hidden). Also covers the initial mount.
+// hidden). Also covers the initial mount. While pinned to the bottom, any
+// height change to the scroll viewport (e.g. the composer shrinking back to
+// one line after a send) re-pins to the new bottom — otherwise the last few
+// pixels of the just-sent message stay hidden.
 let lastClientHeight = 0
 function onResizeObserved() {
   const el = scrollEl.value
   if (!el) return
   const h = el.clientHeight
-  if (h > 0 && lastClientHeight === 0) applyPosition()
+  if (h > 0 && lastClientHeight === 0) {
+    applyPosition()
+  } else if (h > 0 && h !== lastClientHeight && pinned) {
+    scrollToBottom()
+  }
   lastClientHeight = h
 }
 
@@ -502,25 +551,14 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  if (scrollRaf != null) {
+    cancelAnimationFrame(scrollRaf)
+    scrollRaf = null
+  }
   if (resizeObserver) {
     resizeObserver.disconnect()
     resizeObserver = null
   }
 })
 </script>
-
-<style scoped>
-/*
- * Each timeline row is skipped during layout/paint while off-screen.
- * With long conversations (hundreds of message blocks, tens of thousands of
- * layout objects) this keeps a keystroke in the composer -- or any reflow --
- * from re-laying-out the whole message list. Measured live: ~25ms -> ~2ms of
- * layout per keystroke on a 465-row conversation. `auto` in contain-intrinsic-size
- * lets the browser remember each row's real size after it's first rendered.
- */
-.cv-row {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 200px;
-}
-</style>
 
