@@ -228,15 +228,18 @@ const activeAgentSlug = computed(() => {
 
 // Picking a conversation from the pane's dropdown rewrites this pane's agent tab
 // key to agent:<id> (per-pane identity) before asking ProjectPage to load it.
+// The previous conversation's reference is released so switching doesn't leak a
+// worker subscription + buffered transcript per switch.
 function onAgentLoad(id) {
   if (!id) return
   const tab = props.pane?.tabs?.find((t) => t.kind === 'agent' && t.key === effectiveActiveKey.value)
+  const oldId = tab?.id || null
   if (tab) {
     tab.key = `agent:${id}`
     tab.id  = id
     props.pane.activeTab = tab.key
   }
-  emit('agent-load', id)
+  emit('agent-load', id, oldId)
 }
 
 const paneMessages = computed(() => {

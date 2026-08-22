@@ -79,6 +79,12 @@ export function useAgents({ error, bindTabToActivePane, onConversationLoaded = n
 
   // Message-less create: worker mints the UUID, resolves the promise with it.
   // Callers await this before sending the first ask (avoids temp-key promotion).
+  //
+  // NOTE: no explicit `agent/subscribe` here — the worker subscribes the
+  // session server-side in both agent/create and agent/ask (idempotently), so
+  // delivery membership is already established before the first stream frame.
+  // Explicit `agent/subscribe` exists only for loadConversation, which loads
+  // without asking. See agent_handlers.rb.
   const pendingCreates = new Map()  // slug -> resolve fn(s)
   function createConversation(slug) {
     return new Promise((resolve, reject) => {

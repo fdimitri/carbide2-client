@@ -340,6 +340,11 @@ const {
   onTabDragStart, onTabDrop, onPaneDrop,
 } = usePanes({ activePane, pendingNavigation })
 
+// Track agent conversations retained by hydrate/resume. Each hydrate releases
+// the prior set and re-retains the current active set, so reconnect and session
+// switch don't accumulate refs (a single tab close must still reach 0).
+const hydrateRetained = new Set()
+
 // Server-authoritative browser session (ADR-002). usePanes already mutates the
 // session store; this emitter diffs + ships those changes and, on connect,
 // resumes the last/most-recent free session or creates a new one. Chat is the
@@ -353,6 +358,13 @@ const sessionSync = useSessionSync({
   onHydrated: (sessionStore) => {
     // Rehydrate each pane's ACTIVE agent tab (bounded: one per pane). This is
     // hydrate/resume-only; inactive agent tabs bind on activation.
+    //
+    // Release every conversation the PREVIOUS hydrate retained, then retain the
+    // current set. Without the release, reconnect and session switch accumulate
+    // refs so a single tab close never reaches 0 (and never unsubscribes).
+    for (const id of [...hydrateRetained]) agents.release(id)
+    hydrateRetained.clear()
+
     for (const pane of sessionStore.panes) {
       const key = pane?.activeTab
       if (!key || !key.startsWith('agent:')) continue
@@ -360,6 +372,7 @@ const sessionSync = useSessionSync({
       if (!id) continue
       agents.loadConversation(id)
       agents.retain(id)
+      hydrateRetained.add(id)
     }
   },
 })
@@ -427,15 +440,33 @@ function activeAgentTab(paneIndex) {
 
 // Option B: the agent slug lives on the tab (per ADR v2 shape). For a fresh
 // `agent:` tab, pick just records the slug; the conversation is created on first
-// send, and the tab key is rewritten to `agent:<uuid>`.
+// send, and the tab key is rewritten to `agent:<uuid>`. Changing the agent on an
+// EXISTING conversation starts a fresh one — the old id is released and the tab
+// is rewritten back to a bare `agent:` key so the next send creates new.
 function handleAgentPick(paneIndex, conversationId, slug) {
   const tab = activeAgentTab(paneIndex)
   if (!tab) return
+  const pane = panes.value[paneIndex]
+  if (conversationId) {
+    agents.release(conversationId)
+    tab.key = 'agent:'
+    tab.id = ''
+    pane.activeTab = tab.key
+  }
   tab.agentSlug = slug
-  if (conversationId) agents.selectAgent(conversationId, slug)
 }
 
-function handleAgentLoad(id) {
+function handleAgentLoad(id, oldId) {
+  if (oldId && oldId !== id) agents.release(oldId)
+  if (!id) return
+  agents.loadConversation(id)
+  agents.retain(id)
+}
+
+// Activating an existing agent tab rehydrates that conversation the same way
+// hydrate does for the active tab: load + subscribe + retain. Without this,
+// background/saved agent tabs activate with an empty timeline.
+function selectAgentNode(id) {
   if (!id) return
   agents.loadConversation(id)
   agents.retain(id)
@@ -612,7 +643,7 @@ const menuItems = computed(() => ([
     label: 'Agent',
     items: [
       { label: 'Open Agent Pane', icon: 'pi pi-sparkles', command: () => agents.openAgentPane() },
-      { label: 'New Conversation', icon: 'pi pi-refresh',  command: () => handleAgentReset(activePaneIndex.value, null) },
+      { label: 'New Conversation', icon: 'pi pi-refresh',  command: () => handleAgentReset(activePaneIndex.value, activeAgentTab(activePaneIndex.value)?.id || null) },
       { separator: true },
       { label: 'Configure Agents…', icon: 'pi pi-sliders-h', command: () => bindTabToActivePane('agent-config', 0, 'Agent Config') },
     ]
@@ -744,6 +775,7 @@ watch(pendingNavigation, async (pending) => {
   if (kind === 'terminal')      await selectTerminalNode(id, opts)
   else if (kind === 'channel')  await selectChannelNode(id, opts)
   else if (kind === 'file')     selectFileNode(id, opts)
+  else if (kind === 'agent')    selectAgentNode(id)
 })
 
 // ── ExplorerPane event handlers ───────────────────────────────────────────────
