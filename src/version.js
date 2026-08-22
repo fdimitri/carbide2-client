@@ -4,7 +4,10 @@
 // Client versions may include the release codename slug directly
 // (e.g. 0.3.1-letigre), so the label should mirror VERSION exactly.
 export const VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0'
-export const CODENAME = 'Le Tigre'
+export const CODENAME = 'Le Tigre++'
+// The human-facing version string. VERSION stays semver (0.3.1) because it is
+// also used as the session provenance tag; this is what the UI prints.
+export const DISPLAY_VERSION = 'v0.3.1-letigre++'
 export const BUILD_META = typeof __APP_BUILD_META__ !== 'undefined' ? __APP_BUILD_META__ : {}
 
 function shortSha(sha) {

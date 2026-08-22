@@ -1,7 +1,7 @@
 {
   "name": "carbide2-client",
   "private": true,
-  "version": "0.3.0-letigre",
+  "version": "0.3.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
