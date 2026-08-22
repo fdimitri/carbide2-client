@@ -389,9 +389,17 @@ html.theme-green {
 }
 
 /* Explorer Tree */
+/* PrimeVue sets background: var(--p-tree-background) on the tree root, which
+   overrides any plain background rule. Make the tree transparent (so the
+   fixed pane gradient behind it shows through and doesn't scroll), then put
+   the gradient on the pane shell. */
 .explorer-file-tree {
   min-height: 100%;
   --p-tree-indent: 0.5em;
+  --p-tree-background: transparent;
+}
+
+#pane-explorer {
   background: linear-gradient(200deg, rgba(63, 94, 251, 0.05) 0%, rgba(0, 0, 0, 1) 100%);
 }
 .explorer-file-tree .p-tree-root {
@@ -456,7 +464,7 @@ html.theme-green {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background-image: url(data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='grain'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23grain)'/%3E%3C/svg%3E);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='grain'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23grain)'/%3E%3C/svg%3E");
   background-size: 120px 120px;
   opacity: 0.12;
   mix-blend-mode: difference;

@@ -1,5 +1,5 @@
 <template>
-  <aside id="pane-explorer" class="border-r border-line bg-gradient-to-b from-bg-2/95 to-bg-1/95 flex flex-col min-h-0 min-w-0">
+  <aside id="pane-explorer" class="w-full border-r border-line flex flex-col min-h-0 min-w-0">
     <PaneHeader title="Explorer" />
 
     <!-- Empty-project banner: project has no files yet -> offer git clone.
