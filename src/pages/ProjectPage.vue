@@ -370,8 +370,9 @@ const sessionSync = useSessionSync({
       if (!key || !key.startsWith('agent:')) continue
       const id = key.slice('agent:'.length)
       if (!id) continue
+      const tab = (pane.tabs || []).find((t) => t.key === key) || null
       agents.loadConversation(id)
-      agents.retain(id)
+      bindAgentTab(tab, id)
       hydrateRetained.add(id)
     }
   },
@@ -430,6 +431,28 @@ const agents = useAgents({ error, bindTabToActivePane,
 })
 const { registerHandlers: registerAgentHandlers } = agents
 
+// One ref per open agent TAB, not per activation. A tab is "bound" the first
+// time it is loaded (hydrate, create, picker load, or first activation) and
+// unbound when it closes/resets/switches. Keyed on the TAB OBJECT (WeakSet) so
+// two tabs that share one conversation each hold their own ref in useAgents'
+// per-conversation refcount — and re-activating a tab doesn't double-retain.
+const boundAgentTabs = new WeakSet()
+
+function bindAgentTab(tab, id) {
+  if (!tab || !id) return
+  if (boundAgentTabs.has(tab)) return
+  agents.retain(id)
+  boundAgentTabs.add(tab)
+}
+
+function unbindAgentTab(tab, id) {
+  if (!tab || !id) return
+  if (!boundAgentTabs.has(tab)) return
+  boundAgentTabs.delete(tab)
+  hydrateRetained.delete(id)
+  agents.release(id)
+}
+
 // Resolve the active agent tab in a pane (the tab whose key === pane.activeTab
 // and kind === 'agent').
 function activeAgentTab(paneIndex) {
@@ -448,7 +471,7 @@ function handleAgentPick(paneIndex, conversationId, slug) {
   if (!tab) return
   const pane = panes.value[paneIndex]
   if (conversationId) {
-    agents.release(conversationId)
+    unbindAgentTab(tab, conversationId)
     tab.key = 'agent:'
     tab.id = ''
     pane.activeTab = tab.key
@@ -457,19 +480,22 @@ function handleAgentPick(paneIndex, conversationId, slug) {
 }
 
 function handleAgentLoad(id, oldId) {
-  if (oldId && oldId !== id) agents.release(oldId)
+  const tab = activeAgentTab(activePaneIndex.value)
+  if (oldId && oldId !== id) unbindAgentTab(tab, oldId)
   if (!id) return
   agents.loadConversation(id)
-  agents.retain(id)
+  bindAgentTab(tab, id)
 }
 
 // Activating an existing agent tab rehydrates that conversation the same way
-// hydrate does for the active tab: load + subscribe + retain. Without this,
-// background/saved agent tabs activate with an empty timeline.
+// hydrate does for the active tab: load + subscribe + retain. Idempotent per tab
+// via bindAgentTab, so re-activating a tab doesn't double-retain or re-load.
 function selectAgentNode(id) {
   if (!id) return
+  const tab = activeAgentTab(activePaneIndex.value)
+  if (tab && boundAgentTabs.has(tab)) return
   agents.loadConversation(id)
-  agents.retain(id)
+  bindAgentTab(tab, id)
 }
 
 function handleCloseTab(paneIndex, key) {
@@ -477,7 +503,10 @@ function handleCloseTab(paneIndex, key) {
   // worker subscription is dropped and the buffered transcript is released.
   if (typeof key === 'string' && key.startsWith('agent:')) {
     const cid = key.slice('agent:'.length)
-    if (cid) agents.release(cid)
+    if (cid) {
+      const tab = (panes.value[paneIndex]?.tabs || []).find((t) => t.key === key)
+      unbindAgentTab(tab, cid)
+    }
   }
   closePaneTab(paneIndex, key)
 }
@@ -495,7 +524,7 @@ async function handleAgentSend(paneIndex, conversationId, text, images) {
     tab.id  = cid
     pane.activeTab = tab.key
     agents.selectAgent(cid, tab.agentSlug)
-    agents.retain(cid)
+    bindAgentTab(tab, cid)
   }
   agents.send(cid, text, images)
 }
@@ -505,7 +534,10 @@ function handleAgentReset(paneIndex, conversationId) {
   // dropping the reference to the old conversation.
   const pane = panes.value[paneIndex]
   if (!pane) return
-  if (conversationId) agents.release(conversationId)
+  if (conversationId) {
+    const tab = activeAgentTab(paneIndex)
+    unbindAgentTab(tab, conversationId)
+  }
   const label = 'Agent'
   const key = 'agent:'
   pane.tabs = (pane.tabs || []).filter((t) => t.kind !== 'agent' || t.key !== pane.activeTab)
