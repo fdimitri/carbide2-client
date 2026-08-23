@@ -21,6 +21,7 @@ const EXT_TO_LANG = {
   yml:   'yaml',
   toml:  'ini',
   md:    'markdown',
+  mdx:   'markdown',
   sh:    'shell',
   bash:  'shell',
   zsh:   'shell',
