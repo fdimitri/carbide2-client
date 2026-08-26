@@ -99,6 +99,8 @@ class WorkerSocket {
     this._outSamples     = []  // [{ t, n }]
     this._tokenExpMs     = null // worker JWT expiry (ms), from system/connected
     this._reauthInFlight = false
+    this._authed          = false // true once system/connected arrives (ADR-018 two-phase)
+    this._authFallbackUsed = false // true after we've retried once with ?token=
   }
 
   // tokenFetcher: async () => string — called fresh on every (re)connect so the
@@ -117,13 +119,18 @@ class WorkerSocket {
     this._open()
   }
 
-  async _open() {
+  async _open(mode = 'anon') {
     if (this._ws) {
       const old = this._ws
       old.onclose = null
       old.onerror = null
       old.close()
     }
+
+    // Each anon attempt gets one legacy ?token= fallback; a fresh anon
+    // attempt (initial connect or a normal reconnect) starts over.
+    if (mode === 'anon') this._authFallbackUsed = false
+    this._authed = false
 
     let token
     try {
@@ -144,21 +151,29 @@ class WorkerSocket {
     }
 
     const gen = ++this._generation
-      const url = `${getWorkerUrl()}/?token=${encodeURIComponent(token)}` +
-        `&proto=${PROTOCOL}&min_server=${MIN_SERVER}`
+    // Anon path: no credential in the URL (ADR-018). URI path: legacy carrier.
+    const url = mode === 'uri'
+      ? `${getWorkerUrl()}/?token=${encodeURIComponent(token)}&proto=${PROTOCOL}&min_server=${MIN_SERVER}`
+      : `${getWorkerUrl()}/?proto=${PROTOCOL}&min_server=${MIN_SERVER}`
     this._ws = new WebSocket(url)
 
     this._ws.onopen = () => {
       if (this._generation !== gen) return
-      logInfo('WorkerSocket', 'connected')
       this._ready = true
-      this._reconnectAttempt = 0
-      this.attempt.value = 0
-      this.status.value = 'connected'
-      this._queue.forEach(m => { this._countOut(m); this._ws.send(m) })
-      this._queue = []
-      this._startHeartbeat()
-      this._emitLocal('system', 'open', {})
+      if (mode === 'uri') {
+        // Legacy carrier: the worker establishes from ?token= at onopen, so we
+        // are authenticated as soon as the socket is open.
+        this._authed = true
+        logInfo('WorkerSocket', 'connected (uri token)')
+        this._onAuthenticated()
+      } else {
+        // Anonymous: send the token in-band as our first frame.
+        logInfo('WorkerSocket', 'connected (anonymous) — sending system/auth')
+        const msg = JSON.stringify({ cs: 'system', cmd: 'auth', payload: { token } })
+        logWs('send', 'system', 'auth', { token })
+        this._countOut(msg)
+        this._ws.send(msg)
+      }
     }
 
     this._ws.onmessage = (event) => {
@@ -173,10 +188,22 @@ class WorkerSocket {
         }
         return
       }
+      // Anon auth was rejected (old worker, or an invalid token): fall back to
+      // the legacy ?token= carrier once per attempt.
+      if (msg.cs === 'system' && msg.cmd === 'error' && !this._authed && !this._authFallbackUsed) {
+        logWarn('WorkerSocket', 'anon auth rejected; retrying with ?token=', msg.payload?.message)
+        this._authFallbackUsed = true
+        this._open('uri')
+        return
+      }
       // Capture token expiry so we can refresh in-band before it lapses.
       if (msg.cs === 'system' && msg.cmd === 'connected') {
         this._setTokenExp(msg.payload?.token_exp)
         this._checkProtocol(msg.payload)
+        if (!this._authed) {
+          this._authed = true
+          this._onAuthenticated()
+        }
       }
       // Reauth outcomes are workerSocket-internal — adopt the new expiry and
       // swallow them rather than leaking to app handlers.
@@ -201,21 +228,46 @@ class WorkerSocket {
     this._ws.onclose = (e) => {
       if (this._generation !== gen) return
       logWarn('WorkerSocket', 'closed', e.code, e.reason)
+      const wasAuthed = this._authed
       this._ready = false
+      this._authed = false
       this.latencyMs.value = null
       this._tokenExpMs = null
       this._reauthInFlight = false
       this._stopHeartbeat()
-      if (!this._stopped) {
-        this._emitLocal('system', 'disconnected', { code: e.code })
-        this._scheduleReconnect()
+      if (this._stopped) return
+
+      // Closed before we ever authenticated, and we haven't tried the legacy
+      // ?token= carrier yet — retry once with it before the reconnect loop.
+      if (!wasAuthed && !this._authFallbackUsed) {
+        this._authFallbackUsed = true
+        logWarn('WorkerSocket', 'closed before auth; retrying with ?token=')
+        this._open('uri')
+        return
       }
+
+      this._emitLocal('system', 'disconnected', { code: e.code })
+      this._scheduleReconnect()
     }
 
     this._ws.onerror = (e) => {
       if (this._generation !== gen) return
       logWarn('WorkerSocket', 'error', e)
     }
+  }
+
+  // Called once the socket is authenticated (anon system/auth ack'd, or the
+  // legacy URI carrier established at open). This is where the app-level
+  // "connected" state flips and any queued frames are flushed.
+  _onAuthenticated() {
+    logInfo('WorkerSocket', 'authenticated')
+    this._reconnectAttempt = 0
+    this.attempt.value = 0
+    this.status.value = 'connected'
+    this._queue.forEach(m => { this._countOut(m); this._ws.send(m) })
+    this._queue = []
+    this._startHeartbeat()
+    this._emitLocal('system', 'open', {})
   }
 
   _scheduleReconnect() {
@@ -264,6 +316,7 @@ class WorkerSocket {
       this._ws = null
     }
     this._ready = false
+    this._authed = false
     this._queue = []
     this.status.value = 'idle'
     this.latencyMs.value = null
@@ -278,7 +331,7 @@ class WorkerSocket {
 
   send(cs, cmd, payload = {}) {
     const msg = JSON.stringify({ cs, cmd, payload })
-    if (this._ready) {
+    if (this._ready && this._authed) {
       logWs('send', cs, cmd, payload)
       this._countOut(msg)
       this._ws.send(msg)
