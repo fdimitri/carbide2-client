@@ -135,6 +135,10 @@ class WorkerSocket {
     // attempt (initial connect or a normal reconnect) starts over.
     if (mode === 'anon') this._authFallbackUsed = false
     this._authed = false
+    // Drop any previously-advertised capset: a reconnect may land on a
+    // different pod/build, and the merge would otherwise keep stale keys
+    // (e.g. a retired wire.uriauth) from the old advertisement.
+    this.caps.value = null
 
     let token
     try {
@@ -332,6 +336,7 @@ class WorkerSocket {
     this._ready = false
     this._authed = false
     this._queue = []
+    this.caps.value = null
     this.status.value = 'idle'
     this.latencyMs.value = null
     this.attempt.value = 0
