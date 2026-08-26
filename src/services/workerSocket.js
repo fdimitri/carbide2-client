@@ -101,6 +101,10 @@ class WorkerSocket {
     this._reauthInFlight = false
     this._authed          = false // true once system/connected arrives (ADR-018 two-phase)
     this._authFallbackUsed = false // true after we've retried once with ?token=
+    // Worker-advertised capset (ADR-019). Starts with wire caps (system/wirecaps
+    // at open), then the full capset (system/connected). Capture-only for now;
+    // gating lands in a later slice.
+    this.caps            = ref(null)
   }
 
   // tokenFetcher: async () => string — called fresh on every (re)connect so the
@@ -196,10 +200,20 @@ class WorkerSocket {
         this._open('uri')
         return
       }
+      // Worker wire caps (ADR-019 §6): transport capabilities advertised at
+      // open, before auth. Stored for later use; no gating yet.
+      if (msg.cs === 'system' && msg.cmd === 'wirecaps') {
+        this.caps.value = { ...(this.caps.value || {}), wire: msg.payload?.wire || {} }
+        logInfo('WorkerSocket', 'wire caps:', msg.payload)
+        return
+      }
       // Capture token expiry so we can refresh in-band before it lapses.
       if (msg.cs === 'system' && msg.cmd === 'connected') {
         this._setTokenExp(msg.payload?.token_exp)
         this._checkProtocol(msg.payload)
+        if (msg.payload?.caps) {
+          this.caps.value = { ...(this.caps.value || {}), ...msg.payload.caps }
+        }
         if (!this._authed) {
           this._authed = true
           this._onAuthenticated()
