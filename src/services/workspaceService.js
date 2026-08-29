@@ -1,4 +1,3 @@
-import axios from 'axios'
 import authService from './authService'
 
 // workspaceService — control-plane Workspace resource.
@@ -47,32 +46,6 @@ export async function getWorkspaceHealth(workspaceId) {
   return res.data
 }
 
-// Parse the control-plane workspace id from the page's base href (/w/<id>/),
-// injected by the workspace loader from X-Forwarded-Prefix. This is the
-// control-plane id (WORKSPACE_PROJECT_ID), NOT the local canonical project id.
-function workspaceIdFromBase() {
-  if (typeof document === 'undefined') return null
-  const baseHref = document.querySelector('base')?.getAttribute('href') || ''
-  const m = baseHref.match(/\/w\/(\d+)\/?/)
-  return m ? m[1] : null
-}
+// Re-export the control-plane mint (ADR-023) for existing importers.
+export { mintWorkspaceToken } from './workspaceToken'
 
-// Mint a worker JWT from the control plane (ADR-023). The workspace client
-// holds the control bearer in localStorage and must ask control directly —
-// authService.api is workspace-scoped and cannot reach control.
-export async function mintWorkerToken() {
-  const workspaceId = workspaceIdFromBase()
-  if (!workspaceId) {
-    throw Object.assign(new Error('workspace id not found in base href'), { status: 400 })
-  }
-  const controlToken = localStorage.getItem('control_auth_token')
-  if (!controlToken) {
-    throw Object.assign(new Error('missing control_auth_token'), { status: 401 })
-  }
-  const res = await axios.post(
-    `${window.location.origin}/api/workspaces/${workspaceId}/token`,
-    {},
-    { headers: { Authorization: `Bearer ${controlToken}` }, withCredentials: true }
-  )
-  return res.data.token
-}

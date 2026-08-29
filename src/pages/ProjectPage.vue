@@ -262,7 +262,7 @@ import ClientPicker from '../components/workspace/ClientPicker.vue'
 import workerSocket from '../services/workerSocket'
 import authService from '../services/authService'
 import { listProjects, uploadProjectFile, importProjectFromDisk } from '../services/projectService'
-import { mintWorkerToken } from '../services/workspaceService'
+import { mintWorkspaceToken } from '../services/workspaceToken'
 import { storeToRefs } from 'pinia'
 import { usePanes, PANE_COUNTS } from '../composables/usePanes'
 import { useSessionSync } from '../composables/useSessionSync'
@@ -934,7 +934,7 @@ onMounted(async () => {
       resync: (opts) => sessionSync.resync(opts),
     }
 
-    workerSocket.connect(() => mintWorkerToken())
+    workerSocket.connect(() => mintWorkspaceToken('workspace:rw'))
     // Intentionally do not auto-open any file; explorer will populate from server.
   } catch (e) {
     error.value = e.message || 'Failed to connect'

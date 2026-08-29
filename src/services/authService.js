@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { ref } from 'vue'
 import { isControlMode } from './mode'
+import { mintWorkspaceToken, tokenExpirySeconds } from './workspaceToken'
 
 // Per-pod token isolation.
 //
@@ -67,23 +68,17 @@ function readStoredUser() {
   }
 }
 
-function decodeJwtPayload(token) {
-  try {
-    const part = token.split('.')[1]
-    if (!part) return null
-    const base64 = part.replace(/-/g, '+').replace(/_/g, '/')
-    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=')
-    return JSON.parse(atob(padded))
-  } catch {
-    return null
-  }
+function tokenIsExpired(token) {
+  const exp = tokenExpirySeconds(token)
+  if (!exp) return true
+  const now = Math.floor(Date.now() / 1000)
+  return exp <= now
 }
 
-function tokenIsExpired(token) {
-  const payload = decodeJwtPayload(token)
-  if (!payload || typeof payload.exp !== 'number') return true
-  const now = Math.floor(Date.now() / 1000)
-  return payload.exp <= now
+function readControlUser() {
+  const raw = localStorage.getItem('control_user')
+  if (!raw) return null
+  try { return JSON.parse(raw) } catch { return null }
 }
 
 function controlApiUrl(path) {
@@ -94,14 +89,6 @@ async function loginControl(email, password) {
   const response = await axios.post(controlApiUrl('/api/login'), {
     user: { email, password },
   }, { withCredentials: true })
-
-  return response.data
-}
-
-async function exchangeWorkspaceToken(controlToken) {
-  const response = await api.post('/login', {}, {
-    headers: { Authorization: `Bearer ${controlToken}` },
-  })
 
   return response.data
 }
@@ -134,8 +121,8 @@ const authService = {
         return { user, token }
       }
 
-      // Workspace mode: first authenticate against control-plane, then
-      // exchange the control token for a workspace token.
+      // Workspace mode: authenticate against control, then mint a workspace:api
+      // token from control (ADR-023). The control user becomes currentUser.
       const controlLogin = localStorage.getItem('control_auth_token')
       let controlToken = controlLogin
       let controlUser = readStoredUser()
@@ -147,8 +134,8 @@ const authService = {
         localStorage.setItem('control_user', JSON.stringify(controlUser))
       }
 
-      const exchange = await exchangeWorkspaceToken(controlToken)
-      const { user, token } = exchange
+      const token = await mintWorkspaceToken('workspace:api')
+      const user = controlUser || { email: email }
       this.currentUser = user
       this.token = token
       localStorage.setItem(TOKEN_KEY, token)
@@ -176,7 +163,9 @@ const authService = {
     if (!token) return null
     try {
       const payload = JSON.parse(atob(token.split('.')[1]))
-      return payload.sub || payload.user
+      // Control-format workspace tokens carry the control user id in user_id;
+      // sub is "user:<id>". Worker broadcasts compare against user_id.
+      return payload.user_id ?? payload.sub ?? payload.user
     } catch { return null }
   },
 
@@ -203,12 +192,12 @@ const authService = {
         const controlToken = localStorage.getItem('control_auth_token')
         if (controlToken && !tokenIsExpired(controlToken)) {
           try {
-            const exchange = await exchangeWorkspaceToken(controlToken)
-            this.currentUser = exchange.user
-            this.token = exchange.token
-            localStorage.setItem(TOKEN_KEY, exchange.token)
-            localStorage.setItem(USER_KEY, JSON.stringify(exchange.user))
-            api.defaults.headers.common['Authorization'] = `Bearer ${exchange.token}`
+            const token = await mintWorkspaceToken('workspace:api')
+            this.token = token
+            localStorage.setItem(TOKEN_KEY, token)
+            // The workspace "user" is just the control user mirror (id+email).
+            this.currentUser = readStoredUser() || readControlUser()
+            api.defaults.headers.common['Authorization'] = `Bearer ${token}`
             return true
           } catch {
             this.logout()
@@ -232,9 +221,9 @@ const authService = {
     }
   },
 
-  // Silently mint a fresh workspace bearer by re-exchanging the still-valid
-  // control token. Returns true on success. In control mode the control token
-  // IS the bearer, so there is nothing to refresh — only a fresh login helps.
+  // Silently mint a fresh workspace:api token (ADR-023). Returns true on
+  // success. In control mode the control token IS the bearer, so there is
+  // nothing to refresh — only a fresh login helps.
   async refresh() {
     if (isControlMode) return false
     if (this._refreshPromise) return this._refreshPromise
@@ -242,12 +231,10 @@ const authService = {
       const controlToken = localStorage.getItem('control_auth_token')
       if (!controlToken || tokenIsExpired(controlToken)) return false
       try {
-        const exchange = await exchangeWorkspaceToken(controlToken)
-        this.currentUser = exchange.user
-        this.token = exchange.token
-        localStorage.setItem(TOKEN_KEY, exchange.token)
-        localStorage.setItem(USER_KEY, JSON.stringify(exchange.user))
-        api.defaults.headers.common['Authorization'] = `Bearer ${exchange.token}`
+        const token = await mintWorkspaceToken('workspace:api')
+        this.token = token
+        localStorage.setItem(TOKEN_KEY, token)
+        api.defaults.headers.common['Authorization'] = `Bearer ${token}`
         this.sessionExpired.value = false
         return true
       } catch {
@@ -263,10 +250,9 @@ const authService = {
 }
 
 // 401 interceptor: a single expired-bearer response should not silently break
-// the app. Attempt one in-place refresh (re-exchange the control token) and
-// replay the request; if that fails, the upstream session is truly gone —
-// flag it so the UI can prompt re-authentication. The exchange endpoint itself
-// (/login) is exempt to avoid recursion.
+// the app. Attempt one in-place mint of a fresh workspace:api token and replay;
+// if that fails, the upstream session is truly gone — flag it so the UI can
+// prompt re-authentication.
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
