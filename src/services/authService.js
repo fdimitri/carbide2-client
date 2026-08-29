@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { ref } from 'vue'
 import { isControlMode } from './mode'
-import { mintWorkspaceToken, tokenExpirySeconds } from './workspaceToken'
+import { mintWorkspaceToken, tokenExpirySeconds, tokenTtlSeconds } from './workspaceToken'
 
 // Per-pod token isolation.
 //
@@ -103,6 +103,8 @@ const authService = {
   sessionExpired: ref(false),
   // Guards against several concurrent 401s all kicking off their own refresh.
   _refreshPromise: null,
+  // Timer that proactively re-mints workspace:api at TTL*0.2 remaining.
+  _refreshTimer: null,
 
   get isAuthenticated() {
     return !!this.token && !!this.currentUser
@@ -141,6 +143,7 @@ const authService = {
       localStorage.setItem(TOKEN_KEY, token)
       localStorage.setItem(USER_KEY, JSON.stringify(user))
       api.defaults.headers.common['Authorization'] = `Bearer ${token}`
+      this._scheduleRefresh(token)
 
       return { user, token, controlUser }
     } catch (error) {
@@ -149,6 +152,7 @@ const authService = {
   },
 
   logout() {
+    this._clearRefreshTimer()
     this.currentUser = null
     this.token = null
     localStorage.removeItem(TOKEN_KEY)
@@ -198,6 +202,7 @@ const authService = {
             // The workspace "user" is just the control user mirror (id+email).
             this.currentUser = readStoredUser() || readControlUser()
             api.defaults.headers.common['Authorization'] = `Bearer ${token}`
+            this._scheduleRefresh(token)
             return true
           } catch {
             this.logout()
@@ -221,6 +226,26 @@ const authService = {
     }
   },
 
+  // Arm a timer that re-mints workspace:api when 80% of its lifetime has
+  // elapsed (lead = TTL * 0.2), so the REST bearer never actually lapses and
+  // a 401 round-trip never happens in the steady state.
+  _scheduleRefresh(token) {
+    this._clearRefreshTimer()
+    const ttl = tokenTtlSeconds(token)
+    const exp = tokenExpirySeconds(token)
+    if (!ttl || !exp) return
+    const leadMs = ttl * 0.2 * 1000
+    const delayMs = Math.max(0, (exp * 1000 - leadMs) - Date.now())
+    this._refreshTimer = setTimeout(() => { this.refresh() }, delayMs)
+  },
+
+  _clearRefreshTimer() {
+    if (this._refreshTimer != null) {
+      clearTimeout(this._refreshTimer)
+      this._refreshTimer = null
+    }
+  },
+
   // Silently mint a fresh workspace:api token (ADR-023). Returns true on
   // success. In control mode the control token IS the bearer, so there is
   // nothing to refresh — only a fresh login helps.
@@ -236,6 +261,7 @@ const authService = {
         localStorage.setItem(TOKEN_KEY, token)
         api.defaults.headers.common['Authorization'] = `Bearer ${token}`
         this.sessionExpired.value = false
+        this._scheduleRefresh(token)
         return true
       } catch {
         return false

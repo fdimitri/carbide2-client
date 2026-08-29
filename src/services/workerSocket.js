@@ -6,6 +6,7 @@
 //        workerSocket.send('chat', 'message', { text: 'hello' })
 import { ref } from 'vue'
 import { logWs, logInfo, logWarn } from './log'
+import { tokenTtlSeconds } from './workspaceToken'
 
 // Worker WebSocket URL. Behind the workspace ingress the worker is reached
 // at <base>/ws (Traefik routes /w/<id>/ws to the worker container's port).
@@ -54,9 +55,9 @@ const RECONNECT_OFFLINE_AFTER = 4
 const HEARTBEAT_MS = 10000
 // Sliding window for the throughput readout in the status bar.
 const RATE_WINDOW_MS = 30000
-// Refresh the worker JWT in-band this long before it expires, so a long-lived
-// session survives token rotation without ever dropping the socket.
-const REAUTH_LEAD_MS = 90000
+// Re-mint the worker JWT when 80% of its lifetime has elapsed (lead = TTL * 0.2).
+// Proportional to TTL rather than a fixed number of seconds.
+const REAUTH_LEAD_FRACTION = 0.2
 
 // True when a token-fetch rejection is an authentication failure (expired /
 // revoked upstream session) rather than a transient network error. Auth
@@ -98,6 +99,7 @@ class WorkerSocket {
     this._inSamples      = []  // [{ t, n }]
     this._outSamples     = []  // [{ t, n }]
     this._tokenExpMs     = null // worker JWT expiry (ms), from system/connected
+    this._tokenTtlMs     = null // worker JWT lifetime (ms), from the minted token
     this._reauthInFlight = false
     this._authed         = false // true once system/connected arrives (ADR-023 two-phase)
   }
@@ -146,6 +148,9 @@ class WorkerSocket {
 
     const gen = ++this._generation
     this._authed = false
+    // Remember the token's lifetime so re-mint can fire at a TTL-proportional
+    // lead (see _maybeReauth).
+    this._tokenTtlMs = tokenTtlSeconds(token) != null ? tokenTtlSeconds(token) * 1000 : null
     // ADR-023: anonymous connect — no token in the URL. The token rides the
     // first frame (system/auth). proto/min_server stay in the query string
     // (wire versioning is ADR-019's concern, not ADR-023's).
@@ -212,6 +217,7 @@ class WorkerSocket {
       this._authed = false
       this.latencyMs.value = null
       this._tokenExpMs = null
+      this._tokenTtlMs = null
       this._reauthInFlight = false
       this._stopHeartbeat()
       if (!this._stopped) {
@@ -296,6 +302,7 @@ class WorkerSocket {
     this._inSamples = []
     this._outSamples = []
     this._tokenExpMs = null
+    this._tokenTtlMs = null
     this._reauthInFlight = false
   }
 
@@ -360,11 +367,14 @@ class WorkerSocket {
     }
   }
 
-  // Mint a fresh worker JWT and present it over the live socket shortly before
-  // the current one lapses, so the connection never has to drop for rotation.
+  // Mint a fresh worker JWT and present it over the live socket when 80% of
+  // the token's lifetime has elapsed, so the connection never drops for
+  // rotation. Lead is TTL-proportional; if we somehow lost the TTL, fall back
+  // to a fixed 60s lead.
   async _maybeReauth() {
     if (!this._ready || this._reauthInFlight || !this._tokenExpMs) return
-    if (Date.now() < this._tokenExpMs - REAUTH_LEAD_MS) return
+    const leadMs = this._tokenTtlMs != null ? this._tokenTtlMs * REAUTH_LEAD_FRACTION : 60000
+    if (Date.now() < this._tokenExpMs - leadMs) return
     this._reauthInFlight = true
     let token
     try {

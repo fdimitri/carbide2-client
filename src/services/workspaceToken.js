@@ -33,16 +33,31 @@ export async function mintWorkspaceToken(scope) {
   return res.data.token
 }
 
-// Decode the exp claim (unix seconds) from a JWT, or null.
-export function tokenExpirySeconds(token) {
+// Decode a JWT payload (no signature verification — these are already-issued
+// tokens we just need to read claims from). Returns the payload hash or null.
+function decodeJwtPayload(token) {
   try {
     const part = token.split('.')[1]
     if (!part) return null
     const base64 = part.replace(/-/g, '+').replace(/_/g, '/')
     const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=')
-    const payload = JSON.parse(atob(padded))
-    return typeof payload.exp === 'number' ? payload.exp : null
+    return JSON.parse(atob(padded))
   } catch {
     return null
   }
+}
+
+// Decode the exp claim (unix seconds) from a JWT, or null.
+export function tokenExpirySeconds(token) {
+  const payload = decodeJwtPayload(token)
+  return payload && typeof payload.exp === 'number' ? payload.exp : null
+}
+
+// Lifetime of a JWT in seconds (exp - iat), or null. The re-mint lead is a
+// fraction of this, so a token is refreshed before it expires regardless of
+// how long its TTL is.
+export function tokenTtlSeconds(token) {
+  const payload = decodeJwtPayload(token)
+  if (!payload || typeof payload.exp !== 'number' || typeof payload.iat !== 'number') return null
+  return payload.exp - payload.iat
 }
