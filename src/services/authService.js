@@ -139,7 +139,7 @@ const authService = {
       const controlLogin = localStorage.getItem('control_auth_token')
       let controlToken = controlLogin
       let controlUser = readStoredUser()
-      if (!controlToken) {
+      if (!controlToken || tokenIsExpired(controlToken)) {
         const response = await loginControl(email, password)
         controlToken = response.token
         controlUser = response.user
@@ -166,6 +166,8 @@ const authService = {
     this.token = null
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(USER_KEY)
+    localStorage.removeItem('control_auth_token')
+    localStorage.removeItem('control_user')
     delete api.defaults.headers.common['Authorization']
   },
 

@@ -20,11 +20,6 @@ export async function createProject(name, description = '') {
   return res.data
 }
 
-export async function getWsToken(projectId) {
-  const res = await authService.api.post(`projects/${projectId}/ws_token`, {})
-  return res.data.token
-}
-
 export async function listChatChannels(projectId) {
   const res = await authService.api.get(`projects/${projectId}/chat_channels`)
   return res.data || []

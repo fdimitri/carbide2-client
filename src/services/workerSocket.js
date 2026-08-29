@@ -99,6 +99,7 @@ class WorkerSocket {
     this._outSamples     = []  // [{ t, n }]
     this._tokenExpMs     = null // worker JWT expiry (ms), from system/connected
     this._reauthInFlight = false
+    this._authed         = false // true once system/connected arrives (ADR-023 two-phase)
   }
 
   // tokenFetcher: async () => string — called fresh on every (re)connect so the
@@ -144,21 +145,21 @@ class WorkerSocket {
     }
 
     const gen = ++this._generation
-      const url = `${getWorkerUrl()}/?token=${encodeURIComponent(token)}` +
-        `&proto=${PROTOCOL}&min_server=${MIN_SERVER}`
+    this._authed = false
+    // ADR-023: anonymous connect — no token in the URL. The token rides the
+    // first frame (system/auth). proto/min_server stay in the query string
+    // (wire versioning is ADR-019's concern, not ADR-023's).
+    const url = `${getWorkerUrl()}/?proto=${PROTOCOL}&min_server=${MIN_SERVER}`
     this._ws = new WebSocket(url)
 
     this._ws.onopen = () => {
       if (this._generation !== gen) return
-      logInfo('WorkerSocket', 'connected')
+      logInfo('WorkerSocket', 'connected (anonymous) — sending system/auth')
       this._ready = true
-      this._reconnectAttempt = 0
-      this.attempt.value = 0
-      this.status.value = 'connected'
-      this._queue.forEach(m => { this._countOut(m); this._ws.send(m) })
-      this._queue = []
-      this._startHeartbeat()
-      this._emitLocal('system', 'open', {})
+      const msg = JSON.stringify({ cs: 'system', cmd: 'auth', payload: { token } })
+      logWs('send', 'system', 'auth', { token })
+      this._countOut(msg)
+      this._ws.send(msg)
     }
 
     this._ws.onmessage = (event) => {
@@ -174,9 +175,15 @@ class WorkerSocket {
         return
       }
       // Capture token expiry so we can refresh in-band before it lapses.
+      // system/connected is also the auth acknowledgement (ADR-023): it marks
+      // the socket authenticated, after which queued frames are flushed.
       if (msg.cs === 'system' && msg.cmd === 'connected') {
         this._setTokenExp(msg.payload?.token_exp)
         this._checkProtocol(msg.payload)
+        if (!this._authed) {
+          this._authed = true
+          this._onAuthenticated()
+        }
       }
       // Reauth outcomes are workerSocket-internal — adopt the new expiry and
       // swallow them rather than leaking to app handlers.
@@ -202,6 +209,7 @@ class WorkerSocket {
       if (this._generation !== gen) return
       logWarn('WorkerSocket', 'closed', e.code, e.reason)
       this._ready = false
+      this._authed = false
       this.latencyMs.value = null
       this._tokenExpMs = null
       this._reauthInFlight = false
@@ -216,6 +224,20 @@ class WorkerSocket {
       if (this._generation !== gen) return
       logWarn('WorkerSocket', 'error', e)
     }
+  }
+
+  // Called once the worker acknowledges auth (system/connected). This is where
+  // the app-level "connected" state flips and queued frames are flushed —
+  // nothing is sent or flushed before auth (ADR-023).
+  _onAuthenticated() {
+    logInfo('WorkerSocket', 'authenticated')
+    this._reconnectAttempt = 0
+    this.attempt.value = 0
+    this.status.value = 'connected'
+    this._queue.forEach(m => { this._countOut(m); this._ws.send(m) })
+    this._queue = []
+    this._startHeartbeat()
+    this._emitLocal('system', 'open', {})
   }
 
   _scheduleReconnect() {
@@ -264,6 +286,7 @@ class WorkerSocket {
       this._ws = null
     }
     this._ready = false
+    this._authed = false
     this._queue = []
     this.status.value = 'idle'
     this.latencyMs.value = null
@@ -278,7 +301,7 @@ class WorkerSocket {
 
   send(cs, cmd, payload = {}) {
     const msg = JSON.stringify({ cs, cmd, payload })
-    if (this._ready) {
+    if (this._ready && this._authed) {
       logWs('send', cs, cmd, payload)
       this._countOut(msg)
       this._ws.send(msg)
