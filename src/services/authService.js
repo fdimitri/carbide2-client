@@ -105,6 +105,9 @@ const authService = {
   _refreshPromise: null,
   // Timer that proactively re-mints workspace:api at TTL*0.2 remaining.
   _refreshTimer: null,
+  // The LOCAL workspace user id (users.id), fetched from /api/v1/server/me.
+  // This is the value every *.user_id in the pod uses, NOT the token's user_id.
+  localUserId: ref(null),
 
   get isAuthenticated() {
     return !!this.token && !!this.currentUser
@@ -144,6 +147,7 @@ const authService = {
       localStorage.setItem(USER_KEY, JSON.stringify(user))
       api.defaults.headers.common['Authorization'] = `Bearer ${token}`
       this._scheduleRefresh(token)
+      this.fetchMe()
 
       return { user, token, controlUser }
     } catch (error) {
@@ -162,15 +166,23 @@ const authService = {
     delete api.defaults.headers.common['Authorization']
   },
 
-  userId() {
-    const token = localStorage.getItem(TOKEN_KEY)
-    if (!token) return null
+  // Fetch the LOCAL user id for this workspace from /api/v1/server/me.
+  // This is the id the workspace's *.user_id columns use; it is unrelated to
+  // the control-plane id in the token.
+  async fetchMe() {
+    if (isControlMode) return
     try {
-      const payload = JSON.parse(atob(token.split('.')[1]))
-      // Control-format workspace tokens carry the control user id in user_id;
-      // sub is "user:<id>". Worker broadcasts compare against user_id.
-      return payload.user_id ?? payload.sub ?? payload.user
-    } catch { return null }
+      const res = await this.api.get('v1/server/me')
+      if (typeof res.data?.user_id === 'number' || typeof res.data?.user_id === 'string') {
+        this.localUserId.value = res.data.user_id
+      }
+    } catch {
+      // Keep the last-known id; the socket's system/connected will reconcile.
+    }
+  },
+
+  userId() {
+    return this.localUserId.value
   },
 
   async checkAuth() {
@@ -203,6 +215,7 @@ const authService = {
             this.currentUser = readStoredUser() || readControlUser()
             api.defaults.headers.common['Authorization'] = `Bearer ${token}`
             this._scheduleRefresh(token)
+            this.fetchMe()
             return true
           } catch {
             this.logout()

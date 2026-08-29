@@ -875,9 +875,12 @@ onMounted(async () => {
     await initChat()
 
     offHandlers.push(
-      workerSocket.on('system', 'connected', () => {
+      workerSocket.on('system', 'connected', (payload) => {
         wsConnected.value = true
         storeJoinedChatChannels.value = new Set()
+        // The worker resolves the LOCAL user id; reconcile it so the client's
+        // self-id matches what every *.user_id column stores.
+        if (payload?.user_id != null) authService.localUserId.value = payload.user_id
         // Subscribe to the server-side debug stream so flusher / watcher /
         // agent / fs activity shows up in the Debug pane in real time.
         // See #3 in May30-Questions.md.
