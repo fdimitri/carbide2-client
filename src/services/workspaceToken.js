@@ -61,3 +61,10 @@ export function tokenTtlSeconds(token) {
   if (!payload || typeof payload.exp !== 'number' || typeof payload.iat !== 'number') return null
   return payload.exp - payload.iat
 }
+
+// The auth_time claim (first login, unix seconds), or null. Present only on
+// the control login token (ADR-015); fixed at login and preserved across renew.
+export function tokenAuthTimeSeconds(token) {
+  const payload = decodeJwtPayload(token)
+  return payload && typeof payload.auth_time === 'number' ? payload.auth_time : null
+}

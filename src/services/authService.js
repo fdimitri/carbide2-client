@@ -105,6 +105,11 @@ const authService = {
   _refreshPromise: null,
   // Timer that proactively re-mints workspace:api at TTL*0.2 remaining.
   _refreshTimer: null,
+  // Timer that proactively renews the control login token at TTL*0.2 remaining
+  // (ADR-015 sliding renewal; the server enforces the 7-day absolute ceiling).
+  _controlRenewTimer: null,
+  // Guards against concurrent renew calls.
+  _controlRenewPromise: null,
   // The LOCAL workspace user id (users.id), fetched from /api/v1/server/me.
   // This is the value every *.user_id in the pod uses, NOT the token's user_id.
   localUserId: ref(null),
@@ -123,6 +128,7 @@ const authService = {
         localStorage.setItem(TOKEN_KEY, token)
         localStorage.setItem(USER_KEY, JSON.stringify(user))
         api.defaults.headers.common['Authorization'] = `Bearer ${token}`
+        this._scheduleControlRenew(token)
         return { user, token }
       }
 
@@ -138,6 +144,7 @@ const authService = {
         localStorage.setItem('control_auth_token', controlToken)
         localStorage.setItem('control_user', JSON.stringify(controlUser))
       }
+      this._scheduleControlRenew(controlToken)
 
       const token = await mintWorkspaceToken('workspace:api')
       const user = controlUser || { email: email }
@@ -157,6 +164,7 @@ const authService = {
 
   logout() {
     this._clearRefreshTimer()
+    this._clearControlRenewTimer()
     this.currentUser = null
     this.token = null
     localStorage.removeItem(TOKEN_KEY)
@@ -198,7 +206,10 @@ const authService = {
           this.token = token
           this.currentUser = readStoredUser()
           api.defaults.headers.common['Authorization'] = `Bearer ${token}`
-          if (this.currentUser) return true
+          if (this.currentUser) {
+            if (isControlMode) this._scheduleControlRenew(token)
+            return true
+          }
           // Token with missing user state should be treated as stale.
           this.logout()
         }
@@ -208,6 +219,7 @@ const authService = {
         const controlToken = localStorage.getItem('control_auth_token')
         if (controlToken && !tokenIsExpired(controlToken)) {
           try {
+            this._scheduleControlRenew(controlToken)
             const token = await mintWorkspaceToken('workspace:api')
             this.token = token
             localStorage.setItem(TOKEN_KEY, token)
@@ -286,6 +298,65 @@ const authService = {
       this._refreshPromise = null
     }
   },
+
+  // ── Control login-token renewal (ADR-015) ───────────────────────────────
+  // Renew the control login token in place (no password). The server re-signs
+  // with a fresh exp and preserves auth_time, rejecting once now-auth_time
+  // exceeds the session ceiling. In workspace mode this is re-keyed downward:
+  // a fresh control token re-mints workspace:api (worker reauth mints its own
+  // workspace:rw on its own timer).
+  async renewControl() {
+    if (this._controlRenewPromise) return this._controlRenewPromise
+    this._controlRenewPromise = (async () => {
+      const controlToken = localStorage.getItem('control_auth_token')
+      if (!controlToken) return false
+      try {
+        const res = await axios.post(controlApiUrl('/api/v1/control/renew'), {}, {
+          headers: { Authorization: `Bearer ${controlToken}` },
+          withCredentials: true
+        })
+        const newToken = res.data.token
+        localStorage.setItem('control_auth_token', newToken)
+        this._scheduleControlRenew(newToken)
+
+        if (isControlMode) {
+          this.token = newToken
+          api.defaults.headers.common['Authorization'] = `Bearer ${newToken}`
+        } else {
+          await this.refresh()   // re-key: re-mint workspace:api from the new control token
+        }
+        return true
+      } catch (e) {
+        if (e?.response?.status === 401) {
+          // Ceiling reached or token expired — needs a full login.
+          this.sessionExpired.value = true
+        }
+        return false
+      }
+    })()
+    try {
+      return await this._controlRenewPromise
+    } finally {
+      this._controlRenewPromise = null
+    }
+  },
+
+  _scheduleControlRenew(token) {
+    this._clearControlRenewTimer()
+    const ttl = tokenTtlSeconds(token)
+    const exp = tokenExpirySeconds(token)
+    if (!ttl || !exp) return
+    const leadMs = ttl * 0.2 * 1000
+    const delayMs = Math.max(0, (exp * 1000 - leadMs) - Date.now())
+    this._controlRenewTimer = setTimeout(() => { this.renewControl() }, delayMs)
+  },
+
+  _clearControlRenewTimer() {
+    if (this._controlRenewTimer != null) {
+      clearTimeout(this._controlRenewTimer)
+      this._controlRenewTimer = null
+    }
+  },
 }
 
 // 401 interceptor: a single expired-bearer response should not silently break
@@ -314,5 +385,22 @@ api.interceptors.response.use(
 
 // Restore token on page load
 authService.checkAuth()
+
+// Cross-window renew propagation (ADR-015): tokens live in shared localStorage.
+// When ANOTHER window renews the control token, the `storage` event fires here
+// (not in the window that wrote it); adopt the new token and re-key downward.
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key !== 'control_auth_token' || !e.newValue) return
+    if (isControlMode) {
+      authService.token = e.newValue
+      authService.api.defaults.headers.common['Authorization'] = `Bearer ${e.newValue}`
+      authService._scheduleControlRenew(e.newValue)
+    } else {
+      authService._scheduleControlRenew(e.newValue)
+      authService.refresh()   // re-mint workspace:api from the new control token
+    }
+  })
+}
 
 export default authService
