@@ -12,6 +12,7 @@
         </div>
         <div class="flex items-center gap-2">
           <a href="/about" target="_blank" class="btn-ghost no-underline">About</a>
+          <button class="btn-ghost" @click="showControl = true">Control</button>
           <button class="btn-primary" @click="showNewForm = !showNewForm">
             <span class="text-base leading-none font-bold">+</span> New {{ singularTitle }}
           </button>
@@ -100,6 +101,8 @@
 
       <p v-if="error" class="mt-6 text-warn text-sm">{{ error }}</p>
     </div>
+
+    <ControlSettings v-model:visible="showControl" />
   </div>
 </template>
 
@@ -111,6 +114,7 @@ import { setPendingSeed } from '../services/pendingSeed'
 import UiButton from '../components/ui/UiButton.vue'
 import UiInput from '../components/ui/UiInput.vue'
 import UiField from '../components/ui/UiField.vue'
+import ControlSettings from '../components/ControlSettings.vue'
 
 // Model B: this Dashboard is the CONTROL-PLANE dashboard. It lists the
 // user's Workspaces (one isolated pod each). Workspace pods themselves have
@@ -128,6 +132,7 @@ const HEALTH_POLL_MS = 8000
 let healthTimer = null
 
 const showNewForm = ref(false)
+const showControl = ref(false)
 const newName = ref('')
 const newDesc = ref('')
 
