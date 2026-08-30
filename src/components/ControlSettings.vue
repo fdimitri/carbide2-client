@@ -4,6 +4,7 @@ import Dialog from 'primevue/dialog'
 import UiButton from './ui/UiButton.vue'
 import UiInput from './ui/UiInput.vue'
 import { getMe, getUser, listSettings, updateSetting } from '../services/controlService'
+import PasskeyManagement from './PasskeyManagement.vue'
 
 const props = defineProps({ visible: Boolean })
 const emit = defineEmits(['update:visible', 'close'])
@@ -87,6 +88,9 @@ async function save(key) {
         </div>
         <p v-if="settings.length === 0" class="text-muted text-sm">No settings yet.</p>
       </section>
+
+      <!-- Passkeys -->
+      <PasskeyManagement />
 
       <p v-if="error" class="text-warn text-sm">{{ error }}</p>
     </div>

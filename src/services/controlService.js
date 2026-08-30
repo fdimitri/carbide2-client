@@ -23,3 +23,35 @@ export async function updateSetting(key, value) {
   const res = await authService.api.patch(`v1/settings/${encodeURIComponent(key)}`, { value })
   return res.data
 }
+
+// ── Passkeys (ADR-021) ────────────────────────────────────────────────
+
+// List this user's registered passkeys.
+export async function listPasskeys() {
+  const res = await authService.api.get('v1/webauthn/credentials')
+  return res.data
+}
+
+// Begin registration: server returns { challenge, options }. `options` is the
+// PublicKeyCredentialCreationOptions JSON the browser's navigator.credentials
+// needs. We only decode base64url fields into ArrayBuffers client-side.
+export async function beginPasskeyRegistration() {
+  const res = await authService.api.post('v1/webauthn/registration/begin', {})
+  return res.data
+}
+
+// Complete registration: send the credential the authenticator produced, plus
+// the top-level nickname the server persists.
+export async function completePasskeyRegistration(challenge, credential, nickname) {
+  const res = await authService.api.post('v1/webauthn/registration/complete', {
+    challenge,
+    credential,
+    nickname
+  })
+  return res.data
+}
+
+// Remove a passkey by id.
+export async function removePasskey(id) {
+  await authService.api.delete(`v1/webauthn/credentials/${encodeURIComponent(id)}`)
+}
