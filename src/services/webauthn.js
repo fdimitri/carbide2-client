@@ -51,6 +51,29 @@ function credentialToJSON(credential) {
   return out
 }
 
+// Serialize an assertion PublicKeyCredential (from navigator.credentials.get)
+// back to the shape webauthn-ruby expects.
+function assertionToJSON(credential) {
+  const c = credential
+  const toB64url = (buf) => {
+    const bytes = new Uint8Array(buf)
+    let s = ''
+    for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i])
+    return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  }
+  return {
+    id: c.id,
+    rawId: toB64url(c.rawId),
+    type: c.type,
+    response: {
+      clientDataJSON: toB64url(c.response.clientDataJSON),
+      authenticatorData: toB64url(c.response.authenticatorData),
+      signature: toB64url(c.response.signature),
+      userHandle: c.response.userHandle ? toB64url(c.response.userHandle) : null
+    }
+  }
+}
+
 // Register a new passkey. Returns the server's response.
 export async function registerPasskey(nickname) {
   const { challenge, options } = await (await import('./controlService')).beginPasskeyRegistration()
@@ -60,5 +83,17 @@ export async function registerPasskey(nickname) {
     challenge,
     credentialToJSON(credential),
     nickname
+  )
+}
+
+// Assert an existing passkey to log in. Returns { token, user }.
+export async function assertPasskey(email) {
+  const { challenge, options } = await (await import('./controlService')).beginPasskeyAssertion(email)
+  const publicKey = decodeOptions(options)
+  const credential = await navigator.credentials.get({ publicKey })
+  return (await import('./controlService')).completePasskeyAssertion(
+    email,
+    challenge,
+    assertionToJSON(credential)
   )
 }

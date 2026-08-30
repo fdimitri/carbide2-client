@@ -113,6 +113,10 @@ const authService = {
   // The LOCAL workspace user id (users.id), fetched from /api/v1/server/me.
   // This is the value every *.user_id in the pod uses, NOT the token's user_id.
   localUserId: ref(null),
+  // Reactive expiry (ms epoch) of the current workspace bearer and the control
+  // login token, for display in the UI. null = unknown/no token.
+  tokenExpiryMs: ref(null),
+  controlTokenExpiryMs: ref(null),
 
   get isAuthenticated() {
     return !!this.token && !!this.currentUser
@@ -128,6 +132,7 @@ const authService = {
         localStorage.setItem(TOKEN_KEY, token)
         localStorage.setItem(USER_KEY, JSON.stringify(user))
         api.defaults.headers.common['Authorization'] = `Bearer ${token}`
+        this._refreshExpiryDisplay()
         this._scheduleControlRenew(token)
         return { user, token }
       }
@@ -153,6 +158,7 @@ const authService = {
       localStorage.setItem(TOKEN_KEY, token)
       localStorage.setItem(USER_KEY, JSON.stringify(user))
       api.defaults.headers.common['Authorization'] = `Bearer ${token}`
+      this._refreshExpiryDisplay()
       this._scheduleRefresh(token)
       this.fetchMe()
 
@@ -167,6 +173,8 @@ const authService = {
     this._clearControlRenewTimer()
     this.currentUser = null
     this.token = null
+    this.tokenExpiryMs.value = null
+    this.controlTokenExpiryMs.value = null
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(USER_KEY)
     localStorage.removeItem('control_auth_token')
@@ -206,8 +214,9 @@ const authService = {
           this.token = token
           this.currentUser = readStoredUser()
           api.defaults.headers.common['Authorization'] = `Bearer ${token}`
+          this._refreshExpiryDisplay()
           if (this.currentUser) {
-            if (isControlMode) this._scheduleControlRenew(token)
+            if (isControlMode) this._renewControlIfNeeded(token)
             return true
           }
           // Token with missing user state should be treated as stale.
@@ -219,7 +228,7 @@ const authService = {
         const controlToken = localStorage.getItem('control_auth_token')
         if (controlToken && !tokenIsExpired(controlToken)) {
           try {
-            this._scheduleControlRenew(controlToken)
+            this._renewControlIfNeeded(controlToken)
             const token = await mintWorkspaceToken('workspace:api')
             this.token = token
             localStorage.setItem(TOKEN_KEY, token)
@@ -227,6 +236,7 @@ const authService = {
             this.currentUser = readStoredUser() || readControlUser()
             api.defaults.headers.common['Authorization'] = `Bearer ${token}`
             this._scheduleRefresh(token)
+            this._refreshExpiryDisplay()
             this.fetchMe()
             return true
           } catch {
@@ -287,6 +297,7 @@ const authService = {
         api.defaults.headers.common['Authorization'] = `Bearer ${token}`
         this.sessionExpired.value = false
         this._scheduleRefresh(token)
+        this._refreshExpiryDisplay()
         return true
       } catch {
         return false
@@ -318,6 +329,7 @@ const authService = {
         const newToken = res.data.token
         localStorage.setItem('control_auth_token', newToken)
         this._scheduleControlRenew(newToken)
+        this._refreshExpiryDisplay()
 
         if (isControlMode) {
           this.token = newToken
@@ -351,11 +363,38 @@ const authService = {
     this._controlRenewTimer = setTimeout(() => { this.renewControl() }, delayMs)
   },
 
+  // Renew now if the token is still valid but already inside its renew window
+  // (past exp - ttl*0.2). This covers a tab that was closed/backgrounded when
+  // the one-shot timer would have fired: on load we renew immediately rather
+  // than waiting ~19h again. An already-expired token cannot be renewed (the
+  // endpoint rejects it), so that falls through to full login.
+  _renewControlIfNeeded(token) {
+    const ttl = tokenTtlSeconds(token)
+    const exp = tokenExpirySeconds(token)
+    if (!ttl || !exp) return
+    const now = Math.floor(Date.now() / 1000)
+    if (now >= exp - ttl * 0.2 && now < exp) {
+      this.renewControl()
+    } else {
+      this._scheduleControlRenew(token)
+    }
+  },
+
   _clearControlRenewTimer() {
     if (this._controlRenewTimer != null) {
       clearTimeout(this._controlRenewTimer)
       this._controlRenewTimer = null
     }
+  },
+
+  // Update the reactive expiry refs from a freshly stored token.
+  _refreshExpiryDisplay() {
+    const control = localStorage.getItem('control_auth_token')
+    const workspace = localStorage.getItem(TOKEN_KEY)
+    this.controlTokenExpiryMs.value = control
+      ? (tokenExpirySeconds(control) ?? 0) * 1000 : null
+    this.tokenExpiryMs.value = workspace
+      ? (tokenExpirySeconds(workspace) ?? 0) * 1000 : null
   },
 }
 
@@ -396,6 +435,7 @@ if (typeof window !== 'undefined') {
       authService.token = e.newValue
       authService.api.defaults.headers.common['Authorization'] = `Bearer ${e.newValue}`
       authService._scheduleControlRenew(e.newValue)
+      authService._refreshExpiryDisplay()
     } else {
       authService._scheduleControlRenew(e.newValue)
       authService.refresh()   // re-mint workspace:api from the new control token

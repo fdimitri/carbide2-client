@@ -1,3 +1,4 @@
+import axios from 'axios'
 import authService from './authService'
 
 // controlService — control-plane inspection/edit endpoints (ADR-015).
@@ -54,4 +55,20 @@ export async function completePasskeyRegistration(challenge, credential, nicknam
 // Remove a passkey by id.
 export async function removePasskey(id) {
   await authService.api.delete(`v1/webauthn/credentials/${encodeURIComponent(id)}`)
+}
+
+// Begin passkey assertion for a given email (username-first, non-resident).
+export async function beginPasskeyAssertion(email) {
+  const res = await axios.post(`${window.location.origin}/api/v1/webauthn/assertion/begin`, { email })
+  return res.data
+}
+
+// Complete passkey assertion; returns { token, user } on success.
+export async function completePasskeyAssertion(email, challenge, credential) {
+  const res = await axios.post(`${window.location.origin}/api/v1/webauthn/assertion/complete`, {
+    email,
+    challenge,
+    credential
+  })
+  return res.data
 }

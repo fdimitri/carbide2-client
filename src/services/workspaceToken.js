@@ -35,7 +35,7 @@ export async function mintWorkspaceToken(scope) {
 
 // Decode a JWT payload (no signature verification — these are already-issued
 // tokens we just need to read claims from). Returns the payload hash or null.
-function decodeJwtPayload(token) {
+export function decodeJwtPayload(token) {
   try {
     const part = token.split('.')[1]
     if (!part) return null
