@@ -119,12 +119,25 @@ function close() {
       <section v-if="current" class="rounded-xl border border-line bg-bg-1/60 p-4 text-sm space-y-1">
         <h3 class="text-muted text-xs font-semibold uppercase tracking-widest mb-2">Current</h3>
         <div class="flex justify-between"><span class="text-muted">status</span><span class="font-mono">{{ current.status }}</span></div>
+        <div class="flex justify-between"><span class="text-muted">template</span><span class="font-mono">{{ current.template_name || 'custom' }}</span></div>
+        <div v-if="current.template_drift" class="flex justify-between">
+          <span class="text-warn">drift</span><span class="font-mono text-warn">resources no longer match this template</span>
+        </div>
+        <div v-if="current.resources" class="flex justify-between">
+          <span class="text-muted">limits</span>
+          <span class="font-mono">{{ current.resources.limits?.cpu || '—' }} / {{ current.resources.limits?.memory || '—' }}</span>
+        </div>
+        <div v-if="current.resources" class="flex justify-between">
+          <span class="text-muted">requests</span>
+          <span class="font-mono">{{ current.resources.requests?.cpu || '—' }} / {{ current.resources.requests?.memory || '—' }}</span>
+        </div>
         <div class="flex justify-between"><span class="text-muted">uuid</span><span class="font-mono text-xs truncate max-w-56">{{ current.uuid }}</span></div>
       </section>
 
       <!-- Resources -->
       <section class="rounded-xl border border-line bg-bg-1/60 p-4">
         <h3 class="text-muted text-xs font-semibold uppercase tracking-widest mb-2">Resources</h3>
+        <p class="text-muted text-sm mb-2">Applying a template restarts the pod.</p>
         <div class="flex items-end gap-2">
           <div class="flex-1">
             <label class="text-muted text-label uppercase tracking-widest text-xs">Template</label>
