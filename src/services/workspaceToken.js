@@ -26,7 +26,7 @@ export async function mintWorkspaceToken(scope) {
     throw Object.assign(new Error('missing control_auth_token'), { status: 401 })
   }
   const res = await axios.post(
-    `${window.location.origin}/api/workspaces/${workspaceId}/token`,
+    `${window.location.origin}/api/v1/control/workspaces/${workspaceId}/token`,
     { scope },
     { headers: { Authorization: `Bearer ${controlToken}` }, withCredentials: true }
   )
