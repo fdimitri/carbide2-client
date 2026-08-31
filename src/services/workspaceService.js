@@ -47,6 +47,32 @@ export async function getWorkspaceHealth(workspaceId) {
   return res.data
 }
 
+// ── ADR-025: patch / roll / templates / registry ──────────────────────────
+
+// Patch a workspace's patchable CR spec fields (resources or image tag).
+export async function patchWorkspace(workspaceId, patch) {
+  const res = await authService.api.patch(`v1/control/workspaces/${workspaceId}`, patch)
+  return res.data
+}
+
+// Restart a workspace's pod (explicit, disruptive).
+export async function rollWorkspace(workspaceId) {
+  const res = await authService.api.post(`v1/control/workspaces/${workspaceId}/roll`)
+  return res.data
+}
+
+// Seeded resource templates (ADR-016 presets).
+export async function listTemplates() {
+  const res = await authService.api.get('v1/control/workspace-templates')
+  return res.data
+}
+
+// Available registry images. Returns 503 when no registry is configured.
+export async function listRegistryImages() {
+  const res = await authService.api.get('v1/control/registry/images')
+  return res.data
+}
+
 // Re-export the control-plane mint (ADR-023) for existing importers.
 export { mintWorkspaceToken } from './workspaceToken'
 

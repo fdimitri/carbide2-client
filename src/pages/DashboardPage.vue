@@ -95,7 +95,14 @@
             </span>
           </div>
           <p class="text-muted text-xs mb-4 line-clamp-2 leading-relaxed">{{ p.description || 'No description' }}</p>
-          <span class="text-ui-2xs text-dim font-mono">{{ formatDate(p.created_at) }}</span>
+          <div class="flex items-center justify-between">
+            <span class="text-ui-2xs text-dim font-mono">{{ formatDate(p.created_at) }}</span>
+            <button
+              type="button"
+              class="text-xs text-muted hover:text-accent transition-colors"
+              @click.stop="configWorkspace = p; showConfigModal = true"
+            >Configure</button>
+          </div>
         </div>
       </div>
 
@@ -103,6 +110,12 @@
     </div>
 
     <ControlSettings v-model:visible="showControl" />
+    <WorkspaceConfigModal
+      v-if="configWorkspace"
+      v-model:visible="showConfigModal"
+      :workspace="configWorkspace"
+      @changed="load"
+    />
   </div>
 </template>
 
@@ -115,6 +128,7 @@ import UiButton from '../components/ui/UiButton.vue'
 import UiInput from '../components/ui/UiInput.vue'
 import UiField from '../components/ui/UiField.vue'
 import ControlSettings from '../components/ControlSettings.vue'
+import WorkspaceConfigModal from '../components/workspace/WorkspaceConfigModal.vue'
 
 // Model B: this Dashboard is the CONTROL-PLANE dashboard. It lists the
 // user's Workspaces (one isolated pod each). Workspace pods themselves have
@@ -133,6 +147,8 @@ let healthTimer = null
 
 const showNewForm = ref(false)
 const showControl = ref(false)
+const configWorkspace = ref(null)
+const showConfigModal = ref(false)
 const newName = ref('')
 const newDesc = ref('')
 
