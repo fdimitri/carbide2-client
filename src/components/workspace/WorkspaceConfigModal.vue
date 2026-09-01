@@ -120,8 +120,11 @@ function close() {
         <h3 class="text-muted text-xs font-semibold uppercase tracking-widest mb-2">Current</h3>
         <div class="flex justify-between"><span class="text-muted">status</span><span class="font-mono">{{ current.status }}</span></div>
         <div class="flex justify-between"><span class="text-muted">template</span><span class="font-mono">{{ current.template_name || 'custom' }}</span></div>
-        <div v-if="current.template_drift" class="flex justify-between">
-          <span class="text-warn">drift</span><span class="font-mono text-warn">resources no longer match this template</span>
+        <div v-if="current.spec_drift" class="flex justify-between">
+          <span class="text-warn">drift</span>
+          <span class="font-mono text-warn">
+            {{ current.resources_drift ? 'resources ' : '' }}{{ current.image_tag_drift ? 'image tag' : '' }}
+          </span>
         </div>
         <div v-if="current.resources" class="flex justify-between">
           <span class="text-muted">limits</span>
