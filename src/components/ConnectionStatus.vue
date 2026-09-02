@@ -2,9 +2,9 @@
   ConnectionStatus — compact worker-socket health readout for the top nav.
 
   Surfaces the live WebSocket state from the workerSocket singleton: a colour
-  coded status dot + label, round-trip latency, and the ~30s average in/out
-  throughput. Hidden entirely when idle (no active workspace socket), so it
-  only appears where it's meaningful.
+  coded status dot + label, round-trip latency, and the 30s average + 1s peak
+  in/out throughput. Hidden entirely when idle (no active workspace socket),
+  so it only appears where it's meaningful.
 -->
 <template>
   <div v-if="status !== 'idle'" class="flex items-center gap-2 font-mono text-ui-xs">
@@ -19,7 +19,7 @@
         class="shrink-0"
         :width="SPARK_W" :height="SPARK_H"
         viewBox="0 0 64 18" preserveAspectRatio="none"
-        :title="`↓${rateInText} ↑${rateOutText} · peak ${peakText}`"
+        :title="`↓${rateInText} ↑${rateOutText} · Peak ↓${peakInText} ↑${peakOutText}`"
       >
         <rect x="0" y="0" width="64" height="18" fill="rgba(255,255,255,0.04)" rx="2" />
         <polyline
@@ -31,7 +31,7 @@
           fill="none" stroke="#f38ba8" stroke-width="1" stroke-linejoin="round" vector-effect="non-scaling-stroke"
         />
       </svg>
-      <span class="text-muted opacity-70">↓{{ rateInText }} ↑{{ rateOutText }}</span>
+      <span class="text-muted opacity-70">↓{{ rateInText }} ↑{{ rateOutText }}, Peak ↓{{ peakInText }} ↑{{ peakOutText }}</span>
     </template>
     <UiButton
       v-else-if="status === 'offline' || status === 'reconnecting'"
@@ -51,6 +51,8 @@ const status    = workerSocket.status
 const latencyMs = workerSocket.latencyMs
 const rateIn    = workerSocket.rateIn
 const rateOut   = workerSocket.rateOut
+const rateInPeak  = workerSocket.rateInPeak
+const rateOutPeak = workerSocket.rateOutPeak
 const attempt   = workerSocket.attempt
 
 // ── Throughput sparkline ──────────────────────────────────────────────────────
@@ -136,12 +138,14 @@ const latencyText = computed(() =>
   latencyMs.value == null ? '—' : `${latencyMs.value} ms`)
 const rateInText  = computed(() => fmtRate(rateIn.value))
 const rateOutText = computed(() => fmtRate(rateOut.value))
-const peakText    = computed(() => fmtRate(peak.value))
+const peakInText  = computed(() => fmtRate(rateInPeak.value))
+const peakOutText = computed(() => fmtRate(rateOutPeak.value))
 
 const title = computed(() =>
   `Worker connection: ${label.value}` +
   (latencyMs.value != null ? ` · ${latencyMs.value} ms RTT` : '') +
-  ` · in ${rateInText.value} · out ${rateOutText.value}`)
+  ` · in ${rateInText.value} · out ${rateOutText.value}` +
+  ` · peak in ${peakInText.value} · out ${peakOutText.value}`)
 
 function retry() {
   workerSocket.reconnectNow()
