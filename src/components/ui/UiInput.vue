@@ -1,5 +1,5 @@
 <script setup>
-// Shared form field (letigre token surfaces: prefs, dashboard, login, agent
+// Shared form field (ferrari token surfaces: prefs, dashboard, login, agent
 // config, project settings). Defines the field's spacing/border/focus ONCE so
 // the ~20 hand-rolled copies collapse to one block. Renders <input> by default,
 // or <textarea>/<select> via `as`. v-model works on all three; placeholder,
