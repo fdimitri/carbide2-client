@@ -37,3 +37,12 @@ export async function createAgent(payload) {
 export async function deleteAgent(id) {
   await authService.api.delete(`agents/${id}`)
 }
+
+// Export an agent conversation as lossless JSON (#33). Returns the raw
+// response blob so the caller can trigger a browser download. The endpoint
+// lives on the new /api/v1/server prefix, which authService.api does not
+// automatically point at, so we use the full path.
+export async function exportConversation(projectId, uuid) {
+  const res = await authService.api.get(`v1/server/projects/${projectId}/agent_conversations/${uuid}/export`)
+  return res.data
+}

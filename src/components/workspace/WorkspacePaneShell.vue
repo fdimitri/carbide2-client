@@ -112,6 +112,7 @@
         :connected="store.wsConnected"
         :conversation-id="activeAgentConversationId"
         :agent-slug="activeAgentSlug"
+        :project-id="projectId"
         @agent-send="(text, images) => emit('agent-send', paneIndex, activeAgentConversationId, text, images)"
         @agent-reset="emit('agent-reset', paneIndex, activeAgentConversationId)"
         @agent-pick="(slug) => emit('agent-pick', paneIndex, activeAgentConversationId, slug)"
@@ -149,6 +150,7 @@ const props = defineProps({
   paneIndex: { type: Number, required: true },
   activePaneIndex: { type: Number, required: true },
   paneCount: { type: Number, default: 1 },
+  projectId: { type: [Number, String], required: true },
 })
 
 const effectiveActiveKey = computed(() => {
