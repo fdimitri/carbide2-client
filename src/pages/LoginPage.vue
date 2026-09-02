@@ -33,6 +33,13 @@
             class="mt-4 w-full py-3.5 font-bold shadow-[0_4px_24px_rgba(90,176,255,0.35)]"
           >{{ loading ? 'Signing in…' : 'Sign in' }}</UiButton>
 
+          <button
+            type="button"
+            :disabled="loading"
+            class="w-full px-4 py-3 text-sm rounded border border-accent/30 text-accent-fg bg-transparent cursor-pointer hover:bg-accent/10 transition-colors disabled:opacity-50"
+            @click="handlePasskeyLogin"
+          >{{ loading ? 'Signing in…' : 'Sign in with passkey' }}</button>
+
           <p v-if="error" class="text-warn text-xs text-center -mt-1">{{ error }}</p>
         </form>
 
@@ -59,6 +66,7 @@ import { useVersionLabel } from '../composables/useVersionLabel'
 import UiButton from '../components/ui/UiButton.vue'
 import UiInput from '../components/ui/UiInput.vue'
 import authService from '../services/authService'
+import { assertPasskey } from '../services/webauthn'
 
 const email = ref('test@example.com')
 const password = ref('password123')
@@ -84,6 +92,21 @@ const handleLogin = async () => {
     router.push('/')
   } catch (err) {
     error.value = err.message || 'Login failed. Please try again.'
+  } finally {
+    loading.value = false
+  }
+}
+
+const handlePasskeyLogin = async () => {
+  loading.value = true
+  error.value = ''
+
+  try {
+    const { token, user } = await assertPasskey(email.value)
+    await authService.completeControlLogin(token, user)
+    router.push('/')
+  } catch (err) {
+    error.value = err.response?.data?.error || err.message || 'Passkey sign in failed.'
   } finally {
     loading.value = false
   }

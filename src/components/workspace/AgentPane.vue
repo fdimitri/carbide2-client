@@ -26,6 +26,12 @@
         <span v-if="convoStatus === 'thinking'" class="text-ui-xs opacity-70 italic">thinking…</span>
         <UiButton
           size="xs"
+          :disabled="!convId || exporting"
+          title="Export this conversation as JSON"
+          @click="onExport"
+        >Export</UiButton>
+        <UiButton
+          size="xs"
           @click="onReset"
           :disabled="convoStatus === 'thinking'"
           title="Start a fresh conversation"
@@ -201,16 +207,19 @@ import PaneToolbar from '../ui/PaneToolbar.vue'
 import Avatar from '../ui/Avatar.vue'
 import Composer from './Composer.vue'
 import authService from '../../services/authService'
+import { exportConversation } from '../../services/agentService'
 
 const props = defineProps({
   connected: { type: Boolean, default: false },
   conversationId: { type: String, default: null },
   agentSlug: { type: String, default: null },
+  projectId: { type: [Number, String], required: true },
 })
 const emit = defineEmits(['agent-send', 'agent-reset', 'agent-pick', 'agent-load', 'agent-set-visibility', 'agent-stop', 'agent-create'])
 
 const store    = useWorkspaceStore()
 const scrollEl = ref(null)
+const exporting = ref(false)
 
 const agents   = computed(() => store.agentList || [])
 const convId   = computed(() => props.conversationId || null)
@@ -352,6 +361,29 @@ function onComposerSend(text, images) {
 function onReset()  { emit('agent-reset') }
 function onPickAgent(slug) { emit('agent-pick', slug) }
 function onStop()   { emit('agent-stop') }
+
+// Export the current conversation as a JSON file (#33). The server returns
+// lossless JSON; we wrap it in a Blob and trigger a browser download.
+async function onExport() {
+  if (!convId.value || exporting.value) return
+  exporting.value = true
+  try {
+    const data = await exportConversation(props.projectId, convId.value)
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = `agent-conversation-${convId.value.slice(0, 8)}.json`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    window.alert(e?.response?.data?.error || e?.message || 'export failed')
+  } finally {
+    exporting.value = false
+  }
+}
 
 function onPickConversation(id) {
   if (!id) { emit('agent-reset'); return }

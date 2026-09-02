@@ -22,6 +22,10 @@
         <ClientPicker v-if="!inWorkspace" />
         <span class="hidden sm:inline text-dim text-ui-xs font-mono tracking-wide">{{ versionLabel }}</span>
         <span class="hidden md:inline text-muted text-xs font-mono">{{ authService.currentUser?.email }}</span>
+        <span
+          v-if="authTokenExpiryText"
+          class="hidden sm:inline text-dim text-ui-xs font-mono"
+          :title="authTokenExpiryTitle">{{ authTokenExpiryText }}</span>
         <button
           class="px-3 py-1 text-xs rounded border border-warn/50 text-warn bg-transparent cursor-pointer hover:bg-warn/10 transition-colors"
           @click="logout">Logout</button>
@@ -59,7 +63,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import BrandMark from './components/BrandMark.vue'
 import { useVersionLabel } from './composables/useVersionLabel'
@@ -67,6 +71,7 @@ import ConnectionStatus from './components/ConnectionStatus.vue'
 import ClientPicker from './components/workspace/ClientPicker.vue'
 import authService from './services/authService'
 import workerSocket from './services/workerSocket'
+import { isControlMode } from './services/mode'
 import { useWorkspaceStore } from './stores/workspaceStore'
 
 const router = useRouter()
@@ -80,6 +85,37 @@ const { versionLabel } = useVersionLabel()
 const inWorkspace = computed(() => route.name === 'Project')
 
 const sessionExpired = computed(() => authService.sessionExpired.value)
+
+// Reactive wall-clock tick so the expiry label counts down instead of freezing
+// on the value captured at last token replacement (#19).
+const nowMs = ref(Date.now())
+let expiryTickTimer = null
+onMounted(() => {
+  expiryTickTimer = setInterval(() => { nowMs.value = Date.now() }, 1000)
+})
+onBeforeUnmount(() => {
+  if (expiryTickTimer) clearInterval(expiryTickTimer)
+})
+
+// Compact auth-token expiry readout (control login token in control mode,
+// workspace bearer in workspace mode). Hidden when there's no token yet.
+const authTokenExpiryMs = computed(() =>
+  (isControlMode ? authService.controlTokenExpiryMs.value : authService.tokenExpiryMs.value)
+)
+const authTokenExpiryText = computed(() => {
+  const ms = authTokenExpiryMs.value
+  if (!ms) return ''
+  const mins = Math.max(0, Math.round((ms - nowMs.value) / 60000))
+  if (mins < 1) return 'expiring'
+  if (mins < 60) return `${mins}m`
+  const h = Math.round(mins / 60)
+  if (h < 24) return `${h}h`
+  return `${Math.round(h / 24)}d`
+})
+const authTokenExpiryTitle = computed(() => {
+  const ms = authTokenExpiryMs.value
+  return ms ? `auth expires ${new Date(ms).toLocaleString()}` : ''
+})
 
 // Model B: a workspace pod hosts one project and has no in-pod dashboard, so a
 // router.push('/dashboard') is bounced straight back into the project by the

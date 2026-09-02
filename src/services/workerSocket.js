@@ -6,6 +6,7 @@
 //        workerSocket.send('chat', 'message', { text: 'hello' })
 import { ref } from 'vue'
 import { logWs, logInfo, logWarn } from './log'
+import { tokenTtlSeconds } from './workspaceToken'
 
 // Worker WebSocket URL. Behind the workspace ingress the worker is reached
 // at <base>/ws (Traefik routes /w/<id>/ws to the worker container's port).
@@ -52,11 +53,14 @@ const RECONNECT_OFFLINE_AFTER = 4
 // Heartbeat: prove the socket is alive end-to-end (not just TCP-open) and
 // measure round-trip latency for the status indicator.
 const HEARTBEAT_MS = 10000
-// Sliding window for the throughput readout in the status bar.
-const RATE_WINDOW_MS = 30000
-// Refresh the worker JWT in-band this long before it expires, so a long-lived
-// session survives token rotation without ever dropping the socket.
-const REAUTH_LEAD_MS = 90000
+// Throughput readout: a 30s sliding average plus a 1s peak over that same
+// window. Bytes are bucketed into 1s slots and RATE_BUCKETS are kept, so the
+// average is sum(buckets)/RATE_BUCKETS and the peak is max(bucket) — a single
+// responsive 1s figure without the ~30s smear (#23).
+const RATE_BUCKETS   = 30    // one 1s bucket per second of the 30s window
+// Re-mint the worker JWT when 80% of its lifetime has elapsed (lead = TTL * 0.2).
+// Proportional to TTL rather than a fixed number of seconds.
+const REAUTH_LEAD_FRACTION = 0.2
 
 // True when a token-fetch rejection is an authentication failure (expired /
 // revoked upstream session) rather than a transient network error. Auth
@@ -88,6 +92,8 @@ class WorkerSocket {
     this.latencyMs   = ref(null)   // last measured round-trip, ms
     this.rateIn      = ref(0)      // bytes/sec received, ~30s average
     this.rateOut     = ref(0)      // bytes/sec sent, ~30s average
+    this.rateInPeak  = ref(0)      // bytes/sec received, peak 1s bucket over last 30s
+    this.rateOutPeak = ref(0)      // bytes/sec sent, peak 1s bucket over last 30s
     this.attempt     = ref(0)      // current reconnect attempt (0 when connected)
       // Set true when the worker's advertised wire protocol is incompatible
       // with ours (either floor crossed). Advisory only for now — the socket
@@ -95,10 +101,12 @@ class WorkerSocket {
       this.protocolMismatch = ref(false)
     this._heartbeatTimer = null
     this._rateTimer      = null
-    this._inSamples      = []  // [{ t, n }]
-    this._outSamples     = []  // [{ t, n }]
+    this._inBuckets      = new Array(RATE_BUCKETS).fill(0)  // 1s buckets, newest last
+    this._outBuckets     = new Array(RATE_BUCKETS).fill(0)
     this._tokenExpMs     = null // worker JWT expiry (ms), from system/connected
+    this._tokenTtlMs     = null // worker JWT lifetime (ms), from the minted token
     this._reauthInFlight = false
+    this._authed         = false // true once system/connected arrives (ADR-023 two-phase)
   }
 
   // tokenFetcher: async () => string — called fresh on every (re)connect so the
@@ -144,21 +152,24 @@ class WorkerSocket {
     }
 
     const gen = ++this._generation
-      const url = `${getWorkerUrl()}/?token=${encodeURIComponent(token)}` +
-        `&proto=${PROTOCOL}&min_server=${MIN_SERVER}`
+    this._authed = false
+    // Remember the token's lifetime so re-mint can fire at a TTL-proportional
+    // lead (see _maybeReauth).
+    this._tokenTtlMs = tokenTtlSeconds(token) != null ? tokenTtlSeconds(token) * 1000 : null
+    // ADR-023: anonymous connect — no token in the URL. The token rides the
+    // first frame (system/auth). proto/min_server stay in the query string
+    // (wire versioning is ADR-019's concern, not ADR-023's).
+    const url = `${getWorkerUrl()}/?proto=${PROTOCOL}&min_server=${MIN_SERVER}`
     this._ws = new WebSocket(url)
 
     this._ws.onopen = () => {
       if (this._generation !== gen) return
-      logInfo('WorkerSocket', 'connected')
+      logInfo('WorkerSocket', 'connected (anonymous) — sending system/auth')
       this._ready = true
-      this._reconnectAttempt = 0
-      this.attempt.value = 0
-      this.status.value = 'connected'
-      this._queue.forEach(m => { this._countOut(m); this._ws.send(m) })
-      this._queue = []
-      this._startHeartbeat()
-      this._emitLocal('system', 'open', {})
+      const msg = JSON.stringify({ cs: 'system', cmd: 'auth', payload: { token } })
+      logWs('send', 'system', 'auth', { token })
+      this._countOut(msg)
+      this._ws.send(msg)
     }
 
     this._ws.onmessage = (event) => {
@@ -174,9 +185,15 @@ class WorkerSocket {
         return
       }
       // Capture token expiry so we can refresh in-band before it lapses.
+      // system/connected is also the auth acknowledgement (ADR-023): it marks
+      // the socket authenticated, after which queued frames are flushed.
       if (msg.cs === 'system' && msg.cmd === 'connected') {
         this._setTokenExp(msg.payload?.token_exp)
         this._checkProtocol(msg.payload)
+        if (!this._authed) {
+          this._authed = true
+          this._onAuthenticated()
+        }
       }
       // Reauth outcomes are workerSocket-internal — adopt the new expiry and
       // swallow them rather than leaking to app handlers.
@@ -202,8 +219,10 @@ class WorkerSocket {
       if (this._generation !== gen) return
       logWarn('WorkerSocket', 'closed', e.code, e.reason)
       this._ready = false
+      this._authed = false
       this.latencyMs.value = null
       this._tokenExpMs = null
+      this._tokenTtlMs = null
       this._reauthInFlight = false
       this._stopHeartbeat()
       if (!this._stopped) {
@@ -216,6 +235,20 @@ class WorkerSocket {
       if (this._generation !== gen) return
       logWarn('WorkerSocket', 'error', e)
     }
+  }
+
+  // Called once the worker acknowledges auth (system/connected). This is where
+  // the app-level "connected" state flips and queued frames are flushed —
+  // nothing is sent or flushed before auth (ADR-023).
+  _onAuthenticated() {
+    logInfo('WorkerSocket', 'authenticated')
+    this._reconnectAttempt = 0
+    this.attempt.value = 0
+    this.status.value = 'connected'
+    this._queue.forEach(m => { this._countOut(m); this._ws.send(m) })
+    this._queue = []
+    this._startHeartbeat()
+    this._emitLocal('system', 'open', {})
   }
 
   _scheduleReconnect() {
@@ -264,21 +297,25 @@ class WorkerSocket {
       this._ws = null
     }
     this._ready = false
+    this._authed = false
     this._queue = []
     this.status.value = 'idle'
     this.latencyMs.value = null
     this.attempt.value = 0
     this.rateIn.value = 0
     this.rateOut.value = 0
-    this._inSamples = []
-    this._outSamples = []
+    this.rateInPeak.value  = 0
+    this.rateOutPeak.value = 0
+    this._inBuckets  = new Array(RATE_BUCKETS).fill(0)
+    this._outBuckets = new Array(RATE_BUCKETS).fill(0)
     this._tokenExpMs = null
+    this._tokenTtlMs = null
     this._reauthInFlight = false
   }
 
   send(cs, cmd, payload = {}) {
     const msg = JSON.stringify({ cs, cmd, payload })
-    if (this._ready) {
+    if (this._ready && this._authed) {
       logWs('send', cs, cmd, payload)
       this._countOut(msg)
       this._ws.send(msg)
@@ -337,11 +374,14 @@ class WorkerSocket {
     }
   }
 
-  // Mint a fresh worker JWT and present it over the live socket shortly before
-  // the current one lapses, so the connection never has to drop for rotation.
+  // Mint a fresh worker JWT and present it over the live socket when 80% of
+  // the token's lifetime has elapsed, so the connection never drops for
+  // rotation. Lead is TTL-proportional; if we somehow lost the TTL, fall back
+  // to a fixed 60s lead.
   async _maybeReauth() {
     if (!this._ready || this._reauthInFlight || !this._tokenExpMs) return
-    if (Date.now() < this._tokenExpMs - REAUTH_LEAD_MS) return
+    const leadMs = this._tokenTtlMs != null ? this._tokenTtlMs * REAUTH_LEAD_FRACTION : 60000
+    if (Date.now() < this._tokenExpMs - leadMs) return
     this._reauthInFlight = true
     let token
     try {
@@ -363,9 +403,9 @@ class WorkerSocket {
     else this._reauthInFlight = false
   }
 
-  // ── Throughput sampling (~30s sliding average) ──────────────────────────────
-  _countIn(data)  { this._inSamples.push({ t: Date.now(), n: this._sizeOf(data) }) }
-  _countOut(data) { this._outSamples.push({ t: Date.now(), n: this._sizeOf(data) }) }
+  // ── Throughput sampling (30s average + 1s peak) ─────────────────────────────
+  _countIn(data)  { this._inBuckets[RATE_BUCKETS - 1]  += this._sizeOf(data) }
+  _countOut(data) { this._outBuckets[RATE_BUCKETS - 1] += this._sizeOf(data) }
 
   _sizeOf(data) {
     if (typeof data === 'string') return data.length
@@ -375,7 +415,7 @@ class WorkerSocket {
 
   _startRateTimer() {
     if (this._rateTimer !== null) return
-    this._rateTimer = setInterval(() => this._recomputeRates(), 2000)
+    this._rateTimer = setInterval(() => this._tickRates(), 1000)
   }
 
   _stopRateTimer() {
@@ -385,13 +425,21 @@ class WorkerSocket {
     }
   }
 
+  // Rotate the 1s buckets (drop oldest, start a fresh current bucket) then
+  // recompute both the 30s average and the 1s peak.
+  _tickRates() {
+    this._inBuckets.shift();  this._inBuckets.push(0)
+    this._outBuckets.shift(); this._outBuckets.push(0)
+    this._recomputeRates()
+  }
+
   _recomputeRates() {
-    const cutoff = Date.now() - RATE_WINDOW_MS
-    this._inSamples  = this._inSamples.filter(s => s.t >= cutoff)
-    this._outSamples = this._outSamples.filter(s => s.t >= cutoff)
-    const secs = RATE_WINDOW_MS / 1000
-    this.rateIn.value  = this._inSamples.reduce((a, s) => a + s.n, 0) / secs
-    this.rateOut.value = this._outSamples.reduce((a, s) => a + s.n, 0) / secs
+    const inSum  = this._inBuckets.reduce((a, b) => a + b, 0)
+    const outSum = this._outBuckets.reduce((a, b) => a + b, 0)
+    this.rateIn.value  = inSum  / RATE_BUCKETS
+    this.rateOut.value = outSum / RATE_BUCKETS
+    this.rateInPeak.value  = Math.max(...this._inBuckets)
+    this.rateOutPeak.value = Math.max(...this._outBuckets)
   }
 
   on(cs, cmd, fn) {

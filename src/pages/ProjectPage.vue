@@ -103,6 +103,7 @@
               :pane-index="row[0]"
               :active-pane-index="activePaneIndex"
               :pane-count="totalPaneCount"
+              :project-id="projectId"
               @pane-drop="onPaneDrop"
               @set-active-pane="setActivePane($event)"
               @activate-tab="activatePaneTab"
@@ -137,6 +138,7 @@
                   :pane-index="paneIdx"
                   :active-pane-index="activePaneIndex"
                   :pane-count="totalPaneCount"
+                  :project-id="projectId"
                   @pane-drop="onPaneDrop"
                   @set-active-pane="setActivePane($event)"
                   @activate-tab="activatePaneTab"
@@ -261,7 +263,8 @@ import ConnectionStatus from '../components/ConnectionStatus.vue'
 import ClientPicker from '../components/workspace/ClientPicker.vue'
 import workerSocket from '../services/workerSocket'
 import authService from '../services/authService'
-import { listProjects, getWsToken, uploadProjectFile, importProjectFromDisk } from '../services/projectService'
+import { listProjects, uploadProjectFile, importProjectFromDisk } from '../services/projectService'
+import { mintWorkspaceToken } from '../services/workspaceToken'
 import { storeToRefs } from 'pinia'
 import { usePanes, PANE_COUNTS } from '../composables/usePanes'
 import { useSessionSync } from '../composables/useSessionSync'
@@ -874,9 +877,12 @@ onMounted(async () => {
     await initChat()
 
     offHandlers.push(
-      workerSocket.on('system', 'connected', () => {
+      workerSocket.on('system', 'connected', (payload) => {
         wsConnected.value = true
         storeJoinedChatChannels.value = new Set()
+        // The worker resolves the LOCAL user id; reconcile it so the client's
+        // self-id matches what every *.user_id column stores.
+        if (payload?.user_id != null) authService.localUserId.value = payload.user_id
         // Subscribe to the server-side debug stream so flusher / watcher /
         // agent / fs activity shows up in the Debug pane in real time.
         // See #3 in May30-Questions.md.
@@ -933,7 +939,7 @@ onMounted(async () => {
       resync: (opts) => sessionSync.resync(opts),
     }
 
-    workerSocket.connect(() => getWsToken(projectId))
+    workerSocket.connect(() => mintWorkspaceToken('workspace:rw'))
     // Intentionally do not auto-open any file; explorer will populate from server.
   } catch (e) {
     error.value = e.message || 'Failed to connect'

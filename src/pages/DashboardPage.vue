@@ -12,6 +12,7 @@
         </div>
         <div class="flex items-center gap-2">
           <a href="/about" target="_blank" class="btn-ghost no-underline">About</a>
+          <button class="btn-ghost" @click="showControl = true">Control</button>
           <button class="btn-primary" @click="showNewForm = !showNewForm">
             <span class="text-base leading-none font-bold">+</span> New {{ singularTitle }}
           </button>
@@ -94,12 +95,27 @@
             </span>
           </div>
           <p class="text-muted text-xs mb-4 line-clamp-2 leading-relaxed">{{ p.description || 'No description' }}</p>
-          <span class="text-ui-2xs text-dim font-mono">{{ formatDate(p.created_at) }}</span>
+          <div class="flex items-center justify-between">
+            <span class="text-ui-2xs text-dim font-mono">{{ formatDate(p.created_at) }}</span>
+            <button
+              type="button"
+              class="text-xs text-muted hover:text-accent transition-colors"
+              @click.stop="configWorkspace = p; showConfigModal = true"
+            >Configure</button>
+          </div>
         </div>
       </div>
 
       <p v-if="error" class="mt-6 text-warn text-sm">{{ error }}</p>
     </div>
+
+    <ControlSettings v-model:visible="showControl" />
+    <WorkspaceConfigModal
+      v-if="configWorkspace"
+      v-model:visible="showConfigModal"
+      :workspace="configWorkspace"
+      @changed="load"
+    />
   </div>
 </template>
 
@@ -111,6 +127,8 @@ import { setPendingSeed } from '../services/pendingSeed'
 import UiButton from '../components/ui/UiButton.vue'
 import UiInput from '../components/ui/UiInput.vue'
 import UiField from '../components/ui/UiField.vue'
+import ControlSettings from '../components/ControlSettings.vue'
+import WorkspaceConfigModal from '../components/workspace/WorkspaceConfigModal.vue'
 
 // Model B: this Dashboard is the CONTROL-PLANE dashboard. It lists the
 // user's Workspaces (one isolated pod each). Workspace pods themselves have
@@ -128,6 +146,9 @@ const HEALTH_POLL_MS = 8000
 let healthTimer = null
 
 const showNewForm = ref(false)
+const showControl = ref(false)
+const configWorkspace = ref(null)
+const showConfigModal = ref(false)
 const newName = ref('')
 const newDesc = ref('')
 
