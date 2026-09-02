@@ -27,7 +27,7 @@ const workspaceImages = computed(() =>
   (registry.value?.images || []).find((i) => i.repository === 'carbide2')?.tags || []
 )
 
-watch(() => props.visible, (v) => { if (v) load() })
+watch(() => props.visible, (v) => { if (v) load() }, { immediate: true })
 
 async function load() {
   error.value = ''

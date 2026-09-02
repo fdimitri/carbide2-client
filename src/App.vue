@@ -63,7 +63,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import BrandMark from './components/BrandMark.vue'
 import { useVersionLabel } from './composables/useVersionLabel'
@@ -86,6 +86,17 @@ const inWorkspace = computed(() => route.name === 'Project')
 
 const sessionExpired = computed(() => authService.sessionExpired.value)
 
+// Reactive wall-clock tick so the expiry label counts down instead of freezing
+// on the value captured at last token replacement (#19).
+const nowMs = ref(Date.now())
+let expiryTickTimer = null
+onMounted(() => {
+  expiryTickTimer = setInterval(() => { nowMs.value = Date.now() }, 1000)
+})
+onBeforeUnmount(() => {
+  if (expiryTickTimer) clearInterval(expiryTickTimer)
+})
+
 // Compact auth-token expiry readout (control login token in control mode,
 // workspace bearer in workspace mode). Hidden when there's no token yet.
 const authTokenExpiryMs = computed(() =>
@@ -94,7 +105,7 @@ const authTokenExpiryMs = computed(() =>
 const authTokenExpiryText = computed(() => {
   const ms = authTokenExpiryMs.value
   if (!ms) return ''
-  const mins = Math.max(0, Math.round((ms - Date.now()) / 60000))
+  const mins = Math.max(0, Math.round((ms - nowMs.value) / 60000))
   if (mins < 1) return 'expiring'
   if (mins < 60) return `${mins}m`
   const h = Math.round(mins / 60)

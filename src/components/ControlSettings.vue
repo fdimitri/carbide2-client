@@ -39,6 +39,7 @@ function close() {
 
 async function save(key) {
   const value = (editing.value[key] ?? '').toString()
+  if (!value) return   // don't overwrite a stored value with a blank save
   try {
     await updateSetting(key, value)
     await load()

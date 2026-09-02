@@ -103,13 +103,7 @@ const handlePasskeyLogin = async () => {
 
   try {
     const { token, user } = await assertPasskey(email.value)
-    authService.token = token
-    authService.currentUser = user
-    localStorage.setItem('control_auth_token', token)
-    localStorage.setItem('control_user', JSON.stringify(user))
-    authService.api.defaults.headers.common['Authorization'] = `Bearer ${token}`
-    authService._scheduleControlRenew(token)
-    authService._refreshExpiryDisplay()
+    await authService.completeControlLogin(token, user)
     router.push('/')
   } catch (err) {
     error.value = err.response?.data?.error || err.message || 'Passkey sign in failed.'

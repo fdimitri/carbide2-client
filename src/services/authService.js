@@ -182,6 +182,33 @@ const authService = {
     delete api.defaults.headers.common['Authorization']
   },
 
+  // Complete a control-authenticated session (password OR passkey) by
+  // persisting the control token + user and, in workspace mode, minting the
+  // workspace:api bearer. Single path so passkey login doesn't skip the
+  // workspace mint (#19).
+  async completeControlLogin(token, user) {
+    localStorage.setItem('control_auth_token', token)
+    localStorage.setItem('control_user', JSON.stringify(user))
+    this._scheduleControlRenew(token)
+    this._refreshExpiryDisplay()
+
+    if (isControlMode) {
+      this.token = token
+      this.currentUser = user
+      api.defaults.headers.common['Authorization'] = `Bearer ${token}`
+      return
+    }
+
+    const wsToken = await mintWorkspaceToken('workspace:api')
+    this.token = wsToken
+    this.currentUser = user
+    localStorage.setItem(TOKEN_KEY, wsToken)
+    localStorage.setItem(USER_KEY, JSON.stringify(user))
+    api.defaults.headers.common['Authorization'] = `Bearer ${wsToken}`
+    this._scheduleRefresh(wsToken)
+    this.fetchMe()
+  },
+
   // Fetch the LOCAL user id for this workspace from /api/v1/server/me.
   // This is the id the workspace's *.user_id columns use; it is unrelated to
   // the control-plane id in the token.
@@ -216,7 +243,20 @@ const authService = {
           api.defaults.headers.common['Authorization'] = `Bearer ${token}`
           this._refreshExpiryDisplay()
           if (this.currentUser) {
-            if (isControlMode) this._renewControlIfNeeded(token)
+            if (isControlMode) {
+              this._renewControlIfNeeded(token)
+            } else {
+              // Reload with a valid stored bearer: re-arm the workspace re-mint
+              // timer, the control-renew timer, and refresh the local user id —
+              // otherwise sliding renewal never fires and userId() stays null
+              // until the socket connects (#19).
+              this._scheduleRefresh(token)
+              this.fetchMe()
+              const controlToken = localStorage.getItem('control_auth_token')
+              if (controlToken && !tokenIsExpired(controlToken)) {
+                this._renewControlIfNeeded(controlToken)
+              }
+            }
             return true
           }
           // Token with missing user state should be treated as stale.
@@ -234,6 +274,9 @@ const authService = {
             localStorage.setItem(TOKEN_KEY, token)
             // The workspace "user" is just the control user mirror (id+email).
             this.currentUser = readStoredUser() || readControlUser()
+            if (this.currentUser) {
+              localStorage.setItem(USER_KEY, JSON.stringify(this.currentUser))
+            }
             api.defaults.headers.common['Authorization'] = `Bearer ${token}`
             this._scheduleRefresh(token)
             this._refreshExpiryDisplay()
@@ -294,6 +337,9 @@ const authService = {
         const token = await mintWorkspaceToken('workspace:api')
         this.token = token
         localStorage.setItem(TOKEN_KEY, token)
+        if (this.currentUser) {
+          localStorage.setItem(USER_KEY, JSON.stringify(this.currentUser))
+        }
         api.defaults.headers.common['Authorization'] = `Bearer ${token}`
         this.sessionExpired.value = false
         this._scheduleRefresh(token)
