@@ -67,6 +67,13 @@ const deadTerminalIds = new Set()  // ids whose shell has exited; don't try to r
 
 const onWindowResize = () => fitTerminalSoon()
 
+// Send user/agent keystrokes to the bound terminal's PTY. Shared by xterm's
+// onData and the Shift+Ctrl+V paste path so both go through the same guard.
+function sendInput(data) {
+  if (!boundTerminalId) return
+  workerSocket.send('term', 'input', { terminal_id: boundTerminalId, data })
+}
+
 // Fit to the container, but never while hidden (0×0). The ResizeObserver
 // re-fires when the pane becomes visible with a real size, so a hidden fit
 // is unnecessary and can push a bogus 0×0 resize to the worker (#88).
@@ -90,11 +97,48 @@ function ensureXterm() {
   fitAddon = new FitAddon()
   xterm.loadAddon(fitAddon)
   xterm.open(terminalContainer.value)
+
+  // Terminal keyboard capture (#100): browser-level shortcuts must not leak
+  // past the terminal, and there needs to be a keyboard copy/paste path.
+  // Return value semantics (xterm.js): false => xterm does NOT process the
+  // event (we handled it); true/undefined => xterm processes it normally.
+  xterm.attachCustomKeyEventHandler((ev) => {
+    if (ev.type !== 'keydown') return true
+    const key = (ev.key || '').toLowerCase()
+
+    // Ctrl+W closes the browser tab by default. Best-effort: send ^W to the
+    // shell and preventDefault so the tab doesn't close. (Chrome/Edge reserve
+    // Ctrl+W and ignore preventDefault, so this can only be best-effort there.)
+    if (ev.ctrlKey && !ev.shiftKey && !ev.metaKey && key === 'w') {
+      ev.preventDefault()
+      sendInput('\x17')
+      return false
+    }
+
+    // Shift+Ctrl+C/V: terminal copy/paste. Bare Ctrl+C must keep sending
+    // SIGINT, so only intercept when Shift is also held (and let xterm process
+    // everything else by returning true).
+    if (ev.ctrlKey && ev.shiftKey && !ev.metaKey && key === 'c') {
+      const sel = xterm.getSelection()
+      if (sel) navigator.clipboard?.writeText(sel).catch(() => {})
+      ev.preventDefault()
+      return false
+    }
+    if (ev.ctrlKey && ev.shiftKey && !ev.metaKey && key === 'v') {
+      navigator.clipboard?.readText()
+        .then((text) => { if (text) sendInput(text) })
+        .catch(() => {})
+      ev.preventDefault()
+      return false
+    }
+
+    return true
+  })
+
   fitTerminalSoon()
 
   xterm.onData((data) => {
-    if (!boundTerminalId) return
-    workerSocket.send('term', 'input', { terminal_id: boundTerminalId, data })
+    sendInput(data)
   })
 
   xterm.onResize(({ cols, rows }) => {
