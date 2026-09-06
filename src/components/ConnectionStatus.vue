@@ -31,7 +31,14 @@
           fill="none" stroke="#f38ba8" stroke-width="1" stroke-linejoin="round" vector-effect="non-scaling-stroke"
         />
       </svg>
-      <span class="text-muted opacity-70">↓{{ rateInText }} ↑{{ rateOutText }}, Peak ↓{{ peakInText }} ↑{{ peakOutText }}</span>
+      <!-- Each value sits in a reserved box so the bar doesn't shift as digits change -->
+      <span class="text-muted opacity-70">
+        <template v-for="r in rateFields" :key="r.key"
+          ><span class="whitespace-pre">{{ r.label }}</span
+          ><span class="inline-block w-[4ch] text-right">{{ r.num }}</span
+          ><span class="inline-block w-[5ch] pl-[1ch]">{{ r.unit }}</span
+        ></template>
+      </span>
     </template>
     <UiButton
       v-else-if="status === 'offline' || status === 'reconnecting'"
@@ -109,19 +116,49 @@ const labelClass = computed(() =>
     ? 'text-warn'
     : 'text-muted')
 
+// ── Rate formatting ───────────────────────────────────────────────────────────
+// Three digits maximum, tenths at most, so the readout can never grow a fourth
+// glyph and shove the bar sideways. Units are binary (1<<10); the rollover just
+// happens at 1000 instead of 1024, so 1000 B/s reads as 1.0 KB/s.
+const RATE_UNITS = ['B/s', 'KB/s', 'MB/s', 'GB/s']
+
+// Whole bytes read better than tenths of a byte; tenths only below 100. Test
+// the rounded tenth, not v: 99.999 is under 100 but renders as "100.0".
+function rateDigits(v, unitIdx) {
+  if (unitIdx === 0) return String(Math.round(v))
+  const tenth = v.toFixed(1)
+  return Number(tenth) >= 100 ? String(Math.round(v)) : tenth
+}
+
 function fmtRate(bytesPerSec) {
-  const b = bytesPerSec || 0
-  if (b < 1024) return `${Math.round(b)} B/s`
-  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB/s`
-  return `${(b / (1024 * 1024)).toFixed(1)} MB/s`
+  let v = Math.max(0, bytesPerSec || 0)
+  let u = 0
+  // Re-check after rounding: 999.6 B/s renders "1000", so it must promote too.
+  while (u < RATE_UNITS.length - 1 && Number(rateDigits(v, u)) >= 1000) {
+    v /= 1024
+    u++
+  }
+  return { num: rateDigits(v, u), unit: RATE_UNITS[u] }
+}
+
+function rateText(bytesPerSec) {
+  const { num, unit } = fmtRate(bytesPerSec)
+  return `${num} ${unit}`
 }
 
 const latencyText = computed(() =>
   latencyMs.value == null ? '—' : `${latencyMs.value} ms`)
-const rateInText  = computed(() => fmtRate(rateIn.value))
-const rateOutText = computed(() => fmtRate(rateOut.value))
-const peakInText  = computed(() => fmtRate(rateInPeak.value))
-const peakOutText = computed(() => fmtRate(rateOutPeak.value))
+const rateInText  = computed(() => rateText(rateIn.value))
+const rateOutText = computed(() => rateText(rateOut.value))
+const peakInText  = computed(() => rateText(rateInPeak.value))
+const peakOutText = computed(() => rateText(rateOutPeak.value))
+
+const rateFields = computed(() => [
+  { key: 'in',   label: '↓',        ...fmtRate(rateIn.value) },
+  { key: 'out',  label: ' ↑',       ...fmtRate(rateOut.value) },
+  { key: 'pin',  label: ', Peak ↓', ...fmtRate(rateInPeak.value) },
+  { key: 'pout', label: ' ↑',       ...fmtRate(rateOutPeak.value) },
+])
 
 const title = computed(() =>
   `Worker connection: ${label.value}` +
