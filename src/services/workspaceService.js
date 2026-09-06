@@ -81,11 +81,11 @@ export async function getShellStatus(workspaceId) {
   return res.data
 }
 
-// eager | lazy | disabled. Separate from patchWorkspace because the flip is not
-// a plain field write — eager -> lazy has to arm the idle latch server-side.
+// eager | lazy | disabled. Goes through the ADR-025 patch surface like every
+// other workspace field; the server routes it to ShellLifecycle so the flip
+// arms the idle latch rather than being a plain column write.
 export async function setShellMode(workspaceId, mode) {
-  const res = await authService.api.patch(`v1/control/workspaces/${workspaceId}/shell_mode`, { mode })
-  return res.data
+  return patchWorkspace(workspaceId, { shellMode: mode })
 }
 
 // Available registry images. Returns 503 when no registry is configured.
