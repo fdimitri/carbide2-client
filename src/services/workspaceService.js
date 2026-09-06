@@ -67,6 +67,27 @@ export async function listTemplates() {
   return res.data
 }
 
+// ── ADR-029: shell lifecycle ──────────────────────────────────────────────
+
+// Display-only shell status: { phase, ready, reason, mode }.
+//
+// Deliberately does not return the pod name or an exec grant — those come from
+// the worker-authenticated POST, which the browser never makes. Phase is
+// derived from the live pod on each call rather than stored, so a shell that
+// was evicted or OOM-killed reads as such instead of showing whatever was true
+// at the last reconcile.
+export async function getShellStatus(workspaceId) {
+  const res = await authService.api.get(`v1/control/workspaces/${workspaceId}/shell`)
+  return res.data
+}
+
+// eager | lazy | disabled. Separate from patchWorkspace because the flip is not
+// a plain field write — eager -> lazy has to arm the idle latch server-side.
+export async function setShellMode(workspaceId, mode) {
+  const res = await authService.api.patch(`v1/control/workspaces/${workspaceId}/shell_mode`, { mode })
+  return res.data
+}
+
 // Available registry images. Returns 503 when no registry is configured.
 export async function listRegistryImages() {
   const res = await authService.api.get('v1/control/registry/images')
