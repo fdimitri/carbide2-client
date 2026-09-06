@@ -87,6 +87,9 @@ async function applyShellMode(mode) {
     emit('changed')
   } catch (e) {
     error.value = e.response?.data?.error || e.message || 'Failed to change shell mode'
+    // The <select> is :value-bound, so without a re-fetch it keeps showing the
+    // mode that did not take.
+    await refreshShell()
   } finally {
     shellBusy.value = false
   }
