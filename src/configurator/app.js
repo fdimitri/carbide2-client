@@ -83,9 +83,10 @@ const MARK = { ok: '✓', fine: '✓', warn: '!', bad: '✗', unknown: '?' }
 
 // Which top-level config sections get their own branch, in the order they
 // matter during a bringup. Anything ungrouped falls into 'general'.
-const GROUP_ORDER = ['cluster', 'storage', 'registry', 'public', 'tls-opts', 'control', 'general']
+const GROUP_ORDER = ['node', 'images', 'registry', 'cluster', 'storage', 'public', 'tls-opts', 'control', 'general']
 const GROUP_LABEL = {
-  cluster: 'Cluster', storage: 'Storage', registry: 'Image registry',
+  node: 'This node', images: 'Images', registry: 'Image registry',
+  cluster: 'Cluster', storage: 'Storage',
   public: 'Public endpoint', 'tls-opts': 'Ingress TLS', control: 'Control plane',
   general: 'Build & orchestration'
 }
@@ -138,20 +139,32 @@ const App = {
     const wizardValues = computed(() => {
       const v = {}
       if (!a.value.topology) return v
-      v['cluster.backend'] = a.value.topology.startsWith('k3d') ? 'k3d' : 'k3s'
+      v['node.backend'] = a.value.topology.startsWith('k3d') ? 'k3d' : 'k3s'
       v['storage.backend'] = multi.value ? 'longhorn' : 'local-path'
       if (multi.value) {
-        v['cluster.role'] = a.value.role
+        v['node.role'] = a.value.role
         if (a.value.serverUrl) v['cluster.server-url'] = a.value.serverUrl
         if (joining.value && a.value.clusterToken) v['cluster.token'] = a.value.clusterToken
       }
       if (a.value.publicHost) v['public.host'] = a.value.publicHost
+      // ADR-028: one registry answer -> three facts. A joiner never builds,
+      // pushes, or serves, whatever the answer was.
       if (a.value.registry !== 'none') {
         if (a.value.registryHost) v['registry.host'] = a.value.registryHost
         if (a.value.registry === 'external') {
-          v['registry.external'] = true
+          v['registry.serve'] = false
+          v['images.build'] = false
+          v['images.push'] = false
           if (a.value.registryCa) v['registry.ca'] = a.value.registryCa
+        } else {
+          v['registry.serve'] = !joining.value
+          v['images.push'] = !joining.value
         }
+      }
+      if (joining.value) {
+        v['images.build'] = false
+        v['images.push'] = false
+        v['registry.serve'] = false
       }
       return v
     })
@@ -294,20 +307,20 @@ const App = {
     // asking them again (and ignoring the answers, since overrides win) is
     // wrong. Take the file as the configuration and land on the review screen.
     const importFull = async (got) => {
-      const backend = got['cluster.backend']
-      const multiNode = !!got['cluster.server-url'] || got['cluster.role'] === 'join' ||
+      const backend = got['node.backend']
+      const multiNode = !!got['cluster.server-url'] || got['node.role'] === 'join' ||
         got['storage.backend'] === 'longhorn'
       a.value = {
         ...a.value,
         topology: backend === 'k3d' ? 'k3d-single' : (multiNode ? 'k3s-multi' : 'k3s-single'),
-        role: got['cluster.role'] || 'init',
+        role: got['node.role'] || 'init',
         publicHost: got['public.host'] || '',
         serverUrl: got['cluster.server-url'] || '',
         clusterToken: got['cluster.token'] || '',
         registryHost: got['registry.host'] || '',
         registryCa: got['registry.ca'] || '',
         registry: got['registry.host']
-          ? (String(got['registry.external']) === 'true' ? 'external' : 'local')
+          ? (String(got['registry.serve']) === 'true' ? 'local' : 'external')
           : 'none'
       }
       overrides.value = { ...overrides.value, ...got }
@@ -329,12 +342,12 @@ const App = {
 
       window.addEventListener('paste', (ev) => {
         const text = ev.clipboardData?.getData('text') || ''
-        if (!text.includes('cluster')) return
+        if (!/\b(node|cluster|images|registry)\b/.test(text)) return
         const got = readPasted(text)
 
-        // cluster.backend is the key a partial join snippet never carries and a
+        // node.backend is the key a partial join snippet never carries and a
         // complete file always does.
-        if (got['cluster.backend']) {
+        if (got['node.backend']) {
           ev.preventDefault()
           importFull(got)
           flash('imported full config — review and deploy')
@@ -351,7 +364,7 @@ const App = {
         if (got['registry.ca']) a.value.registryCa = got['registry.ca']
         if (got['cluster.token']) {
           a.value.topology = 'k3s-multi'
-          a.value.role = got['cluster.role'] || 'join'
+          a.value.role = got['node.role'] || 'join'
         }
         imported.value = 'Imported from clipboard.'
         flash('imported from clipboard')
