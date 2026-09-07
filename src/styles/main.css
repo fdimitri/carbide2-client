@@ -440,6 +440,17 @@ html.theme-green {
   border-radius: 0.32rem;
 }
 
+/* ADR-032 fork lineage guide lines — scoped to the Agents subtree only. The
+   Agents group and every agent conversation node carry a marker class; their
+   nested children lists get a dashed vertical spine (the "fluffy little
+   lines"). Files / Terminals / Channels are flat and get none. */
+.explorer-file-tree .p-tree-group-agents > .p-treenode-children,
+.explorer-file-tree .p-tree-agent-node > .p-treenode-children {
+  border-left: 1px dashed var(--color-line);
+  margin-left: 0.6rem;
+  padding-left: 0.35rem;
+}
+
 /* ── Terminal texture ───────────────────────────────────────────────────────
    xterm.js paints its theme background colour on .xterm-screen. Layering a
    faint gradient as background-image (behind the canvas glyphs) plus a

@@ -63,12 +63,15 @@
           ref="explorerPane"
           :terminal-list="terminalList"
           :chat-channels="chatChannels"
+          :agent-conversations="workspaceStore.agentRecent"
           :pane-layout="paneLayout"
           :active-pane-index="activePaneIndex"
           :is-joined-channel="isJoinedChannel"
           @open-file="onExplorerOpenFile"
           @open-terminal="onExplorerOpenTerminal"
           @open-channel="onExplorerOpenChannel"
+          @open-agent="onExplorerOpenAgent"
+          @fork-agent="(id) => agents.forkConversation(id)"
           @open-in-pane="onExplorerOpenInPane"
           @create-terminal="openCreateTerminalDialogTracked"
           @create-channel="openCreateChannelDialog"
@@ -830,11 +833,22 @@ async function onExplorerOpenChannel(channelId) {
   await selectChannelNode(channelId)
 }
 
+function onExplorerOpenAgent(id) {
+  if (!id) { agents.openAgentPane(); return }
+  const row = (workspaceStore.agentRecent || []).find((c) => c.conversation_id === id)
+  const label = row?.title || 'Agent'
+  bindTabToActivePane('agent', id, label)
+  const tab = activeAgentTab(activePaneIndex.value)
+  agents.loadConversation(id)
+  bindAgentTab(tab, id)
+}
+
 async function onExplorerOpenInPane({ kind, id, paneIndex }) {
   activePaneIndex.value = paneIndex
   if (kind === 'file')          selectFileNode(id, { paneIndex })
   else if (kind === 'terminal') await selectTerminalNode(id, { paneIndex })
   else if (kind === 'channel')  await selectChannelNode(id, { paneIndex })
+  else if (kind === 'agent')    onExplorerOpenAgent(id)
 }
 
 // ── Channel dialog ────────────────────────────────────────────────────────────

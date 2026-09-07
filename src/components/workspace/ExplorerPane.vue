@@ -155,6 +155,7 @@ const _explorerProjectId = Number(_explorerRoute.params.id)
 const props = defineProps({
   terminalList:     { type: Array,  required: true },
   chatChannels:     { type: Array,  required: true },
+  agentConversations: { type: Array, required: true },
   paneLayout:       { type: String, required: true },
   activePaneIndex:  { type: Number, required: true },
   isJoinedChannel:  { type: Function, required: true },
@@ -164,6 +165,8 @@ const emit = defineEmits([
   'open-file',
   'open-terminal',
   'open-channel',
+  'open-agent',
+  'fork-agent',
   'open-in-pane',
   'create-terminal',
   'create-channel',
@@ -195,6 +198,7 @@ const expandedExplorerKeys  = ref({
   'group:files':     true,
   'group:terminals': true,
   'group:channels':  true,
+  'group:agents':    true,
   'group:debug':     true,
 })
 
@@ -346,6 +350,45 @@ const primeFileNodes = computed(() => {
   return fileTree.value.map(mapNode)
 })
 
+// ── Agent conversation tree (ADR-032) ─────────────────────────────────────────
+// Forks nest under their ancestor recursively; roots (no forked_from) are the
+// top-level children of the Agents group. Lineage is a tree because forks never
+// merge (in this decision).
+function agentLabel(c) {
+  const title = c.title || '(untitled)'
+  const branch = c.forked_from_conversation_id ? '↳ ' : ''
+  const at = c.forked_at_turn != null ? ` (t${c.forked_at_turn})` : ''
+  return `${branch}${title}${at}`
+}
+
+function buildAgentNodes(convs) {
+  const byId = new Map()
+  convs.forEach((c) => byId.set(c.conversation_id, c))
+  const children = new Map()   // parent id -> [child convs]
+  const roots = []
+  convs.forEach((c) => {
+    const parent = c.forked_from_conversation_id
+    if (parent && byId.has(parent)) {
+      if (!children.has(parent)) children.set(parent, [])
+      children.get(parent).push(c)
+    } else {
+      roots.push(c)
+    }
+  })
+  const byActivity = (a, b) => String(b.last_activity_at || '').localeCompare(String(a.last_activity_at || ''))
+  const node = (c) => ({
+    key: `agent:${c.conversation_id}`,
+    label: agentLabel(c),
+    selectable: true, draggable: false, droppable: false,
+    class: 'p-tree-agent-node',
+    data: { kind: 'agent', id: c.conversation_id, isOpen: false },
+    children: (children.get(c.conversation_id) || []).sort(byActivity).map(node),
+  })
+  return roots.sort(byActivity).map(node)
+}
+
+const agentNodes = computed(() => buildAgentNodes(props.agentConversations || []))
+
 const explorerNodes = computed(() => {
   const termNodes = props.terminalList.map((t) => ({
     key: `term:${t.id}`,
@@ -370,6 +413,7 @@ const explorerNodes = computed(() => {
     { key: 'group:files',     label: 'Files',     selectable: false, draggable: false, droppable: false, data: { kind: 'group-files' },     children: primeFileNodes.value },
     { key: 'group:terminals', label: 'Terminals', selectable: false, draggable: false, droppable: false, data: { kind: 'group-terminals' }, children: termNodes },
     { key: 'group:channels',  label: 'Channels',  selectable: false, draggable: false, droppable: false, data: { kind: 'group-channels' },  children: channelNodes },
+    { key: 'group:agents',    label: 'Agents',    selectable: false, draggable: false, droppable: false, data: { kind: 'group-agents' },    class: 'p-tree-group-agents', children: agentNodes.value },
     { key: 'group:debug',     label: 'Debug',     selectable: false, draggable: false, droppable: false, data: { kind: 'group-debug' },     children: [] },
   ]
 })
@@ -380,11 +424,13 @@ function treeIconClass(data) {
     case 'group-files':     return 'pi-folder-open'
     case 'group-terminals': return 'pi-desktop'
     case 'group-channels':  return 'pi-comments'
+    case 'group-agents':    return 'pi-sparkles'
     case 'group-debug':     return 'pi-bug'
     case 'dir':             return 'pi-folder'
     case 'file':            return 'pi-file'
     case 'terminal':        return 'pi-terminal'
     case 'channel':         return 'pi-hashtag'
+    case 'agent':           return 'pi-comments'
     default:                return 'pi-circle'
   }
 }
@@ -422,6 +468,10 @@ function onExplorerNodeSelect(event) {
     selectionKeys.value = { [`channel:${node.data.id}`]: true }
     emit('open-channel', node.data.id)
   }
+  if (node.data.kind === 'agent') {
+    selectionKeys.value = { [`agent:${node.data.id}`]: true }
+    emit('open-agent', node.data.id)
+  }
   if (node.data.kind === 'group-debug') {
     emit('open-debug')
   }
@@ -442,6 +492,8 @@ function openNodeInPane(node, paneIndex) {
     emit('open-in-pane', { kind: 'terminal', id: node.data.id,  label: node.label, paneIndex })
   } else if (kind === 'channel') {
     emit('open-in-pane', { kind: 'channel',  id: node.data.id,  label: node.label, paneIndex })
+  } else if (kind === 'agent') {
+    emit('open-in-pane', { kind: 'agent',    id: node.data.id,  label: node.label, paneIndex })
   }
 }
 
@@ -465,6 +517,7 @@ function buildContextMenuItems(node) {
   const kind = node?.data?.kind
   if (kind === 'group-terminals') return [{ label: 'New Terminal...', command: () => emit('create-terminal') }]
   if (kind === 'group-channels')  return [{ label: 'New Channel...',  command: () => emit('create-channel') }]
+  if (kind === 'group-agents')    return [{ label: 'New Conversation...', icon: 'pi pi-sparkles', command: () => emit('open-agent', null) }]
   if (kind === 'group-debug')     return [{ label: 'Open Debug Channel', icon: 'pi pi-bug', command: () => emit('open-debug') }]
   if (kind === 'group-files') {
     return [
@@ -496,6 +549,13 @@ function buildContextMenuItems(node) {
       { separator: true },
       { label: 'Join',  disabled:  joined, command: () => emit('join-channel', cid) },
       { label: 'Leave', disabled: !joined, command: () => emit('leave-channel', cid) },
+    ]
+  }
+  if (kind === 'agent') {
+    return [
+      ...buildOpenItems(node),
+      { separator: true },
+      { label: 'Fork at latest', icon: 'pi pi-code-fork', command: () => emit('fork-agent', node.data.id) },
     ]
   }
   if (kind === 'terminal') {
@@ -536,6 +596,7 @@ function onExplorerNodeContextMenu(event, node) {
   const kind = node.data.kind
   if (kind === 'terminal')     selectionKeys.value = { [`term:${node.data.id}`]: true }
   else if (kind === 'channel') selectionKeys.value = { [`channel:${node.data.id}`]: true }
+  else if (kind === 'agent')   selectionKeys.value = { [`agent:${node.data.id}`]: true }
   else if (kind === 'file')    selectionKeys.value = { [node.key]: true }
   contextMenuItems.value = buildContextMenuItems(node)
   if (contextMenuItems.value.length > 0) treeContextMenu.value?.show(event)
