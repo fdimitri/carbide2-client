@@ -54,6 +54,15 @@ const workspaceImages = computed(() =>
   (registry.value?.images || []).find((i) => i.repository === 'carbide2')?.tags || []
 )
 
+// Each tag is now { tag, build_time }. Render the date alongside; the server
+// already sorts newest-first by build_time.
+function formatBuildTime(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (!d.getTime()) return ''
+  return d.toLocaleString()
+}
+
 watch(() => props.visible, (v) => {
   if (v) {
     load()
@@ -261,7 +270,9 @@ function close() {
             <label class="text-muted text-label uppercase tracking-widest text-xs">Tag</label>
             <select v-model="selectedImageTag" class="w-full mt-1 rounded border border-line bg-bg-0 text-text text-sm px-2 py-1.5">
               <option value="" disabled>Select a tag…</option>
-              <option v-for="tag in workspaceImages" :key="tag" :value="tag">{{ tag }}</option>
+              <option v-for="t in workspaceImages" :key="t.tag" :value="t.tag">
+                {{ t.tag }}{{ t.build_time ? ' · ' + formatBuildTime(t.build_time) : '' }}
+              </option>
             </select>
           </div>
           <UiButton :disabled="busy || !selectedImageTag" @click="applyImageTag">Apply</UiButton>
