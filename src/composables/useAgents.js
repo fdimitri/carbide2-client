@@ -117,6 +117,17 @@ export function useAgents({ error, bindTabToActivePane, onConversationLoaded = n
     debugLog.push({ source: 'agent', action: 'stop', detail: `convo=${conversationId}` })
   }
 
+  // ADR-032: fork a conversation at a turn boundary (or latest when no turn
+  // is given). The worker replies agent/forked with the new conversation id.
+  function forkConversation(conversationId, forkAtTurn = null) {
+    if (!conversationId) return
+    const payload = { conversation_id: conversationId }
+    if (forkAtTurn != null) payload.fork_at_turn = forkAtTurn
+    workerSocket.send('agent', 'fork', payload)
+    debugLog.push({ source: 'agent', action: 'fork',
+      detail: `convo=${conversationId} turn=${forkAtTurn ?? 'latest'}` })
+  }
+
   // ADR-033 phase 1: clean (tombstone) tool results/calls. dry_run previews
   // without writing; confirm evicts. Response lands in store.agentCleanByConversation.
   function clean(conversationId, opts = {}) {
@@ -386,6 +397,13 @@ export function useAgents({ error, bindTabToActivePane, onConversationLoaded = n
         debugLog.push({ source: 'agent', action: 'cleaned',
           detail: `convo=${cid} removed ${p?.removed_results || 0}r/${p?.removed_calls || 0}c ${p?.bytes_reclaimed || 0}B` })
       }),
+      workerSocket.on('agent', 'forked', (p) => {
+        const cid = p?.conversation_id
+        if (!cid) return
+        workerSocket.send('agent', 'recent', { limit: 25 })
+        debugLog.push({ source: 'agent', action: 'forked',
+          detail: `convo=${cid} from=${p?.forked_from_conversation_id || '?'} @turn=${p?.forked_at_turn ?? '?'}` })
+      }),
     )
   }
 
@@ -396,7 +414,7 @@ export function useAgents({ error, bindTabToActivePane, onConversationLoaded = n
     openAgentPane, selectAgent, loadConversation, createConversation,
     retain, release,
     setVisibility, stop, send, releaseAgentConversation: store.releaseAgentConversation,
-    clean,
+    clean, forkConversation,
     registerHandlers,
   }
 }

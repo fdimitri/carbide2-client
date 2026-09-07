@@ -123,6 +123,7 @@
               @agent-set-visibility="agents.setVisibility"
               @agent-stop="agents.stop"
               @agent-clean="(conversationId, opts) => agents.clean(conversationId, opts)"
+              @agent-fork="(conversationId) => agents.forkConversation(conversationId)"
             />
             <Splitter
               v-else
@@ -159,6 +160,7 @@
                   @agent-set-visibility="agents.setVisibility"
                   @agent-stop="agents.stop"
                   @agent-clean="(conversationId, opts) => agents.clean(conversationId, opts)"
+                  @agent-fork="(conversationId) => agents.forkConversation(conversationId)"
                 />
               </SplitterPanel>
             </Splitter>

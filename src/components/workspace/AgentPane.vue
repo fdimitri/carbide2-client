@@ -36,6 +36,12 @@
           :disabled="convoStatus === 'thinking'"
           title="Start a fresh conversation"
         >New</UiButton>
+        <UiButton
+          size="xs"
+          :disabled="!convId || convoStatus === 'thinking'"
+          title="Fork this conversation at its latest turn"
+          @click="onFork"
+        >Fork</UiButton>
       </span>
     </PaneToolbar>
 
@@ -265,7 +271,7 @@ const props = defineProps({
   agentSlug: { type: String, default: null },
   projectId: { type: [Number, String], required: true },
 })
-const emit = defineEmits(['agent-send', 'agent-reset', 'agent-pick', 'agent-load', 'agent-set-visibility', 'agent-stop', 'agent-create', 'agent-clean'])
+const emit = defineEmits(['agent-send', 'agent-reset', 'agent-pick', 'agent-load', 'agent-set-visibility', 'agent-stop', 'agent-create', 'agent-clean', 'agent-fork'])
 
 const store    = useWorkspaceStore()
 const scrollEl = ref(null)
@@ -411,6 +417,7 @@ function onComposerSend(text, images) {
 function onReset()  { emit('agent-reset') }
 function onPickAgent(slug) { emit('agent-pick', slug) }
 function onStop()   { emit('agent-stop') }
+function onFork()   { emit('agent-fork') }
 
 // ADR-033 phase 1: clean (tombstone) tool history. Preview does a dry-run;
 // confirm evicts. The preview/result land in store.agentCleanByConversation.
