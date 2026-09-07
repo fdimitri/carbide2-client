@@ -37,6 +37,26 @@
           >
             <i v-if="treeIconClass(slotProps.node.data)" class="pi" :class="treeIconClass(slotProps.node.data)" aria-hidden="true"></i>
             <span>{{ slotProps.node.label }}</span>
+            <!-- Session compatibility + last-updated, mirroring the dropdown -->
+            <template v-if="slotProps.node.data?.kind === 'session'">
+              <i
+                v-if="slotProps.node.data.docIncompatible"
+                class="pi pi-exclamation-triangle text-amber ml-1 text-ui-3xs"
+                :title="slotProps.node.data.warningTitle"
+                aria-hidden="true"
+              ></i>
+              <i
+                v-else-if="slotProps.node.data.buildDiffers"
+                class="pi pi-info-circle text-muted ml-1 text-ui-3xs"
+                :title="slotProps.node.data.warningTitle"
+                aria-hidden="true"
+              ></i>
+              <span
+                v-if="slotProps.node.data.updatedLabel"
+                class="ml-auto text-ui-3xs text-dim shrink-0"
+                :title="'Last updated ' + slotProps.node.data.updatedLabel"
+              >{{ slotProps.node.data.updatedLabel }}</span>
+            </template>
             <!-- Agent-accessible badge. AGENT pill = the user has marked
                  this terminal as something the LLM agent may drive via
                  shell_exec. The lock icon appears while the agent is
@@ -144,6 +164,8 @@ import { PANE_COUNTS } from '../../composables/usePanes'
 import workerSocket from '../../services/workerSocket'
 import { useRoute } from 'vue-router'
 import { takePendingSeed, currentScope } from '../../services/pendingSeed'
+import { SESSION_DOC_VERSION } from '../../stores/sessionStore'
+import { CLIENT_SHA } from '../../version'
 import PaneHeader from '../ui/PaneHeader.vue'
 import UiButton from '../ui/UiButton.vue'
 import UiInput from '../ui/UiInput.vue'
@@ -407,13 +429,49 @@ function sessionLabel(s) {
   return `${branch}${base}`
 }
 
+// Compatibility, mirroring the menubar dropdown: doc-version mismatch = amber
+// warning; only a differing build SHA = subtle info. Both get a tooltip.
+function sessionCompat(s) {
+  const savedSha  = s.client_sha || null
+  const savedDocV = s.doc_version ?? null
+  const docIncompatible = savedDocV != null && savedDocV !== SESSION_DOC_VERSION
+  const buildDiffers    = savedSha != null && savedSha !== CLIENT_SHA
+  const savedBuild = savedSha ? `client:${savedSha}` : 'an unknown build'
+  const loadBuild  = CLIENT_SHA ? `client:${CLIENT_SHA}` : 'this build'
+  const warningTitle = docIncompatible
+    ? `Saved by ${savedBuild} (doc v${savedDocV ?? '?'}); loading with ${loadBuild} (doc v${SESSION_DOC_VERSION}). Doc version differs — layout may not load correctly.`
+    : buildDiffers
+      ? `Saved by ${savedBuild}; loading with ${loadBuild} (doc v${SESSION_DOC_VERSION}). Different build — should be compatible.`
+      : ''
+  return { docIncompatible, buildDiffers, warningTitle }
+}
+
+function sessionUpdated(s) {
+  if (!s?.updated_at) return ''
+  const d = new Date(s.updated_at)
+  if (!d.getTime()) return ''
+  return d.toLocaleString()
+}
+
 const sessionNodes = computed(() =>
-  (props.sessions || []).map((s) => ({
-    key: `session:${s.session_uuid}`,
-    label: sessionLabel(s),
-    selectable: true, draggable: false, droppable: false,
-    data: { kind: 'session', id: s.session_uuid, inUse: !!s.in_use, isCurrent: s.session_uuid === props.currentSessionUuid },
-  }))
+  (props.sessions || []).map((s) => {
+    const c = sessionCompat(s)
+    return {
+      key: `session:${s.session_uuid}`,
+      label: sessionLabel(s),
+      selectable: true, draggable: false, droppable: false,
+      data: {
+        kind: 'session',
+        id: s.session_uuid,
+        inUse: !!s.in_use,
+        isCurrent: s.session_uuid === props.currentSessionUuid,
+        docIncompatible: c.docIncompatible,
+        buildDiffers: c.buildDiffers,
+        warningTitle: c.warningTitle,
+        updatedLabel: sessionUpdated(s),
+      },
+    }
+  })
 )
 
 const explorerNodes = computed(() => {
