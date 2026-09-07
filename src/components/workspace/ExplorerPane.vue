@@ -35,7 +35,7 @@
             @contextmenu.prevent.stop="onExplorerNodeContextMenu($event, slotProps.node)"
             @dragstart.stop="onExplorerNodeDragStart($event, slotProps.node)"
           >
-            <i class="pi" :class="treeIconClass(slotProps.node.data)" aria-hidden="true"></i>
+            <i v-if="treeIconClass(slotProps.node.data)" class="pi" :class="treeIconClass(slotProps.node.data)" aria-hidden="true"></i>
             <span>{{ slotProps.node.label }}</span>
             <!-- Agent-accessible badge. AGENT pill = the user has marked
                  this terminal as something the LLM agent may drive via
@@ -167,6 +167,7 @@ const emit = defineEmits([
   'open-channel',
   'open-agent',
   'fork-agent',
+  'rename-agent',
   'open-in-pane',
   'create-terminal',
   'create-channel',
@@ -430,7 +431,7 @@ function treeIconClass(data) {
     case 'file':            return 'pi-file'
     case 'terminal':        return 'pi-terminal'
     case 'channel':         return 'pi-hashtag'
-    case 'agent':           return 'pi-comments'
+    case 'agent':           return ''   // no icon; forks carry a ↳ prefix in the label
     default:                return 'pi-circle'
   }
 }
@@ -555,6 +556,7 @@ function buildContextMenuItems(node) {
     return [
       ...buildOpenItems(node),
       { separator: true },
+      { label: 'Rename...', icon: 'pi pi-pencil', command: () => emit('rename-agent', node.data.id) },
       { label: 'Fork at latest', icon: 'pi pi-code-fork', command: () => emit('fork-agent', node.data.id) },
     ]
   }

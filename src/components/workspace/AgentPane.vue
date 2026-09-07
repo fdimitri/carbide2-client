@@ -45,6 +45,13 @@
       </span>
     </PaneToolbar>
 
+    <!-- Status bar: conversation token totals (cached / missed / completion) -->
+    <div v-if="convId" class="flex items-center gap-3 px-3 py-1 text-ui-xs text-muted border-b border-line/60">
+      <span title="Cache hits (prompt tokens served from cache)">cached {{ fmtCost(usageTotals.cached) }}</span>
+      <span title="Cache misses (prompt tokens re-prefilled uncached)">missed {{ fmtCost(usageTotals.missed) }}</span>
+      <span title="Completion (output) tokens">out {{ fmtCost(usageTotals.completion) }}</span>
+    </div>
+
     <!-- Conversation picker + visibility -->
     <PaneToolbar class="text-ui-sm">
       <label class="opacity-70">Conversation:</label>
@@ -502,6 +509,18 @@ function fmtCost(c) {
 function usageTooltip(e) {
   return `cached ${e.cached} · uncached ${e.uncached} · completion ${e.completion} · cost ${Math.round(e.cost)} tok`
 }
+
+// Conversation-wide totals for the status bar: cached (cache hits) vs missed
+// (uncached prompt tokens that re-prefilled), plus completion output.
+const usageTotals = computed(() => {
+  let cached = 0, missed = 0, completion = 0
+  for (const r of usageRows.value) {
+    cached     += r.cached_tokens || 0
+    missed     += r.uncached_tokens || 0
+    completion += r.completion_tokens || 0
+  }
+  return { cached, missed, completion }
+})
 
 // ADR-033 phase 1: clean (tombstone) tool history. Preview does a dry-run;
 // confirm evicts. The preview/result land in store.agentCleanByConversation.

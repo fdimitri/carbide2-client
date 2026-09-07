@@ -118,6 +118,13 @@ export function useAgents({ error, bindTabToActivePane, onConversationLoaded = n
     debugLog.push({ source: 'agent', action: 'stop', detail: `convo=${conversationId}` })
   }
 
+  // Rename a conversation's title (owner-only on the worker).
+  function renameConversation(conversationId, title) {
+    if (!conversationId) return
+    workerSocket.send('agent', 'rename', { conversation_id: conversationId, title })
+    debugLog.push({ source: 'agent', action: 'rename', detail: `convo=${conversationId}` })
+  }
+
   // ADR-032: fork a conversation at a turn boundary (or latest when no turn
   // is given). The worker replies agent/forked with the new conversation id.
   function forkConversation(conversationId, forkAtTurn = null) {
@@ -311,6 +318,15 @@ export function useAgents({ error, bindTabToActivePane, onConversationLoaded = n
         const finish    = p?.finish_reason || null
         const reasoning = p?.reasoning || null
         const truncated = finish === 'length'
+        // Backfill turn identity onto the just-completed turn's live messages
+        // (they were appended without turn/agent_turn_id; load() would carry
+        // them). Walk back from the end to the last user message.
+        const arr = messages(cid)
+        for (let i = arr.length - 1; i >= 0; i--) {
+          if (arr[i].kind === 'user') break
+          if (p?.turn != null) arr[i].turn = p.turn
+          if (p?.agent_turn_id != null) arr[i].agent_turn_id = p.agent_turn_id
+        }
         const live = liveStreamMsg(cid)
         if (live) {
           live.streaming = false
@@ -412,6 +428,13 @@ export function useAgents({ error, bindTabToActivePane, onConversationLoaded = n
         debugLog.push({ source: 'agent', action: 'forked',
           detail: `convo=${cid} from=${p?.forked_from_conversation_id || '?'} @turn=${p?.forked_at_turn ?? '?'}` })
       }),
+      workerSocket.on('agent', 'renamed', (p) => {
+        const cid = p?.conversation_id
+        if (!cid) return
+        workerSocket.send('agent', 'recent', { limit: 25 })
+        debugLog.push({ source: 'agent', action: 'renamed',
+          detail: `convo=${cid} -> ${p?.title || ''}` })
+      }),
     )
   }
 
@@ -422,7 +445,7 @@ export function useAgents({ error, bindTabToActivePane, onConversationLoaded = n
     openAgentPane, selectAgent, loadConversation, createConversation,
     retain, release,
     setVisibility, stop, send, releaseAgentConversation: store.releaseAgentConversation,
-    clean, forkConversation,
+    clean, forkConversation, renameConversation,
     registerHandlers,
   }
 }

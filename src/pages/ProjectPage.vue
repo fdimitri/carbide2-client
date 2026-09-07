@@ -72,6 +72,7 @@
           @open-channel="onExplorerOpenChannel"
           @open-agent="onExplorerOpenAgent"
           @fork-agent="(id) => agents.forkConversation(id)"
+          @rename-agent="onAgentRename"
           @open-in-pane="onExplorerOpenInPane"
           @create-terminal="openCreateTerminalDialogTracked"
           @create-channel="openCreateChannelDialog"
@@ -841,6 +842,15 @@ function onExplorerOpenAgent(id) {
   const tab = activeAgentTab(activePaneIndex.value)
   agents.loadConversation(id)
   bindAgentTab(tab, id)
+}
+
+function onAgentRename(id) {
+  if (!id) return
+  const row = (workspaceStore.agentRecent || []).find((c) => c.conversation_id === id)
+  const current = row?.title || ''
+  const next = window.prompt('Rename conversation:', current)
+  if (!next || !next.trim()) return
+  agents.renameConversation(id, next.trim())
 }
 
 async function onExplorerOpenInPane({ kind, id, paneIndex }) {
