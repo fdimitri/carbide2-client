@@ -122,6 +122,12 @@
         <div v-if="cleanPreview" class="text-ui-xs opacity-80">
           <div>evictable: {{ cleanPreview.total_results }} results · {{ cleanPreview.total_calls }} calls · {{ formatBytes(cleanPreview.total_bytes) }}</div>
           <div>would remove: {{ cleanPreview.removed_results }} results · {{ cleanPreview.removed_calls }} calls · {{ formatBytes(cleanPreview.bytes_reclaimed) }}</div>
+          <div v-if="cleanPreview.verdict">
+            verdict: <span :class="cleanPreview.verdict === 'extend' ? 'text-amber' : 'text-accent-fg'">{{ cleanPreview.verdict }}</span>
+            · f={{ (cleanPreview.f * 100).toFixed(0) }}%
+            · surcharge ≈ {{ cleanPreview.surcharge != null ? cleanPreview.surcharge.toFixed(2) + '×' : '—' }}
+            · {{ cleanPreview.recovery_turns != null ? 'recovery ~' + cleanPreview.recovery_turns + ' turns' : 'no recovery' }}
+          </div>
         </div>
         <div v-if="cleanResult" class="text-ui-xs text-accent-fg">
           removed: {{ cleanResult.removed_results }} results · {{ cleanResult.removed_calls }} calls · {{ formatBytes(cleanResult.bytes_reclaimed) }}
