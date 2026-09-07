@@ -28,6 +28,7 @@ export function useAgents({ error, bindTabToActivePane, onConversationLoaded = n
   const {
     agentList, agentListLoaded, agentRecent,
     agentMessagesByConversation, agentStatusByConversation, agentMetaByConversation,
+    agentCleanByConversation,
   } = storeToRefs(store)
 
   function openAgentPane() {
@@ -114,6 +115,21 @@ export function useAgents({ error, bindTabToActivePane, onConversationLoaded = n
     if (!conversationId) return
     workerSocket.send('agent', 'stop', { conversation_id: conversationId })
     debugLog.push({ source: 'agent', action: 'stop', detail: `convo=${conversationId}` })
+  }
+
+  // ADR-033 phase 1: clean (tombstone) tool results/calls. dry_run previews
+  // without writing; confirm evicts. Response lands in store.agentCleanByConversation.
+  function clean(conversationId, opts = {}) {
+    if (!conversationId) return
+    const payload = { conversation_id: conversationId, dry_run: !!opts.dryRun }
+    if (opts.mode)   payload.mode   = opts.mode
+    if (opts.scope)  payload.scope  = opts.scope
+    if (opts.n != null)    payload.n     = opts.n
+    if (opts.bytes != null) payload.bytes = opts.bytes
+    if (opts.cutoff) payload.cutoff = opts.cutoff
+    workerSocket.send('agent', 'clean', payload)
+    debugLog.push({ source: 'agent', action: opts.dryRun ? 'clean_preview' : 'clean',
+      detail: `convo=${conversationId} mode=${opts.mode || '?'} scope=${opts.scope || 'both'}` })
   }
 
   function currentUserName() {
@@ -355,6 +371,21 @@ export function useAgents({ error, bindTabToActivePane, onConversationLoaded = n
         debugLog.push({ source: 'agent', action: 'unsubscribed',
           detail: `convo=${p?.conversation_id || '?'}` })
       }),
+      workerSocket.on('agent', 'clean_preview', (p) => {
+        const cid = p?.conversation_id
+        if (!cid) return
+        agentCleanByConversation.value[cid] = { preview: p, result: undefined }
+        debugLog.push({ source: 'agent', action: 'clean_preview',
+          detail: `convo=${cid} remove=${p?.removed_results || 0}r/${p?.removed_calls || 0}c ${p?.bytes_reclaimed || 0}B` })
+      }),
+      workerSocket.on('agent', 'cleaned', (p) => {
+        const cid = p?.conversation_id
+        if (!cid) return
+        agentCleanByConversation.value[cid] = { ...(agentCleanByConversation.value[cid] || {}), result: p }
+        workerSocket.send('agent', 'recent', { limit: 25 })
+        debugLog.push({ source: 'agent', action: 'cleaned',
+          detail: `convo=${cid} removed ${p?.removed_results || 0}r/${p?.removed_calls || 0}c ${p?.bytes_reclaimed || 0}B` })
+      }),
     )
   }
 
@@ -365,6 +396,7 @@ export function useAgents({ error, bindTabToActivePane, onConversationLoaded = n
     openAgentPane, selectAgent, loadConversation, createConversation,
     retain, release,
     setVisibility, stop, send, releaseAgentConversation: store.releaseAgentConversation,
+    clean,
     registerHandlers,
   }
 }

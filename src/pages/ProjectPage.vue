@@ -122,6 +122,7 @@
               @agent-load="handleAgentLoad"
               @agent-set-visibility="agents.setVisibility"
               @agent-stop="agents.stop"
+              @agent-clean="(conversationId, opts) => agents.clean(conversationId, opts)"
             />
             <Splitter
               v-else
@@ -157,6 +158,7 @@
                   @agent-load="handleAgentLoad"
                   @agent-set-visibility="agents.setVisibility"
                   @agent-stop="agents.stop"
+                  @agent-clean="(conversationId, opts) => agents.clean(conversationId, opts)"
                 />
               </SplitterPanel>
             </Splitter>

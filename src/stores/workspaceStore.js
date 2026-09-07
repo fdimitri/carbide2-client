@@ -48,6 +48,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const agentStatusByConversation   = ref({})  // { [conversation_id]: 'idle'|'thinking'|'error' }
   const agentMetaByConversation     = ref({})  // { [conversation_id]: { visibility, ownerUserId, ownerIsSelf, agentSlug } }
   const agentRecent          = ref([])
+  // ADR-033 phase 1: clean (tombstone) preview/result keyed by conversation.
+  const agentCleanByConversation = ref({})  // { [conversation_id]: { preview?, result? } }
 
   function ensureAgentConversation(id) {
     if (id == null || id === '') return null
@@ -73,6 +75,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   function agentMetaFor(id) {
     const cid = ensureAgentConversation(id)
     return cid ? agentMetaByConversation.value[cid] : { visibility: null, ownerUserId: null, ownerIsSelf: true, agentSlug: null }
+  }
+
+  function agentCleanFor(id) {
+    const cid = id ? String(id) : null
+    return cid ? (agentCleanByConversation.value[cid] || {}) : {}
   }
 
   function releaseAgentConversation(id) {
@@ -118,6 +125,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     agentMessagesFor,
     agentStatusFor,
     agentMetaFor,
+    agentCleanFor,
+    agentCleanByConversation,
     releaseAgentConversation,
     agentRecent,
     projectName,

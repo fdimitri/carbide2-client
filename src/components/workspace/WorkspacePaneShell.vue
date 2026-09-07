@@ -119,6 +119,7 @@
         @agent-load="onAgentLoad"
         @agent-set-visibility="(vis) => emit('agent-set-visibility', activeAgentConversationId, vis)"
         @agent-stop="emit('agent-stop', activeAgentConversationId)"
+        @agent-clean="(opts) => emit('agent-clean', activeAgentConversationId, opts)"
       />
     </div>
 
@@ -313,6 +314,7 @@ const emit = defineEmits([
   'agent-load',
   'agent-set-visibility',
   'agent-stop',
+  'agent-clean',
 ])
 
 function onTabBarDrop(event) {

@@ -74,6 +74,55 @@
       >Stop</UiButton>
     </PaneToolbar>
 
+    <!-- Debug expand: tombstone (clean) tool history (ADR-033 phase 1) -->
+    <details class="mx-3 mb-2 text-ui-sm">
+      <summary class="cursor-pointer select-none opacity-70 hover:opacity-100 py-0.5">Clean (tombstone) tool history</summary>
+      <div class="flex flex-col gap-2 mt-2 p-2 rounded-ui-sm bg-white/[0.03]">
+        <div class="flex items-center gap-2">
+          <label class="opacity-70 shrink-0">Scope</label>
+          <select v-model="cleanScope" class="px-1.5 py-0.5 rounded-ui-xs border monaco-input-bg monaco-input-fg monaco-input-border outline-none">
+            <option value="both">results + call text</option>
+            <option value="results">results only</option>
+            <option value="calls">call text only</option>
+          </select>
+          <label class="opacity-70 shrink-0">Mode</label>
+          <select v-model="cleanMode" class="px-1.5 py-0.5 rounded-ui-xs border monaco-input-bg monaco-input-fg monaco-input-border outline-none">
+            <option value="first_n">first N items</option>
+            <option value="n_size">N bytes</option>
+            <option value="before_datetime">before date/time</option>
+          </select>
+        </div>
+        <div class="flex items-center gap-2">
+          <UiInput
+            v-if="cleanMode === 'before_datetime'"
+            v-model="cleanParam"
+            type="datetime-local"
+            class="flex-1"
+            size="sm"
+            placeholder="cutoff"
+          />
+          <UiInput
+            v-else
+            v-model.number="cleanParam"
+            type="number"
+            min="1"
+            class="flex-1"
+            size="sm"
+            :placeholder="cleanMode === 'first_n' ? 'N items' : 'N bytes'"
+          />
+          <UiButton size="xs" @click="onCleanPreview">Preview</UiButton>
+          <UiButton size="xs" variant="warn" :disabled="!cleanPreview" @click="onCleanConfirm">Clean</UiButton>
+        </div>
+        <div v-if="cleanPreview" class="text-ui-xs opacity-80">
+          <div>evictable: {{ cleanPreview.total_results }} results · {{ cleanPreview.total_calls }} calls · {{ formatBytes(cleanPreview.total_bytes) }}</div>
+          <div>would remove: {{ cleanPreview.removed_results }} results · {{ cleanPreview.removed_calls }} calls · {{ formatBytes(cleanPreview.bytes_reclaimed) }}</div>
+        </div>
+        <div v-if="cleanResult" class="text-ui-xs text-accent-fg">
+          removed: {{ cleanResult.removed_results }} results · {{ cleanResult.removed_calls }} calls · {{ formatBytes(cleanResult.bytes_reclaimed) }}
+        </div>
+      </div>
+    </details>
+
     <!-- Timeline -->
     <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-2 min-h-0" ref="scrollEl" @scroll="onScroll">
       <div v-if="!messages.length && !selectedSlug && store.agentListLoaded && !agents.length" class="flex-1 grid place-items-center monaco-line-fg p-4 text-ui-lg">
@@ -203,6 +252,7 @@ import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { renderMarkdownBlocks } from '../../utils/markdown'
 import UiButton from '../ui/UiButton.vue'
+import UiInput from '../ui/UiInput.vue'
 import PaneToolbar from '../ui/PaneToolbar.vue'
 import Avatar from '../ui/Avatar.vue'
 import Composer from './Composer.vue'
@@ -215,7 +265,7 @@ const props = defineProps({
   agentSlug: { type: String, default: null },
   projectId: { type: [Number, String], required: true },
 })
-const emit = defineEmits(['agent-send', 'agent-reset', 'agent-pick', 'agent-load', 'agent-set-visibility', 'agent-stop', 'agent-create'])
+const emit = defineEmits(['agent-send', 'agent-reset', 'agent-pick', 'agent-load', 'agent-set-visibility', 'agent-stop', 'agent-create', 'agent-clean'])
 
 const store    = useWorkspaceStore()
 const scrollEl = ref(null)
@@ -361,6 +411,37 @@ function onComposerSend(text, images) {
 function onReset()  { emit('agent-reset') }
 function onPickAgent(slug) { emit('agent-pick', slug) }
 function onStop()   { emit('agent-stop') }
+
+// ADR-033 phase 1: clean (tombstone) tool history. Preview does a dry-run;
+// confirm evicts. The preview/result land in store.agentCleanByConversation.
+const cleanMode  = ref('first_n')
+const cleanScope = ref('both')
+const cleanParam = ref(null)
+
+const cleanInfo    = computed(() => store.agentCleanFor(convId.value))
+const cleanPreview = computed(() => cleanInfo.value.preview || null)
+const cleanResult  = computed(() => cleanInfo.value.result || null)
+
+function cleanPayload(dryRun) {
+  const p = { dryRun, mode: cleanMode.value, scope: cleanScope.value }
+  if (cleanMode.value === 'before_datetime') {
+    p.cutoff = cleanParam.value ? new Date(cleanParam.value).toISOString() : ''
+  } else if (cleanMode.value === 'first_n') {
+    p.n = cleanParam.value
+  } else {
+    p.bytes = cleanParam.value
+  }
+  return p
+}
+function onCleanPreview() { emit('agent-clean', cleanPayload(true)) }
+function onCleanConfirm() { emit('agent-clean', cleanPayload(false)) }
+
+function formatBytes(n) {
+  if (n == null) return '—'
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / 1024 / 1024).toFixed(2)} MB`
+}
 
 // Export the current conversation as a JSON file (#33). The server returns
 // lossless JSON; we wrap it in a Blob and trigger a browser download.
