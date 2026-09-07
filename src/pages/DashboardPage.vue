@@ -123,6 +123,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { listWorkspaces, createWorkspace, getWorkspaceHealth } from '../services/workspaceService'
+import { apiErrorMessage } from '../utils/apiError'
 import { setPendingSeed } from '../services/pendingSeed'
 import UiButton from '../components/ui/UiButton.vue'
 import UiInput from '../components/ui/UiInput.vue'
@@ -184,7 +185,7 @@ async function load() {
   try {
     items.value = await listWorkspaces()
   } catch (e) {
-    error.value = e.message || 'Failed to load workspaces'
+    error.value = apiErrorMessage(e, 'Failed to load workspaces')
   } finally {
     loading.value = false
   }
@@ -243,7 +244,7 @@ async function createItem() {
     await load()
     pollHealth()
   } catch (e) {
-    error.value = e.message || 'Failed to create workspace'
+    error.value = apiErrorMessage(e, 'Failed to create workspace')
   }
 }
 
