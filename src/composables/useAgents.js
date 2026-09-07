@@ -28,7 +28,7 @@ export function useAgents({ error, bindTabToActivePane, onConversationLoaded = n
   const {
     agentList, agentListLoaded, agentRecent,
     agentMessagesByConversation, agentStatusByConversation, agentMetaByConversation,
-    agentCleanByConversation,
+    agentCleanByConversation, agentUsageByConversation,
   } = storeToRefs(store)
 
   function openAgentPane() {
@@ -55,6 +55,7 @@ export function useAgents({ error, bindTabToActivePane, onConversationLoaded = n
     if (!conversationId) return
     workerSocket.send('agent', 'load', { conversation_id: conversationId })
     workerSocket.send('agent', 'subscribe', { conversation_id: conversationId })
+    workerSocket.send('agent', 'usage', { conversation_id: conversationId })
   }
 
   // Ref-counted unsubscribe: callers increment/decrement per pane tab reference.
@@ -334,6 +335,7 @@ export function useAgents({ error, bindTabToActivePane, onConversationLoaded = n
           action: 'done',
           detail: `turn=${p?.turn ?? '?'} finish=${finish || '?'} chars=${(p?.content || '').length}${reasoning ? ` reasoning=${reasoning.length}` : ''}` })
         workerSocket.send('agent', 'recent', { limit: 25 })
+        workerSocket.send('agent', 'usage', { conversation_id: cid })
       }),
       workerSocket.on('agent', 'error', (p) => {
         const cid = p?.conversation_id
@@ -353,6 +355,7 @@ export function useAgents({ error, bindTabToActivePane, onConversationLoaded = n
         store.ensureAgentConversation(cid)
         const arr = agentMessagesByConversation.value[cid]
         arr.splice(0, arr.length, ...(Array.isArray(p?.messages) ? p.messages : []))
+        if (Array.isArray(p?.usage)) agentUsageByConversation.value[cid] = p.usage
         agentStatusByConversation.value[cid] = 'idle'
         const m = meta(cid)
         m.visibility = p?.visibility || 'project'
@@ -362,6 +365,11 @@ export function useAgents({ error, bindTabToActivePane, onConversationLoaded = n
         if (typeof onConversationLoaded === 'function') onConversationLoaded(cid, p?.agent || null)
         debugLog.push({ source: 'agent', action: 'loaded',
           detail: `convo=${cid} msgs=${(p?.messages || []).length} vis=${p?.visibility}` })
+      }),
+      workerSocket.on('agent', 'usage', (p) => {
+        const cid = p?.conversation_id
+        if (!cid) return
+        agentUsageByConversation.value[cid] = Array.isArray(p?.rows) ? p.rows : []
       }),
       workerSocket.on('agent', 'visibility_changed', (p) => {
         const cid = p?.conversation_id

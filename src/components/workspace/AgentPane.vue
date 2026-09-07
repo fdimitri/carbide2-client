@@ -244,6 +244,18 @@
         <div v-else-if="m.kind === 'error'" class="text-ui-sm text-red-400 italic">
           {{ m.text }}
         </div>
+        <!-- Per-turn fork marker (ADR-032): fork at this logical turn's boundary -->
+        <div v-else-if="m.kind === 'turn_fork'" class="flex items-center gap-2 pl-2 text-ui-xs opacity-70">
+          <UiButton
+            size="xs"
+            :disabled="convoStatus === 'thinking'"
+            title="Fork the conversation up to and including this turn"
+            @click="onForkAt(m.fork_at_turn)"
+          >⤴ fork</UiButton>
+          <span v-if="usageByTurn[m.agent_turn_id]" class="text-muted" :title="usageTooltip(usageByTurn[m.agent_turn_id])">
+            ≈ {{ fmtCost(usageByTurn[m.agent_turn_id].cost) }} tok
+          </span>
+        </div>
         <div v-else class="text-ui-sm opacity-60 italic">{{ m.text }}</div>
       </div>
       <!-- Bottom sentinel: autoscroll anchors to this element via
@@ -286,6 +298,7 @@ const exporting = ref(false)
 const agents   = computed(() => store.agentList || [])
 const convId   = computed(() => props.conversationId || null)
 const messages = computed(() => store.agentMessagesFor(convId.value))
+const usageRows = computed(() => store.agentUsageFor(convId.value))
 const convoStatus = computed(() => store.agentStatusFor(convId.value))
 const convoMeta   = computed(() => store.agentMetaFor(convId.value))
 const selectedSlug = computed(() => props.agentSlug || convoMeta.value.agentSlug || null)
@@ -328,19 +341,28 @@ function turnSig(items) {
 }
 
 const timeline = computed(() => {
+  // Fork boundaries: agent_turn_id -> last message turn in that logical turn.
+  const boundary = new Map()
+  for (const m of messages.value) {
+    if (m.agent_turn_id == null) continue
+    const cur = boundary.get(m.agent_turn_id)
+    if (cur == null || m.turn > cur) boundary.set(m.agent_turn_id, m.turn)
+  }
+  const forkTurns = new Set(boundary.values())
+
   // Pass 1: merge tool_call + tool_result by id into one `tool` row. Each row
   // carries the source message's stable uid so turn keys don't shift.
   const merged = []
   const byId = new Map()
   for (const m of messages.value) {
     if (m.kind === 'tool_call') {
-      const row = { kind: 'tool', id: m.id, name: m.name, args: m.args, result: undefined, done: false, _uid: uidFor(m) }
+      const row = { kind: 'tool', id: m.id, name: m.name, args: m.args, result: undefined, done: false, turn: m.turn, agent_turn_id: m.agent_turn_id, _uid: uidFor(m) }
       if (m.id != null) byId.set(m.id, row)
       merged.push(row)
     } else if (m.kind === 'tool_result') {
       const row = m.id != null ? byId.get(m.id) : null
-      if (row) { row.result = m.result; row.done = true }
-      else merged.push({ kind: 'tool', id: m.id, name: m.name, result: m.result, done: true, _uid: uidFor(m) })
+      if (row) { row.result = m.result; row.done = true; row.turn = m.turn; row.agent_turn_id = m.agent_turn_id }
+      else merged.push({ kind: 'tool', id: m.id, name: m.name, result: m.result, done: true, turn: m.turn, agent_turn_id: m.agent_turn_id, _uid: uidFor(m) })
     } else {
       merged.push(m)
     }
@@ -350,7 +372,7 @@ const timeline = computed(() => {
   let turn = null
   for (const m of merged) {
     if (m.kind === 'tool' || m.kind === 'assistant') {
-      if (!turn) { turn = { kind: 'assistant_turn', items: [], _uid: (m._uid ?? uidFor(m)) }; out.push(turn) }
+      if (!turn) { turn = { kind: 'assistant_turn', items: [], _uid: (m._uid ?? uidFor(m)), turn: null, agent_turn_id: null }; out.push(turn) }
       if (m.kind === 'tool') {
         const last = turn.items[turn.items.length - 1]
         if (last && last.type === 'tools') last.tools.push(m)
@@ -358,6 +380,8 @@ const timeline = computed(() => {
       } else {
         turn.items.push({ type: 'text', text: m.text, reasoning: m.reasoning, truncated: m.truncated, muted: m.muted, streaming: m.streaming, stopped: m.stopped })
       }
+      if (m.turn != null) turn.turn = Math.max(turn.turn ?? -1, m.turn)
+      if (m.agent_turn_id != null) turn.agent_turn_id = m.agent_turn_id
     } else {
       turn = null
       out.push({ ...m, _uid: uidFor(m), _sig: 'x' + (m.text || '').length + ':' + (m.images ? m.images.length : 0) })
@@ -367,7 +391,22 @@ const timeline = computed(() => {
   for (const row of out) {
     if (row.kind === 'assistant_turn') row._sig = turnSig(row.items)
   }
-  return out
+  // Emit a per-turn fork marker after each completed logical turn (assistant
+  // rows only; a user-only turn is not a valid fork point).
+  const withForks = []
+  for (const row of out) {
+    withForks.push(row)
+    if (row.kind === 'assistant_turn' && row.turn != null && forkTurns.has(row.turn)) {
+      withForks.push({
+        kind: 'turn_fork',
+        fork_at_turn: row.turn,
+        agent_turn_id: row.agent_turn_id,
+        _uid: `fork_${row.turn}`,
+        _sig: `fork:${row.turn}`,
+      })
+    }
+  }
+  return withForks
 })
 
 // Reasoning disclosure open state. Defaults to open-while-streaming and
@@ -423,7 +462,46 @@ function onComposerSend(text, images) {
 function onReset()  { emit('agent-reset') }
 function onPickAgent(slug) { emit('agent-pick', slug) }
 function onStop()   { emit('agent-stop') }
-function onFork()   { emit('agent-fork') }
+function onFork()   { emit('agent-fork', null) }
+function onForkAt(turn) { emit('agent-fork', turn) }
+
+// ADR-032/033: per-turn token cost, from cached/uncached usage deltas.
+// Cached input costs ~1/3 of uncached; completion output is full price.
+// Cost is normalized to uncached-input units: cached/3 + uncached + completion.
+// Deltas (turn - last_turn) attribute prompt growth to a turn.
+function tokenCost(row) {
+  const cached = row?.cached_tokens || 0
+  const uncached = row?.uncached_tokens || 0
+  const completion = row?.completion_tokens || 0
+  return cached / 3 + uncached + completion
+}
+
+// Group usage rows by logical turn; each turn's cost is the sum of its
+// requests' costs. Returns { [agent_turn_id]: { cached, uncached, completion, cost } }.
+const usageByTurn = computed(() => {
+  const map = {}
+  for (const r of usageRows.value) {
+    const tid = r.agent_turn_id
+    if (tid == null) continue
+    const e = (map[tid] ||= { cached: 0, uncached: 0, completion: 0, cost: 0 })
+    e.cached    += r.cached_tokens || 0
+    e.uncached  += r.uncached_tokens || 0
+    e.completion += r.completion_tokens || 0
+    e.cost      += tokenCost(r)
+  }
+  return map
+})
+
+function fmtCost(c) {
+  if (c == null || !c) return ''
+  if (c < 1000) return `${Math.round(c)}`
+  if (c < 1000000) return `${(c / 1000).toFixed(1)}k`
+  return `${(c / 1000000).toFixed(2)}M`
+}
+
+function usageTooltip(e) {
+  return `cached ${e.cached} · uncached ${e.uncached} · completion ${e.completion} · cost ${Math.round(e.cost)} tok`
+}
 
 // ADR-033 phase 1: clean (tombstone) tool history. Preview does a dry-run;
 // confirm evicts. The preview/result land in store.agentCleanByConversation.

@@ -120,7 +120,7 @@
         @agent-set-visibility="(vis) => emit('agent-set-visibility', activeAgentConversationId, vis)"
         @agent-stop="emit('agent-stop', activeAgentConversationId)"
         @agent-clean="(opts) => emit('agent-clean', activeAgentConversationId, opts)"
-        @agent-fork="emit('agent-fork', activeAgentConversationId)"
+        @agent-fork="(turn) => emit('agent-fork', activeAgentConversationId, turn)"
       />
     </div>
 
