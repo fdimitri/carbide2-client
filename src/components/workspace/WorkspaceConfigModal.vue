@@ -114,6 +114,9 @@ async function load() {
     const [t, ws] = await Promise.all([listTemplates(), getWorkspace(props.workspace.id)])
     templates.value = t
     current.value = ws
+    // Seed the image-tag selector from the workspace's CURRENT tag so the
+    // existing server-worker SHA shows up instead of the empty placeholder.
+    if (ws?.workspace_image_tag) selectedImageTag.value = ws.workspace_image_tag
   } catch (e) {
     error.value = e.message || 'Failed to load workspace config'
   }
@@ -195,6 +198,10 @@ function close() {
         <h3 class="text-muted text-xs font-semibold uppercase tracking-widest mb-2">Current</h3>
         <div class="flex justify-between"><span class="text-muted">status</span><span class="font-mono">{{ current.status }}</span></div>
         <div class="flex justify-between"><span class="text-muted">template</span><span class="font-mono">{{ current.template_name || 'custom' }}</span></div>
+        <div v-if="current.workspace_image_tag" class="flex justify-between">
+          <span class="text-muted">image tag</span>
+          <span class="font-mono text-xs truncate max-w-56">{{ current.workspace_image_tag }}</span>
+        </div>
         <div v-if="current.spec_drift" class="flex justify-between">
           <span class="text-warn">drift</span>
           <span class="font-mono text-warn">
