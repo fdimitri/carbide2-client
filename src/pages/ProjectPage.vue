@@ -64,6 +64,8 @@
           :terminal-list="terminalList"
           :chat-channels="chatChannels"
           :agent-conversations="workspaceStore.agentRecent"
+          :sessions="sessionList"
+          :current-session-uuid="currentSessionUuid"
           :pane-layout="paneLayout"
           :active-pane-index="activePaneIndex"
           :is-joined-channel="isJoinedChannel"
@@ -73,6 +75,9 @@
           @open-agent="onExplorerOpenAgent"
           @fork-agent="(id) => agents.forkConversation(id)"
           @rename-agent="onAgentRename"
+          @open-session="(uuid) => switchSession(uuid)"
+          @clone-session="cloneSession"
+          @delete-session="deleteSession"
           @open-in-pane="onExplorerOpenInPane"
           @create-terminal="openCreateTerminalDialogTracked"
           @create-channel="openCreateChannelDialog"
@@ -775,6 +780,13 @@ function forkSession(s) {
     'Try opening a faithful fork instead? (Unrecommended, but allowed.)'
   if (!window.confirm(msg)) return
   sessionSync.create({ fromUuid: s.session_uuid })
+}
+
+// Explorer "Clone" = session fork (a deep copy of the layout doc). No distance
+// gate, no confirm — cloning is non-destructive (creates a brand-new session).
+function cloneSession(uuid) {
+  if (!uuid) return
+  sessionSync.create({ fromUuid: uuid })
 }
 
 function deleteSession(uuid) {

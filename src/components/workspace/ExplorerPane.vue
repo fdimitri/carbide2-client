@@ -156,6 +156,8 @@ const props = defineProps({
   terminalList:     { type: Array,  required: true },
   chatChannels:     { type: Array,  required: true },
   agentConversations: { type: Array, required: true },
+  sessions:         { type: Array,  required: true },
+  currentSessionUuid: { type: String, default: null },
   paneLayout:       { type: String, required: true },
   activePaneIndex:  { type: Number, required: true },
   isJoinedChannel:  { type: Function, required: true },
@@ -168,6 +170,9 @@ const emit = defineEmits([
   'open-agent',
   'fork-agent',
   'rename-agent',
+  'open-session',
+  'clone-session',
+  'delete-session',
   'open-in-pane',
   'create-terminal',
   'create-channel',
@@ -200,6 +205,7 @@ const expandedExplorerKeys  = ref({
   'group:terminals': true,
   'group:channels':  true,
   'group:agents':    true,
+  'group:sessions':  true,
   'group:debug':     true,
 })
 
@@ -390,6 +396,26 @@ function buildAgentNodes(convs) {
 
 const agentNodes = computed(() => buildAgentNodes(props.agentConversations || []))
 
+// ── Browser session nodes (ADR-002) ───────────────────────────────────────
+// Sessions are flat (not nested); a fork is denoted by the ↳ prefix, mirroring
+// the menubar dropdown. "Clone" in the context menu maps to session fork.
+function sessionLabel(s) {
+  const base   = s.name || `Session ${String(s.session_uuid).slice(0, 8)}`
+  const branch = s.forked_from ? '↳ ' : ''
+  if (s.session_uuid === props.currentSessionUuid) return `${branch}${base} (current)`
+  if (s.in_use) return `${branch}${base} (in use)`
+  return `${branch}${base}`
+}
+
+const sessionNodes = computed(() =>
+  (props.sessions || []).map((s) => ({
+    key: `session:${s.session_uuid}`,
+    label: sessionLabel(s),
+    selectable: true, draggable: false, droppable: false,
+    data: { kind: 'session', id: s.session_uuid, inUse: !!s.in_use, isCurrent: s.session_uuid === props.currentSessionUuid },
+  }))
+)
+
 const explorerNodes = computed(() => {
   const termNodes = props.terminalList.map((t) => ({
     key: `term:${t.id}`,
@@ -415,6 +441,7 @@ const explorerNodes = computed(() => {
     { key: 'group:terminals', label: 'Terminals', selectable: false, draggable: false, droppable: false, data: { kind: 'group-terminals' }, children: termNodes },
     { key: 'group:channels',  label: 'Channels',  selectable: false, draggable: false, droppable: false, data: { kind: 'group-channels' },  children: channelNodes },
     { key: 'group:agents',    label: 'Agents',    selectable: false, draggable: false, droppable: false, data: { kind: 'group-agents' },    class: 'p-tree-group-agents', children: agentNodes.value },
+    { key: 'group:sessions',  label: 'Sessions',  selectable: false, draggable: false, droppable: false, data: { kind: 'group-sessions' },  children: sessionNodes.value },
     { key: 'group:debug',     label: 'Debug',     selectable: false, draggable: false, droppable: false, data: { kind: 'group-debug' },     children: [] },
   ]
 })
@@ -426,6 +453,7 @@ function treeIconClass(data) {
     case 'group-terminals': return 'pi-desktop'
     case 'group-channels':  return 'pi-comments'
     case 'group-agents':    return 'pi-sparkles'
+    case 'group-sessions':  return 'pi-window-maximize'
     case 'group-debug':     return 'pi-bug'
     case 'dir':             return 'pi-folder'
     case 'file':            return 'pi-file'
@@ -472,6 +500,10 @@ function onExplorerNodeSelect(event) {
   if (node.data.kind === 'agent') {
     selectionKeys.value = { [`agent:${node.data.id}`]: true }
     emit('open-agent', node.data.id)
+  }
+  if (node.data.kind === 'session') {
+    selectionKeys.value = { [`session:${node.data.id}`]: true }
+    emit('open-session', node.data.id)
   }
   if (node.data.kind === 'group-debug') {
     emit('open-debug')
@@ -560,6 +592,15 @@ function buildContextMenuItems(node) {
       { label: 'Fork at latest', icon: 'pi pi-code-fork', command: () => emit('fork-agent', node.data.id) },
     ]
   }
+  if (kind === 'session') {
+    const sid = node.data.id
+    return [
+      { label: 'Open', icon: 'pi pi-external-link', command: () => emit('open-session', sid) },
+      { separator: true },
+      { label: 'Clone', icon: 'pi pi-copy', command: () => emit('clone-session', sid) },
+      { label: 'Delete', icon: 'pi pi-trash', command: () => emit('delete-session', sid) },
+    ]
+  }
   if (kind === 'terminal') {
     const tid = node.data.id
     const isAgent = !!node.data.agentAccessible
@@ -599,6 +640,7 @@ function onExplorerNodeContextMenu(event, node) {
   if (kind === 'terminal')     selectionKeys.value = { [`term:${node.data.id}`]: true }
   else if (kind === 'channel') selectionKeys.value = { [`channel:${node.data.id}`]: true }
   else if (kind === 'agent')   selectionKeys.value = { [`agent:${node.data.id}`]: true }
+  else if (kind === 'session') selectionKeys.value = { [`session:${node.data.id}`]: true }
   else if (kind === 'file')    selectionKeys.value = { [node.key]: true }
   contextMenuItems.value = buildContextMenuItems(node)
   if (contextMenuItems.value.length > 0) treeContextMenu.value?.show(event)
