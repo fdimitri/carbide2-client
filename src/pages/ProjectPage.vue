@@ -90,6 +90,7 @@
           @join-channel="joinChannelFromContext"
           @leave-channel="leaveChannelFromContext"
           @open-upload="onExplorerOpenUpload"
+          @download-entry="onExplorerDownloadEntry"
           @open-debug="openDebugPane"
         />
         <div
@@ -276,7 +277,7 @@ import ConnectionStatus from '../components/ConnectionStatus.vue'
 import ClientPicker from '../components/workspace/ClientPicker.vue'
 import workerSocket from '../services/workerSocket'
 import authService from '../services/authService'
-import { listProjects, uploadProjectFile, importProjectFromDisk } from '../services/projectService'
+import { listProjects, uploadProjectFile, importProjectFromDisk, downloadProjectEntry } from '../services/projectService'
 import { mintWorkspaceToken } from '../services/workspaceToken'
 import { storeToRefs } from 'pinia'
 import { usePanes, PANE_COUNTS } from '../composables/usePanes'
@@ -592,6 +593,13 @@ function onExplorerOpenUpload(payload) {
   openUploadDialog(payload?.dest || '/', payload?.mode || 'file')
 }
 
+function onExplorerDownloadEntry(path) {
+  if (!path) return
+  downloadProjectEntry(projectId, path).catch((e) => {
+    error.value = e?.response?.data?.error || e.message || 'download failed'
+  })
+}
+
 function openDebugPane() {
   bindTabToActivePane('debug', 0, 'Debug')
 }
@@ -676,6 +684,9 @@ const menuItems = computed(() => ([
     items: [
       { label: 'Upload File / Archive…',           icon: 'pi pi-upload',   command: () => openUploadDialog('/', 'file') },
       { label: 'Import From Disk (rescan files)',  icon: 'pi pi-download', command: () => triggerImportFromDisk() },
+      { separator: true },
+      { label: 'Export Project (tar.gz)',          icon: 'pi pi-download', command: () => onExplorerDownloadEntry('/') },
+      { label: 'Import Project (tar.gz)',          icon: 'pi pi-upload',   command: () => openUploadDialog('/', 'archive') },
       { separator: true },
       { label: 'Refresh Tree (reload from server)',icon: 'pi pi-refresh',  command: () => refreshTreeFromServer() },
     ]

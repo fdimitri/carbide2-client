@@ -207,6 +207,7 @@ const emit = defineEmits([
   'join-channel',
   'leave-channel',
   'open-upload',
+  'download-entry',
   'open-debug',
 ])
 
@@ -628,6 +629,7 @@ function buildContextMenuItems(node) {
       { label: 'Upload File Here…',             icon: 'pi pi-upload',    command: () => emit('open-upload', { dest: dirPath, mode: 'file' }) },
       { label: 'Upload & Extract Archive Here…',icon: 'pi pi-box',       command: () => emit('open-upload', { dest: dirPath, mode: 'archive' }) },
       { separator: true },
+      { label: 'Download', icon: 'pi pi-download', command: () => emit('download-entry', dirPath) },
       { label: 'Properties...', icon: 'pi pi-info-circle', command: () => openPropertiesDialog(dirPath) },
       { label: 'Delete', icon: 'pi pi-trash', command: () => deletePath(node.key) },
     ]
@@ -684,6 +686,7 @@ function buildContextMenuItems(node) {
     return [
       ...buildOpenItems(node),
       { separator: true },
+      { label: 'Download', icon: 'pi pi-download', command: () => emit('download-entry', filePath) },
       { label: 'Properties...', icon: 'pi pi-info-circle', command: () => openPropertiesDialog(filePath) },
       { label: 'Rename', icon: 'pi pi-pencil', command: () => renameFileById(node.key) },
       { label: 'Delete', icon: 'pi pi-trash',  command: () => deletePath(node.key) },
