@@ -21,6 +21,8 @@ const busy = ref(false)
 
 const selectedTemplate = ref('')
 const selectedImageTag = ref('')
+const selectedShellRepo = ref('')
+const selectedShellImageTag = ref('')
 
 // ADR-029 shell lifecycle. Phase is derived server-side from the live pod on
 // every call, so this is polled rather than read once: a shell can idle down,
@@ -52,6 +54,16 @@ const current = ref(null)
 
 const workspaceImages = computed(() =>
   (registry.value?.images || []).find((i) => i.repository === 'carbide2')?.tags || []
+)
+
+// Shell variants live in the repo name (carbide2-shell, carbide2-shell-rust, ...),
+// so the shell picker is repo + tag, unlike the workspace picker's tag-only.
+const shellRepos = computed(() =>
+  (registry.value?.images || []).filter((i) => i.repository.startsWith('carbide2-shell'))
+)
+
+const selectedShellTags = computed(() =>
+  shellRepos.value.find((r) => r.repository === selectedShellRepo.value)?.tags || []
 )
 
 // Each tag is { tag, build_time, version, codename } (ADR-032 versioning). The
@@ -118,6 +130,8 @@ async function load() {
   busy.value = false
   selectedTemplate.value = ''
   selectedImageTag.value = ''
+  selectedShellRepo.value = ''
+  selectedShellImageTag.value = ''
 
   try {
     const [t, ws] = await Promise.all([listTemplates(), getWorkspace(props.workspace.id)])
@@ -126,6 +140,9 @@ async function load() {
     // Seed the image-tag selector from the workspace's CURRENT tag so the
     // existing server-worker SHA shows up instead of the empty placeholder.
     if (ws?.workspace_image_tag) selectedImageTag.value = ws.workspace_image_tag
+    // Strip the registry host prefix to match the catalog's bare repo name.
+    if (ws?.shell_image_repo) selectedShellRepo.value = ws.shell_image_repo.split('/').pop()
+    if (ws?.shell_image_tag) selectedShellImageTag.value = ws.shell_image_tag
   } catch (e) {
     error.value = e.message || 'Failed to load workspace config'
   }
@@ -164,6 +181,24 @@ async function applyImageTag() {
     emit('changed')
   } catch (e) {
     error.value = e.response?.data?.error || e.message || 'Failed to apply image tag'
+  } finally {
+    busy.value = false
+  }
+}
+
+async function applyShellImageTag() {
+  if (!selectedShellRepo.value || !selectedShellImageTag.value) return
+  busy.value = true
+  error.value = ''
+  try {
+    await patchWorkspace(props.workspace.id, {
+      shellImageRepo: selectedShellRepo.value,
+      shellImageTag: selectedShellImageTag.value
+    })
+    await refreshCurrent()
+    emit('changed')
+  } catch (e) {
+    error.value = e.response?.data?.error || e.message || 'Failed to apply shell image tag'
   } finally {
     busy.value = false
   }
@@ -292,6 +327,37 @@ function close() {
             </select>
           </div>
           <UiButton :disabled="busy || !selectedImageTag" @click="applyImageTag">Apply</UiButton>
+        </div>
+      </section>
+
+      <!-- Shell image -->
+      <section class="rounded-xl border border-line bg-bg-1/60 p-4">
+        <h3 class="text-muted text-xs font-semibold uppercase tracking-widest mb-2">Shell image</h3>
+        <p v-if="registryError" class="text-muted text-sm">No registry configured — using the imported image.</p>
+        <div v-else class="flex flex-col gap-2">
+          <div class="flex items-end gap-2">
+            <div class="flex-1">
+              <label class="text-muted text-label uppercase tracking-widest text-xs">Repository</label>
+              <select v-model="selectedShellRepo" class="w-full mt-1 rounded border border-line bg-bg-0 text-text text-sm px-2 py-1.5">
+                <option value="" disabled>Select a variant…</option>
+                <option v-for="r in shellRepos" :key="r.repository" :value="r.repository">
+                  {{ r.repository }}
+                </option>
+              </select>
+            </div>
+          </div>
+          <div class="flex items-end gap-2">
+            <div class="flex-1">
+              <label class="text-muted text-label uppercase tracking-widest text-xs">Tag</label>
+              <select v-model="selectedShellImageTag" class="w-full mt-1 rounded border border-line bg-bg-0 text-text text-sm px-2 py-1.5">
+                <option value="" disabled>Select a tag…</option>
+                <option v-for="t in selectedShellTags" :key="t.tag" :value="t.tag">
+                  {{ formatImageLabel(t) }}
+                </option>
+              </select>
+            </div>
+            <UiButton :disabled="busy || !selectedShellRepo || !selectedShellImageTag" @click="applyShellImageTag">Apply</UiButton>
+          </div>
         </div>
       </section>
 
