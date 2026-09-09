@@ -54,13 +54,22 @@ const workspaceImages = computed(() =>
   (registry.value?.images || []).find((i) => i.repository === 'carbide2')?.tags || []
 )
 
-// Each tag is now { tag, build_time }. Render the date alongside; the server
-// already sorts newest-first by build_time.
+// Each tag is { tag, build_time, version, codename } (ADR-032 versioning). The
+// release version/codename come from the image's org.carbide.* labels; render
+// them prominently so the picker shows the manifest version, not just SHAs.
 function formatBuildTime(iso) {
   if (!iso) return ''
   const d = new Date(iso)
   if (!d.getTime()) return ''
   return d.toLocaleString()
+}
+
+function formatImageLabel(t) {
+  const parts = []
+  if (t.version) parts.push(t.version + (t.codename ? `-${t.codename}` : ''))
+  parts.push(t.tag)
+  if (t.build_time) parts.push(formatBuildTime(t.build_time))
+  return parts.join(' · ')
 }
 
 watch(() => props.visible, (v) => {
@@ -278,7 +287,7 @@ function close() {
             <select v-model="selectedImageTag" class="w-full mt-1 rounded border border-line bg-bg-0 text-text text-sm px-2 py-1.5">
               <option value="" disabled>Select a tag…</option>
               <option v-for="t in workspaceImages" :key="t.tag" :value="t.tag">
-                {{ t.tag }}{{ t.build_time ? ' · ' + formatBuildTime(t.build_time) : '' }}
+                {{ formatImageLabel(t) }}
               </option>
             </select>
           </div>
