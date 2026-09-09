@@ -7,7 +7,7 @@ export const VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ 
 export const CODENAME = 'Ferrari'
 // The human-facing version string. VERSION stays semver (0.5.2) because it is
 // also used as the session provenance tag; this is what the UI prints.
-export const DISPLAY_VERSION = 'v0.5.2-ferrari'
+export const DISPLAY_VERSION = 'v0.5.3-ferrari'
 export const BUILD_META = typeof __APP_BUILD_META__ !== 'undefined' ? __APP_BUILD_META__ : {}
 
 function shortSha(sha) {
