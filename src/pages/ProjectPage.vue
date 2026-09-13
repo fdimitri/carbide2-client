@@ -478,22 +478,19 @@ function activeAgentTab(paneIndex) {
   return (pane.tabs || []).find((t) => t.kind === 'agent' && t.key === pane.activeTab) || null
 }
 
-// Option B: the agent slug lives on the tab (per ADR v2 shape). For a fresh
-// `agent:` tab, pick just records the slug; the conversation is created on first
-// send, and the tab key is rewritten to `agent:<uuid>`. Changing the agent on an
-// EXISTING conversation starts a fresh one — the old id is released and the tab
-// is rewritten back to a bare `agent:` key so the next send creates new.
+// The agent slug lives on the tab (per ADR v2 shape). A fresh `agent:` tab
+// records just the slug; the conversation is created with it on first send.
+//
+// Changing the agent on an EXISTING conversation no longer starts a new
+// conversation (#120): the transcript is kept, the tab key is unchanged (so the
+// tab is not remounted), and the worker re-points the row at the new agent and
+// broadcasts the change. A fresh tab just records the slug; its first send
+// creates the conversation with it.
 function handleAgentPick(paneIndex, conversationId, slug) {
   const tab = activeAgentTab(paneIndex)
   if (!tab) return
-  const pane = panes.value[paneIndex]
-  if (conversationId) {
-    unbindAgentTab(tab, conversationId)
-    tab.key = 'agent:'
-    tab.id = ''
-    pane.activeTab = tab.key
-  }
   tab.agentSlug = slug
+  if (conversationId) agents.setAgent(conversationId, slug)
 }
 
 function handleAgentLoad(id, oldId) {

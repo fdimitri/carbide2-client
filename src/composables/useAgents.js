@@ -51,6 +51,17 @@ export function useAgents({ error, bindTabToActivePane, onConversationLoaded = n
     // (pane) owns resetting its tab key to the fresh agent:<uuid>.
   }
 
+  // Change which agent a conversation runs as (#120). Unlike selectAgent this
+  // does NOT start a new conversation: the transcript is kept, the worker
+  // updates the row and broadcasts agent_changed, and the next turn is answered
+  // by the new agent. Any member who can see the conversation may do this.
+  function setAgent(conversationId, slug) {
+    if (!conversationId || !slug) return
+    workerSocket.send('agent', 'set_agent', { conversation_id: conversationId, agent_slug: slug })
+    debugLog.push({ source: 'agent', action: 'set_agent',
+      detail: `convo=${conversationId} -> ${slug}` })
+  }
+
   function loadConversation(conversationId) {
     if (!conversationId) return
     workerSocket.send('agent', 'load', { conversation_id: conversationId })
@@ -362,6 +373,17 @@ export function useAgents({ error, bindTabToActivePane, onConversationLoaded = n
         }
         debugLog.push({ source: 'agent', severity: 'error', action: 'error', detail: msg })
       }),
+      workerSocket.on('agent', 'agent_changed', (p) => {
+        const cid = p?.conversation_id
+        if (!cid) return
+        const m = meta(cid)
+        if (m && p?.agent_slug) m.agentSlug = p.agent_slug
+        // Re-list so the sidebar/explorer (and its agent grouping) re-derive
+        // from the authoritative rows rather than patching a single field.
+        workerSocket.send('agent', 'recent', { limit: 25 })
+        debugLog.push({ source: 'agent', action: 'agent_changed',
+          detail: `convo=${cid} -> ${p?.agent_slug || '?'}` })
+      }),
       workerSocket.on('agent', 'recent', (p) => {
         agentRecent.value = Array.isArray(p?.conversations) ? p.conversations : []
       }),
@@ -442,7 +464,7 @@ export function useAgents({ error, bindTabToActivePane, onConversationLoaded = n
     agentList, agentListLoaded, agentRecent,
     agentMessagesByConversation, agentStatusByConversation, agentMetaByConversation,
     messages, status, meta,
-    openAgentPane, selectAgent, loadConversation, createConversation,
+    openAgentPane, selectAgent, setAgent, loadConversation, createConversation,
     retain, release,
     setVisibility, stop, send, releaseAgentConversation: store.releaseAgentConversation,
     clean, forkConversation, renameConversation,
