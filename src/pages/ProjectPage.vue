@@ -64,6 +64,7 @@
           :terminal-list="terminalList"
           :chat-channels="chatChannels"
           :agent-conversations="workspaceStore.agentRecent"
+          :agent-list="workspaceStore.agentList"
           :sessions="sessionList"
           :current-session-uuid="currentSessionUuid"
           :pane-layout="paneLayout"
@@ -73,6 +74,7 @@
           @open-terminal="onExplorerOpenTerminal"
           @open-channel="onExplorerOpenChannel"
           @open-agent="onExplorerOpenAgent"
+          @create-agent-conversation="onExplorerNewAgentConversation"
           @fork-agent="(id) => agents.forkConversation(id)"
           @rename-agent="onAgentRename"
           @open-session="(uuid) => switchSession(uuid)"
@@ -862,6 +864,25 @@ function onExplorerOpenAgent(id) {
   const tab = activeAgentTab(activePaneIndex.value)
   agents.loadConversation(id)
   bindAgentTab(tab, id)
+}
+
+// Explorer "New Conversation…" for a chosen agent (#120). Created eagerly via
+// agent/create so the conversation has a real uuid up front: that is what lets
+// several conversations coexist and removes the need for a temporary tab
+// identity. The tab opens bound to that uuid and agent.
+async function onExplorerNewAgentConversation(slug) {
+  if (!slug) return
+  try {
+    const cid = await agents.createConversation(slug)
+    bindTabToActivePane('agent', cid, 'Agent')
+    const tab = activeAgentTab(activePaneIndex.value)
+    if (tab) tab.agentSlug = slug
+    agents.selectAgent(cid, slug)
+    agents.loadConversation(cid)
+    bindAgentTab(tab, cid)
+  } catch (e) {
+    error.value = e?.message || 'Failed to create conversation'
+  }
 }
 
 function onAgentRename(id) {

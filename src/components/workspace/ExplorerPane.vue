@@ -29,7 +29,7 @@
         <template #default="slotProps">
           <div
             class="flex items-center gap-2 w-full min-w-0"
-            :draggable="!['group-files','group-terminals','group-channels','dir'].includes(slotProps.node.data?.kind)"
+            :draggable="!['group-files','group-terminals','group-channels','agent-group','dir'].includes(slotProps.node.data?.kind)"
             @click="onExplorerNodeSelect(slotProps.node)"
             @dblclick.stop="onExplorerNodeDblClick(slotProps.node)"
             @contextmenu.prevent.stop="onExplorerNodeContextMenu($event, slotProps.node)"
@@ -178,6 +178,9 @@ const props = defineProps({
   terminalList:     { type: Array,  required: true },
   chatChannels:     { type: Array,  required: true },
   agentConversations: { type: Array, required: true },
+  // Configured agents (store.agentList). Drives the agent-grouped conversation
+  // tree and the "New Conversation" submenu (#120).
+  agentList:        { type: Array, default: () => [] },
   sessions:         { type: Array,  required: true },
   currentSessionUuid: { type: String, default: null },
   paneLayout:       { type: String, required: true },
@@ -190,6 +193,7 @@ const emit = defineEmits([
   'open-terminal',
   'open-channel',
   'open-agent',
+  'create-agent-conversation',
   'fork-agent',
   'rename-agent',
   'open-session',
@@ -391,7 +395,7 @@ function agentLabel(c) {
   return `${branch}${title}${at}`
 }
 
-function buildAgentNodes(convs) {
+function buildAgentNodes(convs, agentSlug) {
   const byId = new Map()
   convs.forEach((c) => byId.set(c.conversation_id, c))
   const children = new Map()   // parent id -> [child convs]
@@ -411,13 +415,63 @@ function buildAgentNodes(convs) {
     label: agentLabel(c),
     selectable: true, draggable: false, droppable: false,
     class: 'p-tree-agent-node',
-    data: { kind: 'agent', id: c.conversation_id, isOpen: false },
+    data: { kind: 'agent', id: c.conversation_id, agentSlug, isOpen: false },
     children: (children.get(c.conversation_id) || []).sort(byActivity).map(node),
   })
   return roots.sort(byActivity).map(node)
 }
 
-const agentNodes = computed(() => buildAgentNodes(props.agentConversations || []))
+// Conversations are grouped under the agent that owns them (#120). Groups come
+// from the CONFIGURED agents, so an agent with no conversations still appears
+// (and can be used to start one). A conversation whose agent is no longer
+// configured (disabled or deleted) lands in a trailing "Other" group rather
+// than vanishing from the tree.
+const agentGroupNodes = computed(() => {
+  const convs  = props.agentConversations || []
+  const agents = props.agentList || []
+  const bySlug = new Map()
+  for (const c of convs) {
+    const s = c.agent_slug || ''
+    if (!bySlug.has(s)) bySlug.set(s, [])
+    bySlug.get(s).push(c)
+  }
+
+  const configured = new Set(agents.map((a) => a.slug))
+  const groups = agents.map((a) => ({
+    key: `agent-group:${a.slug}`,
+    label: a.name || a.slug,
+    selectable: false, draggable: false, droppable: false,
+    class: 'p-tree-agent-group-node',
+    data: { kind: 'agent-group', slug: a.slug, enabled: a.enabled !== false },
+    children: buildAgentNodes(bySlug.get(a.slug) || [], a.slug),
+  }))
+
+  const orphans = convs.filter((c) => !configured.has(c.agent_slug || ''))
+  if (orphans.length) {
+    groups.push({
+      key: 'agent-group:__unconfigured__',
+      label: 'Other',
+      selectable: false, draggable: false, droppable: false,
+      class: 'p-tree-agent-group-node',
+      data: { kind: 'agent-group', slug: null, enabled: false },
+      children: buildAgentNodes(orphans, null),
+    })
+  }
+  return groups
+})
+
+// Expand agent groups once, as they first appear, so conversations are visible
+// without a click. Seeded per key, so collapsing one is not immediately undone.
+const _seededAgentGroupKeys = new Set()
+watch(agentGroupNodes, (groups) => {
+  let next = null
+  for (const g of groups) {
+    if (_seededAgentGroupKeys.has(g.key)) continue
+    _seededAgentGroupKeys.add(g.key)
+    next = { ...(next || expandedExplorerKeys.value), [g.key]: true }
+  }
+  if (next) expandedExplorerKeys.value = next
+}, { immediate: true })
 
 // ── Browser session nodes (ADR-002) ───────────────────────────────────────
 // Sessions are flat (not nested); a fork is denoted by the ↳ prefix, mirroring
@@ -499,7 +553,7 @@ const explorerNodes = computed(() => {
     { key: 'group:files',     label: 'Files',     selectable: false, draggable: false, droppable: false, data: { kind: 'group-files' },     children: primeFileNodes.value },
     { key: 'group:terminals', label: 'Terminals', selectable: false, draggable: false, droppable: false, data: { kind: 'group-terminals' }, children: termNodes },
     { key: 'group:channels',  label: 'Channels',  selectable: false, draggable: false, droppable: false, data: { kind: 'group-channels' },  children: channelNodes },
-    { key: 'group:agents',    label: 'Agents',    selectable: false, draggable: false, droppable: false, data: { kind: 'group-agents' },    class: 'p-tree-group-agents', children: agentNodes.value },
+    { key: 'group:agents',    label: 'Agents',    selectable: false, draggable: false, droppable: false, data: { kind: 'group-agents' },    class: 'p-tree-group-agents', children: agentGroupNodes.value },
     { key: 'group:sessions',  label: 'Sessions',  selectable: false, draggable: false, droppable: false, data: { kind: 'group-sessions' },  children: sessionNodes.value },
     { key: 'group:debug',     label: 'Debug',     selectable: false, draggable: false, droppable: false, data: { kind: 'group-debug' },     children: [] },
   ]
@@ -512,6 +566,7 @@ function treeIconClass(data) {
     case 'group-terminals': return 'pi-desktop'
     case 'group-channels':  return 'pi-comments'
     case 'group-agents':    return 'pi-sparkles'
+    case 'agent-group':     return 'pi-user'
     case 'group-sessions':  return 'pi-window-maximize'
     case 'group-debug':     return 'pi-bug'
     case 'dir':             return 'pi-folder'
@@ -609,7 +664,28 @@ function buildContextMenuItems(node) {
   const kind = node?.data?.kind
   if (kind === 'group-terminals') return [{ label: 'New Terminal...', command: () => emit('create-terminal') }]
   if (kind === 'group-channels')  return [{ label: 'New Channel...',  command: () => emit('create-channel') }]
-  if (kind === 'group-agents')    return [{ label: 'New Conversation...', icon: 'pi pi-sparkles', command: () => emit('open-agent', null) }]
+  if (kind === 'group-agents') {
+    // The Agents root offers a submenu of agents; a specific agent group (or a
+    // conversation) starts one directly for that agent, with no submenu (#120).
+    const enabled = (props.agentList || []).filter((a) => a.enabled !== false)
+    if (!enabled.length) return [{ label: 'New Conversation...', icon: 'pi pi-sparkles', disabled: true }]
+    return [{
+      label: 'New Conversation...',
+      icon: 'pi pi-sparkles',
+      items: enabled.map((a) => ({
+        label: a.name || a.slug,
+        command: () => emit('create-agent-conversation', a.slug),
+      })),
+    }]
+  }
+  if (kind === 'agent-group') {
+    return [{
+      label: 'New Conversation...',
+      icon: 'pi pi-sparkles',
+      disabled: !node.data.slug,
+      command: () => emit('create-agent-conversation', node.data.slug),
+    }]
+  }
   if (kind === 'group-debug')     return [{ label: 'Open Debug Channel', icon: 'pi pi-bug', command: () => emit('open-debug') }]
   if (kind === 'group-files') {
     return [
@@ -648,6 +724,8 @@ function buildContextMenuItems(node) {
     return [
       ...buildOpenItems(node),
       { separator: true },
+      { label: 'New Conversation...', icon: 'pi pi-sparkles', disabled: !node.data.agentSlug,
+        command: () => emit('create-agent-conversation', node.data.agentSlug) },
       { label: 'Rename...', icon: 'pi pi-pencil', command: () => emit('rename-agent', node.data.id) },
       { label: 'Fork at latest', icon: 'pi pi-code-fork', command: () => emit('fork-agent', node.data.id) },
     ]
@@ -713,7 +791,7 @@ function onExplorerNodeContextMenuEvent(event) {
 
 function onExplorerNodeDragStart(event, node) {
   const kind = node?.data?.kind
-  if (['group-files', 'group-terminals', 'group-channels', 'dir'].includes(kind)) return
+  if (['group-files', 'group-terminals', 'group-channels', 'agent-group', 'dir'].includes(kind)) return
   const id = kind === 'file' ? String(node.data.id) : Number(node.data.id)
   logInfo('ExplorerPane', 'dragstart node', kind, id)
   event.dataTransfer.clearData()

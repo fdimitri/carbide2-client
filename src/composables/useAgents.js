@@ -248,6 +248,9 @@ export function useAgents({ error, bindTabToActivePane, onConversationLoaded = n
           pendingCreates.delete(slug)
           waiters.forEach((resolve) => resolve(cid))
         }
+        // A new conversation changes the sidebar/explorer lists, not just this
+        // client's stream state.
+        workerSocket.send('agent', 'recent', { limit: 25 })
         debugLog.push({ source: 'agent', action: 'created',
           detail: `convo=${cid || '?'} agent=${slug || '?'}` })
       }),
