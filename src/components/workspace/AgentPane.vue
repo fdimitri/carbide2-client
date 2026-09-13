@@ -22,14 +22,6 @@
       <span class="opacity-60 truncate" :title="activeAgentDescription">
         {{ activeAgentMeta }}
       </span>
-      <span
-        v-if="peakWindows.length"
-        class="text-ui-xs px-1.5 py-0.5 rounded-ui-xs border font-semibold shrink-0"
-        :class="peakWindow ? 'border-amber-600/60 text-amber-400' : 'border-line text-muted'"
-        :title="peakTooltip"
-      >
-        {{ peakWindow ? '● peak hours' : 'off-peak' }}
-      </span>
       <span class="ml-auto flex items-center gap-2">
         <span v-if="convoStatus === 'thinking'" class="text-ui-xs opacity-70 italic">thinking…</span>
         <UiButton
@@ -60,19 +52,19 @@
       <span title="Completion (output) tokens">out {{ fmtCost(usageTotals.completion) }}</span>
     </div>
 
-    <!-- Conversation picker + visibility -->
+    <!-- Peak hours (left-justified) + visibility + stop.
+         The conversation selector that used to live here is gone: conversations
+         are opened from the explorer, not chosen inside the pane (#120). -->
     <PaneToolbar class="text-ui-sm">
-      <label class="opacity-70">Conversation:</label>
-      <select
-        :value="convId || ''"
-        @change="onPickConversation($event.target.value)"
-        class="flex-1 min-w-0 px-1.5 py-0.5 rounded-ui-xs border monaco-input-bg monaco-input-fg monaco-input-border outline-none"
+      <span
+        v-if="peakWindows.length"
+        class="text-ui-xs px-1.5 py-0.5 rounded-ui-xs border font-semibold shrink-0"
+        :class="peakWindow ? 'border-amber-600/60 text-amber-400' : 'border-line text-muted'"
+        :title="peakTooltip"
       >
-        <option value="">— current (new) —</option>
-        <option v-for="c in store.agentRecent" :key="c.conversation_id" :value="c.conversation_id">
-          {{ conversationLabel(c) }}
-        </option>
-      </select>
+        {{ peakWindow ? '● peak hours' : 'off-peak' }}
+      </span>
+      <span class="ml-auto flex items-center gap-2">
       <UiButton
         v-if="convId && convoMeta.ownerIsSelf"
         size="xs"
@@ -93,6 +85,7 @@
         title="Stop the agent (interrupt model + tool activity)"
         @click="onStop"
       >Stop</UiButton>
+      </span>
     </PaneToolbar>
 
     <!-- Debug expand: tombstone (clean) tool history (ADR-033 phase 1) -->
@@ -611,35 +604,9 @@ async function onExport() {
   }
 }
 
-function onPickConversation(id) {
-  if (!id) { emit('agent-reset'); return }
-  if (id === convId.value) return
-  emit('agent-load', id)
-}
-
 function onToggleVisibility() {
   const next = convoMeta.value.visibility === 'project' ? 'private' : 'project'
   emit('agent-set-visibility', next)
-}
-
-function conversationLabel(c) {
-  const who    = c.owner_is_self ? 'you' : (c.owner_name || `user ${c.owner_user_id}`)
-  const lock   = c.visibility === 'private' ? '\uD83D\uDD12 ' : ''
-  const when   = relativeTime(c.last_activity_at)
-  const title  = c.title || '(untitled)'
-  const tail   = `· ${c.agent_name} · ${who} · ${when}`
-  return `${lock}${title} ${tail}`
-}
-
-function relativeTime(iso) {
-  if (!iso) return ''
-  const d = new Date(iso).getTime()
-  if (!d) return ''
-  const s = Math.round((Date.now() - d) / 1000)
-  if (s < 60)        return `${s}s ago`
-  if (s < 3600)      return `${Math.round(s/60)}m ago`
-  if (s < 86400)     return `${Math.round(s/3600)}h ago`
-  return `${Math.round(s/86400)}d ago`
 }
 
 function shortArgs(args) {
