@@ -82,8 +82,10 @@ const props = defineProps({
   connected: { type: Boolean, default: false },
   agentSlug: { type: String, default: null },
   agentStatus: { type: String, default: 'idle' },
+  // Initial bar height (px) from the owning agent TAB (ADR-011 §4). Null = auto.
+  initialHeight: { type: Number, default: null },
 })
-const emit = defineEmits(['send'])
+const emit = defineEmits(['send', 'resize'])
 
 const store = useWorkspaceStore()
 
@@ -131,33 +133,18 @@ function updateAutoMaxHeight() {
   if (m) autoMaxHeight.value = m.lineH * MAX_AUTO_LINES + m.pad
 }
 
-function workspaceScope() {
-  let base = '/'
-  if (typeof document !== 'undefined') {
-    const baseHref = document.querySelector('base')?.getAttribute('href')
-    if (baseHref) base = new URL(baseHref, window.location.origin).pathname
-  }
-  if (base === '/') base = import.meta.env.BASE_URL || '/'
-  return base.endsWith('/') ? base : `${base}/`
+// Bar height is owned by the agent TAB (composerHeightPx in the session doc,
+// ADR-011 §4), not by this component, and not by localStorage. A single
+// workspace-wide key leaked the height across every tab and every pane; the
+// tab passes its own value in via `initialHeight` and receives changes back
+// through the `resize` event.
+function clampInitial(n) {
+  if (n == null || !Number.isFinite(n) || n <= 0) return null
+  // Clamp on load: a value saved in a much larger window shouldn't open the
+  // composer at a ridiculous height. Drag re-clamps to the live pane.
+  return Math.min(600, Math.max(MIN_BAR_HEIGHT, n))
 }
-const HEIGHT_KEY = `carbide2:agent-composer-height:${workspaceScope()}`
-
-function loadHeight() {
-  try {
-    const raw = localStorage.getItem(HEIGHT_KEY)
-    if (raw == null) return null
-    const n = Number(raw)
-    if (!Number.isFinite(n) || n <= 0) return null
-    // Clamp on load: a value saved in a much larger window shouldn't open
-    // the composer at a ridiculous height. Drag re-clamps to the live pane.
-    return Math.min(600, Math.max(MIN_BAR_HEIGHT, n))
-  } catch { return null }
-}
-const barHeight = ref(loadHeight())
-
-function persistHeight(v) {
-  try { localStorage.setItem(HEIGHT_KEY, String(v)) } catch {}
-}
+const barHeight = ref(clampInitial(props.initialHeight))
 
 function clampHeight(h) {
   const pane = barEl.value?.parentElement
@@ -225,7 +212,7 @@ function onResizeEnd() {
   window.removeEventListener('mousemove', onResizeMove)
   window.removeEventListener('mouseup', onResizeEnd)
   resizeState = null
-  if (barHeight.value) persistHeight(barHeight.value)
+  if (barHeight.value) emit('resize', barHeight.value)
 }
 
 // ── Image attachments ─────────────────────────────────────────────

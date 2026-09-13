@@ -107,22 +107,35 @@
       <DebugPane />
     </div>
 
-    <div class="flex flex-col flex-1 overflow-hidden" v-show="activeTabKind === 'agent'">
-      <AgentPane
-        :connected="store.wsConnected"
-        :conversation-id="activeAgentConversationId"
-        :agent-slug="activeAgentSlug"
-        :project-id="projectId"
-        @agent-send="(text, images) => emit('agent-send', paneIndex, activeAgentConversationId, text, images)"
-        @agent-reset="emit('agent-reset', paneIndex, activeAgentConversationId)"
-        @agent-pick="(slug) => emit('agent-pick', paneIndex, activeAgentConversationId, slug)"
-        @agent-load="onAgentLoad"
-        @agent-set-visibility="(vis) => emit('agent-set-visibility', activeAgentConversationId, vis)"
-        @agent-stop="emit('agent-stop', activeAgentConversationId)"
-        @agent-clean="(opts) => emit('agent-clean', activeAgentConversationId, opts)"
-        @agent-fork="(turn) => emit('agent-fork', activeAgentConversationId, turn)"
-      />
-    </div>
+    <!-- Agent tabs: one AgentPane per open agent tab, keyed by the tab key so
+         each tab owns its own component instance (draft, attachments, scroll,
+         composer state). Inactive tabs stay mounted and are hidden with v-show,
+         so switching never remounts. The transcript is NOT per-instance — it
+         comes from the shared per-conversation store keyed by conversation id
+         (ADR-011); only the instance is per tab. --
+    <template v-for="tab in agentTabs" :key="tab.key">
+      <div
+        class="flex flex-col flex-1 overflow-hidden"
+        v-show="activeTabKind === 'agent' && effectiveActiveKey === tab.key"
+      >
+        <AgentPane
+          :connected="store.wsConnected"
+          :conversation-id="agentConversationId(tab)"
+          :agent-slug="tab.agentSlug || null"
+          :project-id="projectId"
+          :composer-height-px="tab.composerHeightPx ?? null"
+          @composer-resize="(h) => (tab.composerHeightPx = h)"
+          @agent-send="(text, images) => emit('agent-send', paneIndex, agentConversationId(tab), text, images)"
+          @agent-reset="emit('agent-reset', paneIndex, agentConversationId(tab))"
+          @agent-pick="(slug) => emit('agent-pick', paneIndex, agentConversationId(tab), slug)"
+          @agent-load="(id) => onAgentLoadTab(tab, id)"
+          @agent-set-visibility="(vis) => emit('agent-set-visibility', agentConversationId(tab), vis)"
+          @agent-stop="emit('agent-stop', agentConversationId(tab))"
+          @agent-clean="(opts) => emit('agent-clean', agentConversationId(tab), opts)"
+          @agent-fork="(turn) => emit('agent-fork', agentConversationId(tab), turn)"
+        />
+      </div>
+    </template>
 
     <div class="flex flex-col flex-1 overflow-hidden" v-show="activeTabKind === 'agent-config'">
       <AgentConfigPane v-if="activeTabKind === 'agent-config'" />
@@ -218,31 +231,31 @@ const activeChatChannelId = computed(() => {
   return Number((effectiveActiveKey.value || '').split(':')[1]) || null
 })
 
-const activeAgentConversationId = computed(() => {
-  if (activeTabKind.value !== 'agent') return null
-  const id = (effectiveActiveKey.value || '').split(':').slice(1).join(':') || null
+// Every agent tab in this pane gets its own AgentPane (see the template).
+const agentTabs = computed(() =>
+  (props.pane?.tabs || []).filter((t) => t.kind === 'agent')
+)
+
+// A tab's conversation id, parsed from its OWN key (`agent:<uuid>`); null for a
+// fresh `agent:` tab, which has no conversation until its first send. Read
+// per-tab, never from the pane's active tab — that is the whole point of the
+// per-tab instance.
+function agentConversationId(tab) {
+  const id = (tab?.key || '').split(':').slice(1).join(':')
   return id || null
-})
+}
 
-const activeAgentSlug = computed(() => {
-  if (activeTabKind.value !== 'agent') return null
-  const tab = props.pane?.tabs?.find((t) => t.key === effectiveActiveKey.value)
-  return tab?.agentSlug || null
-})
-
-// Picking a conversation from the pane's dropdown rewrites this pane's agent tab
-// key to agent:<id> (per-pane identity) before asking ProjectPage to load it.
-// The previous conversation's reference is released so switching doesn't leak a
-// worker subscription + buffered transcript per switch.
-function onAgentLoad(id) {
-  if (!id) return
-  const tab = props.pane?.tabs?.find((t) => t.kind === 'agent' && t.key === effectiveActiveKey.value)
-  const oldId = tab?.id || null
-  if (tab) {
-    tab.key = `agent:${id}`
-    tab.id  = id
-    props.pane.activeTab = tab.key
-  }
+// Picking a conversation from a tab's dropdown rewrites THAT tab's key to
+// agent:<id> before asking ProjectPage to load it. The previous conversation's
+// reference is released (via the emit) so switching doesn't leak a worker
+// subscription + buffered transcript. The tab is passed in explicitly — with
+// one instance per tab there is no longer an "active" tab to look up.
+function onAgentLoadTab(tab, id) {
+  if (!tab || !id) return
+  const oldId = agentConversationId(tab)
+  tab.key = `agent:${id}`
+  tab.id  = id
+  props.pane.activeTab = tab.key
   emit('agent-load', id, oldId)
 }
 

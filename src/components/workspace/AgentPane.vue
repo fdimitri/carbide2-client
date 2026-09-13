@@ -22,6 +22,14 @@
       <span class="opacity-60 truncate" :title="activeAgentDescription">
         {{ activeAgentMeta }}
       </span>
+      <span
+        v-if="peakWindows.length"
+        class="text-ui-xs px-1.5 py-0.5 rounded-ui-xs border font-semibold shrink-0"
+        :class="peakWindow ? 'border-amber-600/60 text-amber-400' : 'border-line text-muted'"
+        :title="peakTooltip"
+      >
+        {{ peakWindow ? '● peak hours' : 'off-peak' }}
+      </span>
       <span class="ml-auto flex items-center gap-2">
         <span v-if="convoStatus === 'thinking'" class="text-ui-xs opacity-70 italic">thinking…</span>
         <UiButton
@@ -273,8 +281,16 @@
       <div ref="bottomRef" class="h-px shrink-0" aria-hidden="true"></div>
     </div>
 
-    <!-- Composer (isolated so typing doesn't re-render the timeline) -->
-    <Composer :connected="connected" :agent-slug="selectedSlug" :agent-status="convoStatus" @send="onComposerSend" />
+    <!-- Composer (isolated so typing doesn't re-render the timeline). Height is
+         passed to/from the owning tab so it is per-tab, not workspace-global. -->
+    <Composer
+      :connected="connected"
+      :agent-slug="selectedSlug"
+      :agent-status="convoStatus"
+      :initial-height="composerHeightPx"
+      @send="onComposerSend"
+      @resize="(h) => emit('composer-resize', h)"
+    />
   </div>
 </template>
 
@@ -289,14 +305,17 @@ import Avatar from '../ui/Avatar.vue'
 import Composer from './Composer.vue'
 import authService from '../../services/authService'
 import { exportConversation } from '../../services/agentService'
+import { activePeakWindow, describeWindows } from '../../utils/peakHours'
 
 const props = defineProps({
   connected: { type: Boolean, default: false },
   conversationId: { type: String, default: null },
   agentSlug: { type: String, default: null },
   projectId: { type: [Number, String], required: true },
+  // Per-tab composer height (ADR-011 §4), owned by the agent tab.
+  composerHeightPx: { type: Number, default: null },
 })
-const emit = defineEmits(['agent-send', 'agent-reset', 'agent-pick', 'agent-load', 'agent-set-visibility', 'agent-stop', 'agent-create', 'agent-clean', 'agent-fork'])
+const emit = defineEmits(['agent-send', 'agent-reset', 'agent-pick', 'agent-load', 'agent-set-visibility', 'agent-stop', 'agent-create', 'agent-clean', 'agent-fork', 'composer-resize'])
 
 const store    = useWorkspaceStore()
 const scrollEl = ref(null)
@@ -459,6 +478,22 @@ const activeAgentMeta = computed(() => {
   return `${a.model || ''} ${tools}`.trim()
 })
 const activeAgentDescription = computed(() => activeAgent.value?.description || '')
+
+// Peak hours (UTC). The window list rides along on agent/list; `now` ticks so
+// the badge crosses in/out of a window without needing a reload. Comparison
+// is UTC-only — see utils/peakHours.
+const now = ref(new Date())
+const peakWindows = computed(() =>
+  Array.isArray(activeAgent.value?.peak_hours) ? activeAgent.value.peak_hours : []
+)
+const peakWindow = computed(() => activePeakWindow(peakWindows.value, now.value))
+const peakTooltip = computed(() => {
+  const hhmm = now.value.toISOString().slice(11, 16)
+  const head = peakWindow.value
+    ? `In a peak-hours window (${hhmm} UTC)`
+    : `Not in a peak-hours window (${hhmm} UTC)`
+  return `${head}\n${describeWindows(peakWindows.value)}`
+})
 
 // The composer owns draft + image state; re-pin to the bottom on send.
 function onComposerSend(text, images) {
@@ -763,6 +798,7 @@ function onResizeObserved() {
 }
 
 let resizeObserver = null
+let peakTimer = null
 
 onMounted(async () => {
   await nextTick()
@@ -771,9 +807,16 @@ onMounted(async () => {
     resizeObserver = new ResizeObserver(onResizeObserved)
     resizeObserver.observe(scrollEl.value)
   }
+  // Re-evaluate the UTC peak-hours badge periodically; 30s is plenty for a
+  // minute-grained window boundary.
+  peakTimer = setInterval(() => { now.value = new Date() }, 30_000)
 })
 
 onBeforeUnmount(() => {
+  if (peakTimer != null) {
+    clearInterval(peakTimer)
+    peakTimer = null
+  }
   if (scrollRaf != null) {
     cancelAnimationFrame(scrollRaf)
     scrollRaf = null

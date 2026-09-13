@@ -198,6 +198,61 @@
               </UiInput>
             </UiField>
           </section>
+          <!-- ── Peak hours ─────────────────────────────────────────────── -->
+          <section class="mb-7">
+            <h3 class="text-ui-xs font-semibold text-muted uppercase tracking-widest mb-3">Peak hours</h3>
+            <p class="text-ui-xs text-muted mb-3">
+              Windows when the provider is rate-limited, slow, or billed at a premium.
+              Enter them in your own timezone; they are converted to and stored in
+              <strong class="text-text">UTC</strong>.
+            </p>
+
+            <div class="flex items-center gap-2 mb-3">
+              <label class="text-ui-xs text-muted shrink-0">Times entered in</label>
+              <UiInput as="select" class="w-72" :modelValue="editorTz"
+                       @update:modelValue="changeTz($event)">
+                <option v-for="tz in tzOptions" :key="tz" :value="tz">{{ tz }}</option>
+              </UiInput>
+            </div>
+
+            <div v-if="!form.peak_hours.length" class="text-ui-sm text-muted mb-2">
+              No peak hours configured.
+            </div>
+
+            <div
+              v-for="(w, i) in form.peak_hours"
+              :key="i"
+              class="flex flex-col gap-2 mb-2 p-3 rounded-lg border border-line bg-bg-2/40"
+            >
+              <div class="flex items-center gap-3 flex-wrap">
+                <label
+                  v-for="d in DAY_OPTIONS"
+                  :key="d.value"
+                  class="flex items-center gap-1 text-ui-xs cursor-pointer select-none"
+                >
+                  <UiCheckbox :value="d.value" v-model="w.days" />
+                  <span>{{ d.label }}</span>
+                </label>
+              </div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <label class="text-ui-xs text-muted">Start</label>
+                <UiInput type="time" v-model="w.start" class="w-32" />
+                <label class="text-ui-xs text-muted">End</label>
+                <UiInput type="time" v-model="w.end" class="w-32" />
+                <UiButton size="xs" variant="warn" @click="removeWindow(i)">Remove</UiButton>
+              </div>
+              <p class="text-ui-xs text-muted">
+                {{ formatWindow(w, editorTz) }}
+                <span v-if="w.start && w.end && w.start > w.end" class="opacity-70">(crosses midnight)</span>
+              </p>
+              <p class="text-ui-xs text-dim">
+                stores as {{ utcPreview(w) }}
+              </p>
+            </div>
+
+            <UiButton size="sm" variant="ghost" @click="addWindow">+ Add window</UiButton>
+          </section>
+
           <!-- ── Orchestration ────────────────────────────────── -->
           <section class="mb-7">
             <h3 class="text-ui-xs font-semibold text-muted uppercase tracking-widest mb-3">Orchestration</h3>
@@ -256,6 +311,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { listAgents, updateAgent, createAgent, deleteAgent } from '../../services/agentService'
+import { formatWindow, windowToUtc, windowFromUtc, browserTimeZone, timeZoneList } from '../../utils/peakHours'
 import workerSocket from '../../services/workerSocket'
 import UiInput from '../ui/UiInput.vue'
 import UiCheckbox from '../ui/UiCheckbox.vue'
@@ -264,6 +320,31 @@ import UiButton from '../ui/UiButton.vue'
 
 // Mirrors Agent::ROLES (server).
 const ROLES = ['general', 'coder', 'reviewer', 'safety', 'router']
+
+// Peak-hours day picker, Mon-first because a work week reads that way; the
+// wire format is lowercase and the server normalizes order anyway.
+const DAY_OPTIONS = [
+  { value: 'mon', label: 'Mon' }, { value: 'tue', label: 'Tue' },
+  { value: 'wed', label: 'Wed' }, { value: 'thu', label: 'Thu' },
+  { value: 'fri', label: 'Fri' }, { value: 'sat', label: 'Sat' },
+  { value: 'sun', label: 'Sun' },
+]
+
+// The zone the editor *displays* times in. Storage is UTC regardless — see
+// save()/loadForm(). Defaults to the browser's zone so a person can type the
+// clock they actually think in, and can be changed per editing session.
+const editorTz = ref(browserTimeZone())
+const tzOptions = computed(() => {
+  const list = timeZoneList()
+  return list.includes(editorTz.value) ? list : [editorTz.value, ...list]
+})
+
+// What the window currently being edited will be stored as, so the form never
+// leaves the local/UTC mapping implicit.
+function utcPreview(w) {
+  const utc = windowToUtc(w, editorTz.value)
+  return utc.length ? utc.map((x) => formatWindow(x)).join(' · ') : '—'
+}
 
 // The tool allowlist is discovered live from the worker (agent/tools); this
 // static list is only a fallback for a worker that doesn't answer. See #73.
@@ -310,6 +391,7 @@ function loadForm(agent) {
     max_tokens:         s.max_tokens ?? 2048,
     reasoning_effort:   s.reasoning_effort ?? '',
     max_turns:          agent.max_turns ?? null,
+    peak_hours:         storedToEditor(normalizeWindows(agent.peak_hours)),
   }
   savedOk.value   = false
   saveError.value = ''
@@ -425,6 +507,50 @@ function loadToolCatalog() {
   workerSocket.send('agent', 'tools', {})
 }
 
+// Copy the peak-hour windows into editable rows (the stored value is a plain
+// JSON array of {days,start,end} hashes; we deep-copy so edits don't mutate
+// the list we loaded). Times are UTC 'HH:MM' strings.
+function normalizeWindows(raw) {
+  if (!Array.isArray(raw)) return []
+  return raw.map((w) => ({
+    days:  Array.isArray(w?.days) ? w.days.map((d) => String(d).toLowerCase()) : [],
+    start: w?.start ?? '09:00',
+    end:   w?.end ?? '17:00',
+  }))
+}
+
+// Stored UTC windows -> the editor's zone, so the form shows the clock the
+// user chose. One stored window can widen to several (a stored "every day"
+// stays one row; a window that straddles a UTC day boundary still maps back to
+// one row per selected day).
+function storedToEditor(windows) {
+  return windows.flatMap((w) => windowFromUtc(w, editorTz.value))
+}
+
+// Editor windows -> UTC for storage.
+function editorToStored(windows) {
+  return windows.flatMap((w) => windowToUtc(w, editorTz.value))
+}
+
+// Changing the display zone re-expresses the same instants in the new zone:
+// current value -> UTC (in the old zone) -> new zone. Round-trips exactly, so
+// the stored result never depends on which zone the user happened to pick.
+function changeTz(next) {
+  if (!form.value || next === editorTz.value) return
+  const previous = editorTz.value
+  const asUtc = form.value.peak_hours.flatMap((w) => windowToUtc(w, previous))
+  editorTz.value = next
+  form.value.peak_hours = asUtc.flatMap((w) => windowFromUtc(w, next))
+}
+
+function addWindow() {
+  form.value.peak_hours.push({ days: ['mon', 'tue', 'wed', 'thu', 'fri'], start: '09:00', end: '17:00' })
+}
+
+function removeWindow(i) {
+  form.value.peak_hours.splice(i, 1)
+}
+
 async function save() {
   if (!form.value) return
   saving.value    = true
@@ -450,6 +576,9 @@ async function save() {
           ? { reasoning_effort: form.value.reasoning_effort }
           : {}),
       },
+      // Converted from the editor's zone to UTC at the edge. An empty array
+      // clears them. The server validates shape and rejects malformed times.
+      peak_hours:         editorToStored(form.value.peak_hours),
     }
     // Only send api_key when the admin typed one (blank preserves the stored key).
     if (form.value.api_key) payload.api_key = form.value.api_key
