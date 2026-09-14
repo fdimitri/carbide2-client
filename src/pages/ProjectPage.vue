@@ -359,6 +359,30 @@ const {
   onTabDragStart, onTabDrop, onPaneDrop,
 } = usePanes({ activePane, pendingNavigation })
 
+// ── Open-file set → fs/open / fs/close ────────────────────────────────────────
+// The paths that have an open file tab anywhere in the client. fs/open and
+// fs/close are driven from CHANGES to this set, never from FilePane's
+// mount/unmount. A tab that moves between panes (drag, or setPaneLayout evicting
+// tabs out of a hidden pane), or an instance that remounts, changes nothing
+// here — so no message is emitted and there is no ordering hazard. There is no
+// loopback and no per-socket refcount on the worker, so emitting a close for a
+// file that is still open would silently drop it.
+const openFilePaths = computed(() => {
+  const paths = new Set()
+  for (const pane of panes.value) {
+    for (const t of (pane?.tabs || [])) {
+      if (t.kind === 'file' && t.id) paths.add(String(t.id))
+    }
+  }
+  return paths
+})
+
+watch(openFilePaths, (next, prev) => {
+  if (!wsConnected.value) return   // resent wholesale on connect, below
+  for (const p of next) if (!prev.has(p)) workerSocket.send('fs', 'open',  { path: p })
+  for (const p of prev) if (!next.has(p)) workerSocket.send('fs', 'close', { path: p })
+})
+
 // Track agent conversations retained by hydrate/resume. Each hydrate releases
 // the prior set and re-retains the current active set, so reconnect and session
 // switch don't accumulate refs (a single tab close must still reach 0).
@@ -959,6 +983,11 @@ onMounted(async () => {
         // (Re)establish this tab's browser session: silent re-resume on a
         // reconnect, resume-or-create on the first connect.
         sessionSync.ensureSession()
+        // Re-open every file that currently has a tab. The worker forgets opens
+        // on disconnect, and the openFilePaths watcher only reports CHANGES, so
+        // a reconnect that leaves the layout untouched would otherwise never
+        // re-establish these.
+        for (const p of openFilePaths.value) workerSocket.send('fs', 'open', { path: p })
       }),
       // Reflect drops so panes can react (e.g. clear stuck spinners) instead of
       // appearing frozen.

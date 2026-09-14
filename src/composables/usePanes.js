@@ -105,8 +105,37 @@ export function usePanes({ activePane, pendingNavigation }) {
     return false
   }
 
+  function focusExistingFile(id) {
+    // A file is limited to ONE open tab client-wide. There is no loopback and
+    // no per-socket refcount on the worker, so a second view of the same file
+    // would go silently stale after an edit, and a close from one view would
+    // drop the other. Rather than allow that, opening a file that is already
+    // open anywhere focuses the existing tab — exactly the terminal rule above.
+    //
+    // The compare is a plain string compare: every client path that produces a
+    // file id strips the leading slash (explorer keys, parseTabKey), and the
+    // worker normalizes both forms to the same srcpath, so there is only ever
+    // one form in play here.
+    if (id == null || id === '') return false
+    const want = String(id)
+    for (let p = 0; p < panes.value.length; p++) {
+      const pane = panes.value[p]
+      if (!pane) continue
+      const found = (pane.tabs || []).find(
+        (t) => t.kind === 'file' && String(t.id) === want
+      )
+      if (found) {
+        activePaneIndex.value = p
+        pane.activeTab = found.key
+        return true
+      }
+    }
+    return false
+  }
+
   function bindTabToActivePane(kind, id, label) {
     if (kind === 'terminal' && focusExistingTerminal(id)) return
+    if (kind === 'file' && focusExistingFile(id)) return
     const pane = panes.value[activePaneIndex.value]
     const key  = `${kind}:${id}`
     if (!pane.tabs.find((t) => t.key === key)) {
@@ -117,6 +146,7 @@ export function usePanes({ activePane, pendingNavigation }) {
 
   function bindTabToPane(targetPaneIndex, kind, id, label) {
     if (kind === 'terminal' && focusExistingTerminal(id)) return
+    if (kind === 'file' && focusExistingFile(id)) return
     const pane = panes.value[targetPaneIndex]
     if (!pane) return
     activePaneIndex.value = targetPaneIndex

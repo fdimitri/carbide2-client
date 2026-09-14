@@ -200,8 +200,13 @@ const offOpened      = workerSocket.on('fs', 'opened',       onFsOpened)
 
 // Connection-aware loading. A dropped socket would otherwise leave the editor
 // stuck on "Loading…" forever (the fs/content reply never arrives). Clear the
-// spinner with an honest message on disconnect, and transparently re-open +
-// re-read the file once the socket comes back so the view self-heals.
+// spinner with an honest message on disconnect, and transparently re-read the
+// file once the socket comes back so the view self-heals.
+//
+// fs/open is NOT sent here (or anywhere in this component). Opening and closing
+// a file is owned centrally by ProjectPage, driven by the set of open file tabs,
+// so a tab that moves between panes or remounts never emits a close that would
+// drop the file out from under another view. This component is a pure view.
 function onWsDisconnected() {
   if (loading.value) {
     loading.value = false
@@ -211,30 +216,23 @@ function onWsDisconnected() {
 function onWsConnected() {
   if (!props.fileId) return
   loadError.value = ''
-  workerSocket.send('fs', 'open', { path: props.fileId })
   requestFile(props.fileId)
 }
 const offDisconnected = workerSocket.on('system', 'disconnected', onWsDisconnected)
 const offConnected    = workerSocket.on('system', 'connected',    onWsConnected)
 
 onMounted(() => {
-  if (props.fileId) {
-    workerSocket.send('fs', 'open', { path: props.fileId })
-    requestFile(props.fileId)
-  }
+  if (props.fileId) requestFile(props.fileId)
 })
 
-watch(() => props.fileId, (next, prev) => {
-  if (prev) workerSocket.send('fs', 'close', { path: prev })
-  if (next) {
-    workerSocket.send('fs', 'open', { path: next })
-    requestFile(next)
-  }
+// fileId only changes if this instance is repointed; it does not touch the
+// open/close wire (see onWsDisconnected above).
+watch(() => props.fileId, (next) => {
+  if (next) requestFile(next)
 })
 
 onBeforeUnmount(() => {
   clearTimeout(cursorTimer)
-  if (props.fileId) workerSocket.send('fs', 'close', { path: props.fileId })
   releaseBlob()
   offContent(); offError(); offChange(); offSetContents(); offCursor(); offOpened()
   offDisconnected(); offConnected()
