@@ -31,7 +31,7 @@
     </div>
 
     <!-- File tabs: one FilePane per open file tab (see the agent block for the
-         rationale). The file identity comes from the tab's own key. --
+         rationale). The file identity comes from the tab's own key. -->
     <template v-for="tab in fileTabs" :key="tab.key">
       <div
         class="flex flex-col flex-1 overflow-hidden"
@@ -43,7 +43,7 @@
 
     <!-- Channel tabs: one ChatPane per open channel tab. Every channel-derived
          prop is read for THAT tab's channel id, never the pane's active one, so
-         a background channel can no longer render another channel's messages. --
+         a background channel can no longer render another channel's messages. -->
     <template v-for="tab in channelTabs" :key="tab.key">
       <div
         class="flex flex-col flex-1 overflow-hidden"
@@ -119,7 +119,7 @@
     </div>
 
     <!-- Debug tabs: DebugPane reads the global debug-log store, so it has no
-         per-tab identity, but render it per tab anyway for one uniform rule. --
+         per-tab identity, but render it per tab anyway for one uniform rule. -->
     <template v-for="tab in debugTabs" :key="tab.key">
       <div
         class="flex flex-col flex-1 overflow-hidden"
@@ -134,7 +134,7 @@
          composer state). Inactive tabs stay mounted and are hidden with v-show,
          so switching never remounts. The transcript is NOT per-instance — it
          comes from the shared per-conversation store keyed by conversation id
-         (ADR-011); only the instance is per tab. --
+         (ADR-011); only the instance is per tab. -->
     <template v-for="tab in agentTabs" :key="tab.key">
       <div
         class="flex flex-col flex-1 overflow-hidden"
