@@ -43,11 +43,8 @@ const chance = p => R() < p
 const ALPHABET = ['a', 'a', 'b', 'b', 'c', '\n', '\n', ' ', 'é', '"', '\\', '<', '>']
 const text = (lo = 0, hi = 16) => Array.from({ length: int(lo, hi) }, () => pick(ALPHABET)).join('')
 
-// No pattern that can match empty at the end of the text ('', 'x*', '$'): with
-// limit 0 the server's Delta#matches never terminates on those (Ruby's
-// Regexp#match(str, len + 1) still matches at len). The JS port stops there.
 const PATTERNS = ['a', 'b+', '(a)(b)?', '^a', 'b$', '\\Aa', 'a\\z', 'c\\Z', '(?<x>a)b', '(?<x>a)(b)', '\\h', '[\\h ]',
-  '.', 'a.b', 'a\\nb', '(', 'é', '"', '\\\\', '\\s+']
+  '.', 'a.b', 'a\\nb', '', 'x*', '$', 'a*', '(', 'é', '"', '\\\\', '\\s+']
 const REPLACEMENTS = ['X', '', '\\1\\1', '$1', '\\k<x>', '${x}', '$$', '\\0-', '\\&!', '$9', 'a\nb', '\\\\', '$2', '\\k<nope>']
 
 function spanOnLine(buf) {
