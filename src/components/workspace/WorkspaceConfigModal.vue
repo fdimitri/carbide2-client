@@ -240,7 +240,16 @@ function close() {
       <!-- Current state -->
       <section v-if="current" class="rounded-xl border border-line bg-bg-1/60 p-4 text-sm space-y-1">
         <h3 class="text-muted text-xs font-semibold uppercase tracking-widest mb-2">Current</h3>
-        <div class="flex justify-between"><span class="text-muted">status</span><span class="font-mono">{{ current.status }}</span></div>
+        <div class="flex justify-between">
+          <span class="text-muted">status</span>
+          <span class="font-mono" :class="current.status ? '' : 'text-dim'" :title="current.last_error || ''">
+            {{ current.status || 'unknown' }}
+          </span>
+        </div>
+        <div v-if="current.last_error" class="flex justify-between">
+          <span class="text-warn">last error</span>
+          <span class="font-mono text-xs text-warn truncate max-w-56">{{ current.last_error }}</span>
+        </div>
         <div class="flex justify-between"><span class="text-muted">template</span><span class="font-mono">{{ current.template_name || 'custom' }}</span></div>
         <div v-if="current.workspace_image_tag" class="flex justify-between">
           <span class="text-muted">image tag</span>
