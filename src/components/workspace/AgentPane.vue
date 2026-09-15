@@ -298,7 +298,7 @@ import Avatar from '../ui/Avatar.vue'
 import Composer from './Composer.vue'
 import authService from '../../services/authService'
 import { exportConversation } from '../../services/agentService'
-import { activePeakWindow, describeWindows } from '../../utils/peakHours'
+import { activePeakWindow, describeWindows, wallClockInZone, windowTimeZone } from '../../utils/peakHours'
 
 const props = defineProps({
   connected: { type: Boolean, default: false },
@@ -472,19 +472,19 @@ const activeAgentMeta = computed(() => {
 })
 const activeAgentDescription = computed(() => activeAgent.value?.description || '')
 
-// Peak hours (UTC). The window list rides along on agent/list; `now` ticks so
-// the badge crosses in/out of a window without needing a reload. Comparison
-// is UTC-only — see utils/peakHours.
+// Peak hours. Each window carries its own timezone, so the badge compares the
+// current instant against every window in that window's own zone. `now` ticks
+// so it crosses in/out of a window without a reload.
 const now = ref(new Date())
 const peakWindows = computed(() =>
   Array.isArray(activeAgent.value?.peak_hours) ? activeAgent.value.peak_hours : []
 )
 const peakWindow = computed(() => activePeakWindow(peakWindows.value, now.value))
 const peakTooltip = computed(() => {
-  const hhmm = now.value.toISOString().slice(11, 16)
-  const head = peakWindow.value
-    ? `In a peak-hours window (${hhmm} UTC)`
-    : `Not in a peak-hours window (${hhmm} UTC)`
+  const w = peakWindow.value
+  const head = w
+    ? `In a peak-hours window — ${wallClockInZone(windowTimeZone(w), now.value).hhmm} ${windowTimeZone(w)}`
+    : 'Not in a peak-hours window'
   return `${head}\n${describeWindows(peakWindows.value)}`
 })
 
@@ -774,7 +774,7 @@ onMounted(async () => {
     resizeObserver = new ResizeObserver(onResizeObserved)
     resizeObserver.observe(scrollEl.value)
   }
-  // Re-evaluate the UTC peak-hours badge periodically; 30s is plenty for a
+  // Re-evaluate the peak-hours badge periodically; 30s is plenty for a
   // minute-grained window boundary.
   peakTimer = setInterval(() => { now.value = new Date() }, 30_000)
 })
