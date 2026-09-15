@@ -301,7 +301,6 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { listAgents, updateAgent, createAgent, deleteAgent } from '../../services/agentService'
 import { formatWindow, browserTimeZone, timeZoneList, DEFAULT_TZ } from '../../utils/peakHours'
 import workerSocket from '../../services/workerSocket'
 import UiInput from '../ui/UiInput.vue'
@@ -432,32 +431,77 @@ async function remove() {
   if (!window.confirm(`Delete agent "${target.name}"? This cannot be undone.`)) return
   deleting.value  = true
   saveError.value = ''
-  try {
-    await deleteAgent(target.id)
-    agents.value = agents.value.filter((a) => a.id !== target.id)
-    if (agents.value.length) select(agents.value[0].id)
-    else { form.value = null; selectedId.value = null }
-    notifyCatalogChanged()
-  } catch (e) {
-    saveError.value = e.response?.data?.error || ('Failed to delete: ' + (e.message || e))
-  } finally {
-    deleting.value = false
-  }
+  // The worker deletes and broadcasts; agent/deleted (or system/error) settles
+  // `deleting`.
+  workerSocket.send('agent', 'delete', { id: target.id })
 }
 
 onMounted(async () => {
   loadToolCatalog()
+  socketOffs.push(
+    // The admin list. Distinct from agent/list, which is the enabled-only
+    // catalog the picker uses — a disabled agent must still be editable.
+    workerSocket.on('agent', 'all', (payload) => {
+      agents.value = Array.isArray(payload?.agents) ? payload.agents : []
+      loading.value = false
+      if (!selectedId.value && !isNew.value && agents.value.length) select(agents.value[0].id)
+    }),
+    // The worker saved/created. It has already broadcast the catalog to everyone
+    // (including this socket), so the store is current; we only need this
+    // socket's own selection and form moved onto the saved row.
+    workerSocket.on('agent', 'saved', (payload) => {
+      const a = payload?.agent
+      if (!a) return
+      const idx = agents.value.findIndex((x) => x.id === a.id)
+      if (idx === -1) agents.value.push(a)
+      else agents.value[idx] = a
+      isNew.value      = false
+      selectedId.value = a.id
+      loadForm(a)
+      saving.value = false
+      savedOk.value = true
+    }),
+    workerSocket.on('agent', 'deleted', (payload) => {
+      const id = payload?.id
+      if (id != null) {
+        agents.value = agents.value.filter((a) => a.id !== id)
+        if (selectedId.value === id) {
+          if (agents.value.length) select(agents.value[0].id)
+          else { form.value = null; selectedId.value = null }
+        }
+      }
+      deleting.value = false
+    }),
+    // Command.error arrives as system/error. Only surface it here while an
+    // admin action is in flight; otherwise it belongs to whatever else asked.
+    workerSocket.on('system', 'error', (payload) => {
+      const msg = payload?.message || ''
+      // A worker that predates agent/all would otherwise leave the pane on
+      // "Loading…" forever, since there is no reply to fail.
+      if (loading.value && msg.includes('unknown agent cmd: all')) {
+        loadError.value = 'This worker does not serve agent config over the socket yet.'
+        loading.value = false
+        return
+      }
+      if (!saving.value && !deleting.value) return
+      saveError.value = msg || 'agent config write failed'
+      saving.value    = false
+      deleting.value  = false
+    }),
+  )
   try {
-    agents.value = await listAgents()
-    if (agents.value.length) select(agents.value[0].id)
+    workerSocket.send('agent', 'all', {})
   } catch (e) {
     loadError.value = 'Failed to load agents: ' + (e.message || e)
-  } finally {
     loading.value = false
   }
 })
 
-onUnmounted(stopToolCatalog)
+onUnmounted(() => {
+  stopToolCatalog()
+  socketOffs.forEach((off) => off && off())
+  socketOffs.length = 0
+})
 
 // Ask the worker which tools it can expose. If it doesn't answer we leave
 // toolCatalog null so toolOptions uses the static fallback — an older worker
@@ -515,18 +559,8 @@ function removeWindow(i) {
   form.value.peak_hours.splice(i, 1)
 }
 
-// Tell the worker the agent catalog changed so it re-reads the DB and
-// broadcasts `agent/list` to every client in the project, this one included.
-//
-// The catalog is workspace-global and every client renders from it (agent
-// picker, meta line, peak-hours badge), but an edit goes over REST and there is
-// no server->worker channel, so this socket frame is the only path from "the
-// DB changed" to "every socket hears about it". Calling it after each
-// successful create/update/delete keeps the broadcast from being peak-hours
-// specific: any catalog change refreshes everyone.
-function notifyCatalogChanged() {
-  workerSocket.send('agent', 'config_changed', {})
-}
+// Socket subscriptions registered for the lifetime of the pane.
+const socketOffs = []
 
 async function save() {
   if (!form.value) return
@@ -535,6 +569,8 @@ async function save() {
   saveError.value = ''
   try {
     const payload = {
+      id:                 isNew.value ? null : selectedAgent.value?.id,
+      slug:               (form.value.slug || '').trim(),
       name:               form.value.name,
       description:        form.value.description,
       role:               form.value.role,
@@ -554,32 +590,17 @@ async function save() {
           : {}),
       },
       // Stored as entered: days, times, and the zone they were entered in. An
-      // empty array clears them. The server validates shape and rejects
-      // malformed times/zones.
+      // empty array clears them.
       peak_hours:         form.value.peak_hours,
     }
     // Only send api_key when the admin typed one (blank preserves the stored key).
     if (form.value.api_key) payload.api_key = form.value.api_key
 
-    let result
-    if (isNew.value) {
-      payload.slug = (form.value.slug || '').trim()
-      result = await createAgent(payload)
-      agents.value.push(result)
-      isNew.value      = false
-      selectedId.value = result.id
-    } else {
-      if (!selectedAgent.value) return
-      result = await updateAgent(selectedAgent.value.id, payload)
-      const idx = agents.value.findIndex((a) => a.id === result.id)
-      if (idx !== -1) agents.value[idx] = result
-    }
-    loadForm(result)
-    savedOk.value = true
-    notifyCatalogChanged()
+    // Fire and forget: agent/saved (or system/error) settles `saving` and the
+    // selection, and the worker's own broadcast refreshes the catalog.
+    workerSocket.send('agent', 'save', payload)
   } catch (e) {
-    saveError.value = e.response?.data?.error || ('Failed to save: ' + (e.message || e))
-  } finally {
+    saveError.value = e.message || 'Failed to save'
     saving.value = false
   }
 }
