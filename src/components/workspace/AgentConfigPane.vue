@@ -437,6 +437,7 @@ async function remove() {
     agents.value = agents.value.filter((a) => a.id !== target.id)
     if (agents.value.length) select(agents.value[0].id)
     else { form.value = null; selectedId.value = null }
+    notifyCatalogChanged()
   } catch (e) {
     saveError.value = e.response?.data?.error || ('Failed to delete: ' + (e.message || e))
   } finally {
@@ -514,6 +515,19 @@ function removeWindow(i) {
   form.value.peak_hours.splice(i, 1)
 }
 
+// Tell the worker the agent catalog changed so it re-reads the DB and
+// broadcasts `agent/list` to every client in the project, this one included.
+//
+// The catalog is workspace-global and every client renders from it (agent
+// picker, meta line, peak-hours badge), but an edit goes over REST and there is
+// no server->worker channel, so this socket frame is the only path from "the
+// DB changed" to "every socket hears about it". Calling it after each
+// successful create/update/delete keeps the broadcast from being peak-hours
+// specific: any catalog change refreshes everyone.
+function notifyCatalogChanged() {
+  workerSocket.send('agent', 'config_changed', {})
+}
+
 async function save() {
   if (!form.value) return
   saving.value    = true
@@ -562,6 +576,7 @@ async function save() {
     }
     loadForm(result)
     savedOk.value = true
+    notifyCatalogChanged()
   } catch (e) {
     saveError.value = e.response?.data?.error || ('Failed to save: ' + (e.message || e))
   } finally {
