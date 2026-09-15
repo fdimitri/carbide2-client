@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs --fix --ignore-path .gitignore",
     "test:unit": "node --test tests/unit/*.test.mjs",
+    "test:ot-parity": "node tests/parity/ot_parity.mjs",
     "test:e2e": "playwright test",
     "test:smoke": "playwright test tests/e2e/smoke.spec.js --reporter=list"
   },
