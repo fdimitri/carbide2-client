@@ -40,8 +40,12 @@ const getWorkerUrl = () => {
 // PROTOCOL 4: agent/user_turn broadcast (shared conversations, #80) + per-message
 // author on agent user messages (#79). Additive — MIN_SERVER stays 1.
 // PROTOCOL 5: agent/stop + agent/stopping + agent/stopped (#83). Additive.
-const PROTOCOL   = 5
-const MIN_SERVER = 1
+// PROTOCOL 7: DBFS v2 file sync (services/fileSync.js). fs/write carries
+// base_revision_id + batch_id and expects fs/written { mode, head, ... };
+// frames carry `parent`. A worker below 7 has no rebase path and no acks to
+// base the next batch on, so MIN_SERVER is 7.
+const PROTOCOL   = 7
+const MIN_SERVER = 7
 
 const RECONNECT_BASE_MS  = 1000
 const RECONNECT_MAX_MS   = 30000
