@@ -14,7 +14,7 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { isDeepStrictEqual, inspect } from 'node:util'
-import { TextBuffer, Delta, Transform, Merge, Myers, ConflictError, rebase } from '../../src/ot/index.js'
+import { TextBuffer, Delta, Transform, Merge, Myers, ConflictError, OverlapConflict, rebase } from '../../src/ot/index.js'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const args = Object.fromEntries(process.argv.slice(2).reduce((acc, a, i, all) => {
@@ -148,7 +148,7 @@ function makeCases() {
     const prim = () => {
       const s = int(0, L)
       const f = chance(0.4) ? s : int(s, L)
-      return [s, f, chance(0.5) ? '' : text(1, 3), pick(['a', 'b'])]
+      return [s, f, chance(0.5) ? '' : text(1, 3), pick(['a', 'b']), pick([null, null, 'lines', 'lines_eof', 'before'])]
     }
     cases.push({ kind: 'transform_list', ops: Array.from({ length: int(1, 3) }, prim), others: Array.from({ length: int(0, 3) }, prim) })
 
@@ -226,7 +226,7 @@ function runJs(c) {
         return { a, b }
       }, e => ({ error: errKind(e), message: e.message }))
     case 'transform_list': {
-      const mk = ([s, f, t, p]) => new Transform.Prim(s, f, t, p)
+      const mk = ([s, f, t, p, cl]) => new Transform.Prim(s, f, t, p, cl)
       return attempt(() => ({ prims: primsOut(Transform.transformList(c.ops.map(mk), c.others.map(mk))) }), e => ({ error: errKind(e) }))
     }
     case 'merge': {
@@ -241,7 +241,7 @@ function runJs(c) {
       return attempt(() => {
         const res = rebase({ base: c.base, concurrent: c.concurrent.map(delta), deltas: c.deltas.map(delta) })
         return { deltas: res.deltas.map(d => ({ ...d.toHash(), priority: d.priority })), bridge: res.bridge }
-      }, e => ({ error: errKind(e) }))
+      }, e => (e instanceof OverlapConflict ? { error: 'conflict', regions: e.regions } : { error: errKind(e) }))
     default:
       return { error: `unknown kind ${c.kind}` }
   }

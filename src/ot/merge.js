@@ -1,9 +1,14 @@
-// Three-way content merge (the pure part of DbfsV2::Merge).
+// Merges (the pure parts of DbfsV2::Merge).
 //
-// The server's merge_auto finds the DAG merge base and loads the three
-// contents; here the caller supplies them. Each side is diffed against the base
-// (line hunks refined to minimal splices), overlapping write regions are a
-// conflict, otherwise theirs is transformed past ours and both are applied.
+// A branch merge with edit history replays the source's edits onto the target:
+// that is rebase({ base, deltas: sourceEdits, concurrent: targetEdits }), as
+// the server's merge_auto does (decisions #29).
+//
+// Without history, the three-way content merge below: the caller supplies the
+// base and both contents, each side is diffed against the base into whole-line
+// hunks that claim the lines they change, overlapping changes (including two
+// on one claimed line) are a conflict, otherwise theirs is transformed past
+// ours and both are applied.
 
 import { TextBuffer } from './buffer.js'
 import { Delta } from './delta.js'

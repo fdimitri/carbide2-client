@@ -70,6 +70,8 @@ module DbfsV2
 
   module Merge
     def self.lowest_common_ancestor(*) = :base
+    # The 'merge' cases are content merges; replay is covered by 'rebase'.
+    def self.replay_plan(*) = nil
   end
 end
 
@@ -92,7 +94,7 @@ def err_kind(e)
   end
 end
 
-def prims_out(prims) = prims.map { |p| [p.start, p.finish, p.text, p.priority] }
+def prims_out(prims) = prims.map { |p| [p.start, p.finish, p.text, p.priority, p.claim&.to_s] }
 
 def hashes_out(hashes) = JSON.parse(hashes.to_json)
 
@@ -142,8 +144,8 @@ def run(c)
       { error: err_kind(e), message: e.message }
     end
   when 'transform_list'
-    ops = c['ops'].map { |s, f, t, p| T::Prim.new(s, f, t, p) }
-    others = c['others'].map { |s, f, t, p| T::Prim.new(s, f, t, p) }
+    ops = c['ops'].map { |s, f, t, p, cl| T::Prim.new(s, f, t, p, cl&.to_sym) }
+    others = c['others'].map { |s, f, t, p, cl| T::Prim.new(s, f, t, p, cl&.to_sym) }
     begin
       { prims: prims_out(T.transform_list(ops, others)) }
     rescue StandardError => e
@@ -174,6 +176,8 @@ def run(c)
         deltas: written.map { |d| JSON.parse(d.to_h.to_json).merge('priority' => d.priority) },
         bridge: hashes_out(res[:bridge]),
       }
+    rescue DbfsV2::OverlapConflict => e
+      { error: 'conflict', regions: JSON.parse(e.regions.to_json) }
     rescue StandardError => e
       { error: err_kind(e) }
     end

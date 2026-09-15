@@ -15,19 +15,27 @@ import { Delta } from './delta.js'
 import * as Myers from './myers.js'
 import { cmp, cmpKeys, sortByKeys } from './util.js'
 
+// `claim` marks a prim taken from a diff of a whole-file snapshot (setContents,
+// a content merge); real edits have none (server decisions #29):
+//   'lines'      rewrites or removes whole lines, each ending in a newline; any
+//                other change touching one of them is ambiguous
+//   'lines_eof'  the same, for lines running to the end of the text
+//   'before'     only adds whole lines at a line start; touches no existing
+//                line, and goes before any other same-point insert
 export class Prim {
-  constructor(start, finish, text, priority) {
+  constructor(start, finish, text, priority, claim = null) {
     this.start = start
     this.finish = finish
     this.text = text
     this.priority = priority
+    this.claim = claim
   }
   isInsert() { return this.start === this.finish }
   isDelete() { return this.start < this.finish && this.text === '' }
   isReplace() { return this.start < this.finish && this.text !== '' }
   get length() { return this.finish - this.start }
   get ilength() { return this.text.length }
-  toArray() { return [this.start, this.finish, this.text, this.priority] }
+  toArray() { return [this.start, this.finish, this.text, this.priority, this.claim] }
 }
 
 const asBuffer = base => (base instanceof TextBuffer ? base : new TextBuffer(base))
@@ -54,8 +62,10 @@ export function isOpaque(delta) {
   return delta.isPcreReplace()
 }
 
-// Diff old -> new into replace prims: line-based Myers hunks, each refined to
-// a minimal splice (common char prefix/suffix).
+// Diff old -> new into prims, one per line hunk (Myers over lines with their
+// trailing newline). A diff only guesses what was edited, so hunks are not
+// refined to minimal splices: rewritten or removed lines are one prim with a
+// claim on them, added lines an insert claimed 'before' (see Prim).
 export function diffPrims(oldText, newText, priority) {
   if (oldText === newText) return []
   const oldT = diffTokens(oldText)
@@ -65,23 +75,24 @@ export function diffPrims(oldText, newText, priority) {
   for (const t of oldT) offs.push(offs[offs.length - 1] + t.length)
   const out = []
   for (const [os, oe, ns, ne] of hs) {
-    const o = oldT.slice(os, oe).join('')
-    const n = newT.slice(ns, ne).join('')
-    let p = 0
-    while (p < o.length && p < n.length && o[p] === n[p]) p++
-    let s = 0
-    while (s < o.length - p && s < n.length - p && o[o.length - 1 - s] === n[n.length - 1 - s]) s++
-    const start = offs[os] + p
-    const finish = offs[os] + o.length - s
-    const text = n.slice(p, n.length - s)
+    const start = offs[os]
+    const finish = offs[oe]
+    const text = newT.slice(ns, ne).join('')
     if (start === finish && text === '') continue
-    out.push(new Prim(start, finish, text, priority))
+    if (os === oe) {
+      out.push(new Prim(start, finish, text, priority, 'before'))
+      continue
+    }
+    const eof = oe === oldT.length && !oldT[oldT.length - 1].endsWith('\n')
+    out.push(new Prim(start, finish, text, priority, eof ? 'lines_eof' : 'lines'))
   }
   return out
 }
 
 // Lines including their trailing newline (the last may have none).
+// The empty string is one empty line, as in TextBuffer.
 export function diffTokens(str) {
+  if (str === '') return ['']
   const lines = str.split('\n')
   return lines.map((l, i) => (i < lines.length - 1 ? l + '\n' : l))
 }
@@ -100,11 +111,26 @@ export function diffHunksFallback(a, b) {
   return [[p, n - s, p, m - s]]
 }
 
-// True when a replace overlaps any prim of the other side, or an insert falls
-// strictly inside a replace. Such pairs have no intention-preserving transform.
+// True when a replace overlaps any prim of the other side, an insert falls
+// strictly inside a replace, or either side touches a line the other's
+// snapshot diff claimed. Such pairs have no intention-preserving transform.
 export function isAmbiguous(aPrims, bPrims) {
   return aPrims.some(ap => ap.isReplace() && bPrims.some(bp => regionsOverlap(ap, bp))) ||
-    bPrims.some(bp => bp.isReplace() && aPrims.some(ap => regionsOverlap(ap, bp)))
+    bPrims.some(bp => bp.isReplace() && aPrims.some(ap => regionsOverlap(ap, bp))) ||
+    aPrims.some(ap => bPrims.some(bp => touchesClaim(ap, bp) || touchesClaim(bp, ap)))
+}
+
+// Does `o` change a line that claimed prim `c` rewrites? c covers whole lines
+// [c.start, c.finish); a newline belongs to the line it ends.
+export function touchesClaim(c, o) {
+  if (c.claim !== 'lines' && c.claim !== 'lines_eof') return false
+  if (o.isInsert()) {
+    const p = o.start
+    if (c.start < p && p < c.finish) return true
+    if (p === c.finish && c.claim === 'lines_eof') return true
+    return p === c.start && !o.text.endsWith('\n')
+  }
+  return o.start < c.finish && c.start < o.finish
 }
 
 export function regionsOverlap(x, y) {
@@ -132,7 +158,11 @@ export function transformOpaque(a, b, base) {
 // which is a valid chained sequence.
 export function transformList(ops, others) {
   const chained = sortByKeys(others, o => [-o.start])
-  return ops.flatMap(op => chained.reduce((acc, other) => acc.flatMap(o => transformOne(o, other)), [op]))
+  return ops.flatMap(op => chained.reduce((acc, other) => acc.flatMap(o => {
+    const out = transformOne(o, other)
+    for (const t of out) t.claim = o.claim // a prim keeps its claim wherever it moves
+    return out
+  }), [op]))
 }
 
 export function encode(prims, base, applied) {
@@ -166,8 +196,18 @@ export function transformOne(a, b) {
 
 const P = (s, f, t, pr) => new Prim(s, f, t, pr)
 
+// At a tie, a snapshot's added lines go before a plain insert; otherwise
+// priority decides.
+function insertFirst(a, b) {
+  const aLines = a.claim === 'before' && b.claim !== 'before'
+  const bLines = b.claim === 'before' && a.claim !== 'before'
+  if (aLines) return true
+  if (bLines) return false
+  return cmp(a.priority, b.priority) <= 0
+}
+
 function transformII(a, b) {
-  if (a.start < b.start || (a.start === b.start && cmp(a.priority, b.priority) <= 0)) return [a]
+  if (a.start < b.start || (a.start === b.start && insertFirst(a, b))) return [a]
   return [P(a.start + b.ilength, a.finish + b.ilength, a.text, a.priority)]
 }
 

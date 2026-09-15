@@ -12,8 +12,9 @@
 //     content  string   base + concurrent + deltas  (the new head)
 //     local    string   base + authored              (the author's state)
 //   }
-//   throws ConflictError when an authored edit overlaps a concurrent replace,
-//   or when local + bridge does not reproduce content
+//   throws OverlapConflict (with regions) when an authored edit overlaps a
+//   concurrent change (including the same-line rule for setContents, server
+//   decisions #29), ConflictError when local + bridge does not reproduce content
 //   throws RangeError when an authored edit is out of range for its state
 //
 // `deltas`/`concurrent` items may be Deltas, { type, ... } hashes or
@@ -23,7 +24,8 @@
 
 import { TextBuffer } from './buffer.js'
 import { Delta } from './delta.js'
-import { ConflictError } from './errors.js'
+import { ConflictError, OverlapConflict } from './errors.js'
+import { regionsOf } from './merge.js'
 import * as Transform from './transform.js'
 
 export function rebase({ base, deltas, concurrent = [] }) {
@@ -44,7 +46,8 @@ export function rebase({ base, deltas, concurrent = [] }) {
     let prims = Transform.toPrims(authored, local)
     bridge = bridge.map(c => {
       if (Transform.isAmbiguous(prims, c)) {
-        throw new ConflictError(`edit ${i} overlaps a concurrent replace`)
+        throw new OverlapConflict(`edit ${i} overlaps a concurrent change`,
+          [{ target: regionsOf(c), source: regionsOf(prims) }])
       }
       const moved = Transform.transformList(prims, c)
       const c2 = Transform.transformList(c, prims)

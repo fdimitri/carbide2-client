@@ -4,7 +4,7 @@
 // Ruby implementation are in tests/parity.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { TextBuffer, Delta, Transform, Merge, Myers, ConflictError, rebase, sha1Hex } from '../../src/ot/index.js'
+import { TextBuffer, Delta, Transform, Merge, Myers, ConflictError, OverlapConflict, rebase, sha1Hex } from '../../src/ot/index.js'
 import { applyChange } from '../../src/utils/textChanges.js'
 
 const b = s => new TextBuffer(s)
@@ -157,7 +157,7 @@ test('transformList folds same-space prims right to left', () => {
   const P = (s, f, t, p) => new Transform.Prim(s, f, t, p)
   const ops = [P(1, 1, 'Z', 't')]
   const others = [P(0, 0, 'XXXX', 'o'), P(4, 4, 'Y', 'o')]
-  assert.deepEqual(Transform.transformList(ops, others).map(p => p.toArray()), [[5, 5, 'Z', 't']])
+  assert.deepEqual(Transform.transformList(ops, others).map(p => p.toArray()), [[5, 5, 'Z', 't', null]])
 })
 
 // --- diff ---------------------------------------------------------------------
@@ -166,7 +166,7 @@ const applyPrims = (o, prims) => Merge.applyPrims(b(o), prims).toString()
 
 test('diff: exact shapes', () => {
   const header = dPrims('hello\nworld', '# header\nhello\nworld')
-  assert.deepEqual(header.map(p => p.toArray()), [[0, 0, '# header\n', 'p']])
+  assert.deepEqual(header.map(p => p.toArray()), [[0, 0, '# header\n', 'p', 'before']])
   const del = dPrims('a\nb\nc\n', 'a\nb\n')
   assert.equal(del.length, 1)
   assert.ok(del[0].isDelete())
@@ -227,10 +227,63 @@ test('diff: large file, small edit stays minimal and fast; full rewrite stays bo
   assert.equal(applyPrims(base, coarse), rewritten)
 })
 
-// --- merge / rebase examples -----------------------------------------------------
-test('merge: the same-space regression merges to the right lines', () => {
-  const res = Merge.mergeContents('a\nm\nb', 'XXXXa\nm\nYb', 'aZ\nm\nb')
-  assert.deepEqual(res, { merged: true, content: 'XXXXaZ\nm\nYb' })
+// --- merge / rebase examples ------------------------------------------------------
+test('merge by replay: the same-space regression merges to the right lines', () => {
+  const ins = (line, char, data, priority) => d('insertDataSingleLine', { startLine: line, startChar: char, data }, priority)
+  const res = rebase({ base: 'a\nm\nb', deltas: [ins(0, 1, 'Z', 't1')], concurrent: [ins(0, 0, 'XXXX', 'o1'), ins(2, 0, 'Y', 'o2')] })
+  assert.equal(res.content, 'XXXXaZ\nm\nYb')
+})
+
+// --- same-line rule (server decisions #29) ----------------------------------------
+test('same-line rule: snapshot diffs claim whole lines', () => {
+  assert.deepEqual(dPrims('a\nbXc\nd', 'a\nbYc\nd').map(p => p.toArray()), [[2, 6, 'bYc\n', 'p', 'lines']])
+  assert.deepEqual(dPrims('a\nb', 'a\nbc').map(p => p.toArray()), [[2, 3, 'bc', 'p', 'lines_eof']])
+  assert.deepEqual(dPrims('a\nb', 'a\nnew\nb').map(p => p.toArray()), [[2, 2, 'new\n', 'p', 'before']])
+
+  const snap = Transform.diffPrims('one\ntwo\nthree', 'one\nTWO\nthree', 's') // claims [4, 8)
+  const at = (o, text = 'x') => [new Transform.Prim(o, o, text, 'e')]
+  const del = (st, f) => [new Transform.Prim(st, f, '', 'e')]
+  assert.ok(Transform.isAmbiguous(snap, at(5)))
+  assert.ok(Transform.isAmbiguous(snap, at(4)))
+  assert.ok(Transform.isAmbiguous(snap, del(2, 5)))
+  assert.ok(Transform.isAmbiguous(at(6), snap))
+  assert.ok(!Transform.isAmbiguous(snap, at(8)))
+  assert.ok(!Transform.isAmbiguous(snap, at(3)))
+  assert.ok(!Transform.isAmbiguous(snap, at(4, 'new\n')))
+  assert.ok(!Transform.isAmbiguous(snap, del(9, 12)))
+})
+
+test('same-line rule: added lines go before a plain insert at the same point', () => {
+  const added = Transform.diffPrims('a\nb', 'a\nnew\nb', 's')
+  const typed = [new Transform.Prim(2, 2, 'X', 'a')]
+  for (const [first, second] of [[added, typed], [typed, added]]) {
+    const buf = b('a\nb')
+    Merge.applyPrims(buf, first)
+    Merge.applyPrims(buf, Transform.transformList(second, first))
+    assert.equal(buf.toString(), 'a\nnew\nXb')
+  }
+})
+
+test('same-line rule: the two garbling cases conflict', () => {
+  assert.equal(Merge.mergeContents('<b.1><b.2><b.3>\n<c.1>', '<o.1><b.2><b.3>\n<c.1>', '<b.2><b.3>\n<c.1>').merged, false)
+  assert.equal(Merge.mergeContents('\n<c.1><c.2><c.3>', '\n<c.1><c.2><o.1><c.3>', '<t.2>\n<c.1><c.2><t.1><t.3>\n\n<c.3>').merged, false)
+  const external = d('setContents', { data: '<t.2>\n<c.1><c.2><t.1><t.3>\n\n<c.3>' }, 'r')
+  assert.throws(() => rebase({ base: '\n<c.1><c.2><c.3>', deltas: [{ type: 'insertDataSingleLine', startLine: 1, startChar: 10, data: '<o.1>' }], concurrent: [external] }),
+    e => e instanceof OverlapConflict && e.regions.length === 1)
+  // the same edits replayed merge: rename b.1 -> o.1 on one side, delete b.1 on the other
+  const res = rebase({
+    base: '<b.1><b.2><b.3>\n<c.1>',
+    deltas: [{ type: 'deleteDataSingleLine', startLine: 0, startChar: 0, endChar: 5 }],
+    concurrent: [d('insertDataSingleLine', { startLine: 0, startChar: 0, data: '<o.1>' }, 'o1'),
+      d('deleteDataSingleLine', { startLine: 0, startChar: 5, endChar: 10 }, 'o2')],
+  })
+  assert.equal(res.content, '<o.1><b.2><b.3>\n<c.1>')
+})
+
+test('same-line rule: an edit on another line than an external rewrite merges', () => {
+  const external = d('setContents', { data: 'one\nTWO\nthree\n' }, 'r')
+  const res = rebase({ base: 'one\ntwo\nthree\n', deltas: [{ type: 'insertDataSingleLine', startLine: 2, startChar: 5, data: '!' }, { type: 'insertDataSingleLine', startLine: 0, startChar: 0, data: '>' }], concurrent: [external] })
+  assert.equal(res.content, '>one\nTWO\nthree!\n')
 })
 
 test('merge: overlapping writes are a conflict', () => {

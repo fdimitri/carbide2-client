@@ -6,3 +6,14 @@ export class ConflictError extends Error {
     this.name = 'ConflictError'
   }
 }
+
+// A conflict between two known sets of changes. `regions` is
+// [{ target, source }], each a list of { start, end, type } in one coordinate
+// space (DbfsV2::OverlapConflict).
+export class OverlapConflict extends ConflictError {
+  constructor(message, regions = []) {
+    super(message)
+    this.name = 'OverlapConflict'
+    this.regions = regions
+  }
+}

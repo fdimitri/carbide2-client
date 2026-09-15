@@ -23,7 +23,7 @@
 
 export { TextBuffer } from './buffer.js'
 export { Delta, CHANGE_TYPES } from './delta.js'
-export { ConflictError } from './errors.js'
+export { ConflictError, OverlapConflict } from './errors.js'
 export { rebase } from './rebase.js'
 export { sha1Hex } from './sha1.js'
 export * as Transform from './transform.js'

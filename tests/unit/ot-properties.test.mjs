@@ -154,66 +154,78 @@ const initialText = r => {
 }
 
 // --- merge ------------------------------------------------------------------------
-// Each side inserts tokens at token boundaries, and optionally deletes a base
-// token; a merge reported clean must hold every surviving token exactly once.
-function randomMerges(seed, { deletes }) {
+// Two sides edit a multi-line base: token inserts at token boundaries and maybe
+// one base token deleted. Merged three ways, as the server does (decisions #29):
+//   edits    replay one side's edits past the other's (rebase)
+//   snapshot replay, but one side is a single setContents (diffed, same-line rule)
+//   content  three-way content merge of the two results (same-line rule)
+// A merge reported clean must hold every surviving token exactly once, unsplit.
+function randomMerges(seed) {
   const r = seeded(seed)
-  let merged = 0
+  const counts = {}
   const failures = []
   for (let t = 0; t < 300; t++) {
-    const base = initialText(r)
+    const lines = 2 + Math.floor(r() * 5)
+    const base = Array.from({ length: lines }, (_, l) =>
+      Array.from({ length: Math.floor(r() * 4) }, (_, i) => `<b${l}.${i + 1}>`).join('')).join('\n')
     const expected = tokens(base)
     const sides = {}
     for (const side of ['o', 't']) {
       let text = base
+      const edits = []
       for (let i = 1, n = 1 + Math.floor(r() * 4); i <= n; i++) {
         const [, tok, edit] = randomEdit(text, r, `<${side}.${i}>`, [])
         text = edit.applyToString(text)
+        edits.push(edit)
         expected.push(tok)
       }
-      if (deletes && r() < 0.5) {
-        const [kind, tok, edit] = randomEdit(text, () => 0, 'unused', tokens(base))
-        if (kind === 'delete') {
+      if (r() < 0.5) {
+        const present = tokens(base).filter(x => text.includes(x))
+        if (present.length) {
+          const tok = present[Math.floor(r() * present.length)]
+          const [, , edit] = randomEdit(text, () => 0, 'unused', [tok])
           text = edit.applyToString(text)
+          edits.push(edit)
           const idx = expected.indexOf(tok)
           if (idx >= 0) expected.splice(idx, 1)
         }
       }
-      sides[side] = text
+      edits.forEach((e, i) => { e.priority = `${side}${i}` })
+      sides[side] = { text, edits }
     }
-    const res = Merge.mergeContents(base, sides.o, sides.t)
-    if (!res.merged) continue
-    merged++
-    const split = (res.content.match(/</g) || []).length !== tokens(res.content).length
-    if (split || !isDeepStrictEqual(tally(tokens(res.content)), tally(expected))) {
-      failures.push({ base, ...sides, merged: res.content })
+    const mode = ['edits', 'snapshot', 'content'][Math.floor(r() * 3)]
+    let content = null
+    try {
+      if (mode === 'edits') {
+        content = rebase({ base, deltas: sides.t.edits, concurrent: sides.o.edits }).content
+      } else if (mode === 'snapshot') {
+        const snap = mk('setContents', { data: sides.o.text }, 'o-snap')
+        content = rebase({ base, deltas: sides.t.edits, concurrent: [snap] }).content
+      } else {
+        const res = Merge.mergeContents(base, sides.o.text, sides.t.text)
+        if (res.merged) content = res.content
+      }
+    } catch (e) {
+      if (!(e instanceof ConflictError)) throw e
+    }
+    const key = `${mode}:${content === null ? 'conflict' : 'merged'}`
+    counts[key] = (counts[key] || 0) + 1
+    if (content === null) continue
+    const split = (content.match(/</g) || []).length !== tokens(content).length
+    if (split || !isDeepStrictEqual(tally(tokens(content)), tally(expected))) {
+      failures.push({ mode, base, o: sides.o.text, t: sides.t.text, merged: content })
     }
   }
-  return { merged, failures }
+  return { counts, failures }
 }
 
-// Known server behavior, reproduced faithfully (tests/parity checks the Ruby
-// merge returns the same content): the three-way merge diffs each side against
-// the base, and a diff can align differently from what the author did, so two
-// non-overlapping splices can still garble text. Two shapes seen here:
-//   * each line hunk is refined to a common prefix/suffix splice. Base
-//     "<b.1><b.2>": ours renames b.1 -> o.1 (replace "b"), theirs deletes
-//     "<b.1>" (diffed as delete "1><b."); clean merge, content "<o.2>".
-//   * Myers matches a moved blank line, so theirs' insert before "<c.3>" diffs
-//     as delete "1><c.2><c." + reinsert; ours' insert lands inside the delete
-//     and survives as "<c.o.1><3>".
-// Seed 20260915 happens to pass with inserts only; seed 3 does not.
-test('random three-way merges keep every token exactly once', {
-  todo: 'server Merge#auto_merge_content can garble text on a clean merge (diff alignment differs from the edits)',
-}, () => {
-  const report = []
-  for (const seed of [20260915, 1, 2, 3, 4, 5]) {
-    for (const deletes of [false, true]) {
-      const { merged, failures } = randomMerges(seed, { deletes })
-      if (failures.length) report.push({ seed, deletes, merged, failed: failures.length, first: failures[0] })
-    }
+test('random merges keep every token exactly once (replay, snapshot, content)', () => {
+  for (const seed of [Number(process.env.MERGE_PROPERTY_SEED ?? 20260915), 1, 2, 3, 4, 5]) {
+    const { counts, failures } = randomMerges(seed)
+    assert.deepEqual(failures.slice(0, 2), [], `seed ${seed}: ${failures.length} clean merges lost or split a token`)
+    assert.ok((counts['edits:merged'] || 0) > 60, `seed ${seed}: ${JSON.stringify(counts)}`)
+    assert.ok((counts['snapshot:merged'] || 0) + (counts['content:merged'] || 0) > 20, `seed ${seed}: ${JSON.stringify(counts)}`)
   }
-  assert.deepEqual(report, [])
 })
 
 // --- rebase -----------------------------------------------------------------------
