@@ -15,7 +15,12 @@ const emit = defineEmits(['update:visible', 'close', 'changed'])
 
 const templates = ref([])
 const registry = ref(null)          // { images: [...] } or null when no registry
-const registryError = ref(false)    // true -> no registry configured (503)
+// 503 means no registry is configured; anything else means one IS configured
+// and the listing failed, which needs a different action from the operator.
+// Collapsing the two sent someone hunting a picker bug while the real fault was
+// a 401 from the registry.
+const registryError = ref(false)
+const registryFault = ref('')
 const error = ref('')
 const busy = ref(false)
 
@@ -150,9 +155,13 @@ async function load() {
   try {
     registry.value = await listRegistryImages()
     registryError.value = false
-  } catch {
+    registryFault.value = ''
+  } catch (e) {
     registry.value = null
     registryError.value = true
+    registryFault.value = e?.response?.status === 503
+      ? ''
+      : (e?.response?.data?.error || e?.message || 'the registry listing failed')
   }
 }
 
@@ -324,7 +333,10 @@ function close() {
       <!-- Image tag -->
       <section class="rounded-xl border border-line bg-bg-1/60 p-4">
         <h3 class="text-muted text-xs font-semibold uppercase tracking-widest mb-2">Workspace image</h3>
-        <p v-if="registryError" class="text-muted text-sm">No registry configured — using the imported image.</p>
+        <p v-if="registryError" class="text-muted text-sm">
+          {{ registryFault ? `Registry unreachable: ${registryFault} — using the imported image.`
+                           : 'No registry configured — using the imported image.' }}
+        </p>
         <div v-else class="flex items-end gap-2">
           <div class="flex-1">
             <label class="text-muted text-label uppercase tracking-widest text-xs">Tag</label>
@@ -342,7 +354,10 @@ function close() {
       <!-- Shell image -->
       <section class="rounded-xl border border-line bg-bg-1/60 p-4">
         <h3 class="text-muted text-xs font-semibold uppercase tracking-widest mb-2">Shell image</h3>
-        <p v-if="registryError" class="text-muted text-sm">No registry configured — using the imported image.</p>
+        <p v-if="registryError" class="text-muted text-sm">
+          {{ registryFault ? `Registry unreachable: ${registryFault} — using the imported image.`
+                           : 'No registry configured — using the imported image.' }}
+        </p>
         <div v-else class="flex flex-col gap-2">
           <div class="flex items-end gap-2">
             <div class="flex-1">
