@@ -63,12 +63,23 @@
           ref="explorerPane"
           :terminal-list="terminalList"
           :chat-channels="chatChannels"
+          :agent-conversations="workspaceStore.agentRecent"
+          :agent-list="workspaceStore.agentList"
+          :sessions="sessionList"
+          :current-session-uuid="currentSessionUuid"
           :pane-layout="paneLayout"
           :active-pane-index="activePaneIndex"
           :is-joined-channel="isJoinedChannel"
           @open-file="onExplorerOpenFile"
           @open-terminal="onExplorerOpenTerminal"
           @open-channel="onExplorerOpenChannel"
+          @open-agent="onExplorerOpenAgent"
+          @create-agent-conversation="onExplorerNewAgentConversation"
+          @fork-agent="(id) => agents.forkConversation(id)"
+          @rename-agent="onAgentRename"
+          @open-session="(uuid) => switchSession(uuid)"
+          @clone-session="cloneSession"
+          @delete-session="deleteSession"
           @open-in-pane="onExplorerOpenInPane"
           @create-terminal="openCreateTerminalDialogTracked"
           @create-channel="openCreateChannelDialog"
@@ -81,6 +92,7 @@
           @join-channel="joinChannelFromContext"
           @leave-channel="leaveChannelFromContext"
           @open-upload="onExplorerOpenUpload"
+          @download-entry="onExplorerDownloadEntry"
           @open-debug="openDebugPane"
         />
         <div
@@ -122,6 +134,8 @@
               @agent-load="handleAgentLoad"
               @agent-set-visibility="agents.setVisibility"
               @agent-stop="agents.stop"
+              @agent-clean="(conversationId, opts) => agents.clean(conversationId, opts)"
+              @agent-fork="(conversationId, turn) => agents.forkConversation(conversationId, turn)"
             />
             <Splitter
               v-else
@@ -157,6 +171,8 @@
                   @agent-load="handleAgentLoad"
                   @agent-set-visibility="agents.setVisibility"
                   @agent-stop="agents.stop"
+                  @agent-clean="(conversationId, opts) => agents.clean(conversationId, opts)"
+                  @agent-fork="(conversationId, turn) => agents.forkConversation(conversationId, turn)"
                 />
               </SplitterPanel>
             </Splitter>
@@ -263,7 +279,7 @@ import ConnectionStatus from '../components/ConnectionStatus.vue'
 import ClientPicker from '../components/workspace/ClientPicker.vue'
 import workerSocket from '../services/workerSocket'
 import authService from '../services/authService'
-import { listProjects, uploadProjectFile, importProjectFromDisk } from '../services/projectService'
+import { listProjects, uploadProjectFile, importProjectFromDisk, downloadProjectEntry } from '../services/projectService'
 import { mintWorkspaceToken } from '../services/workspaceToken'
 import { storeToRefs } from 'pinia'
 import { usePanes, PANE_COUNTS } from '../composables/usePanes'
@@ -342,6 +358,30 @@ const {
   activatePaneTab, closePaneTab,
   onTabDragStart, onTabDrop, onPaneDrop,
 } = usePanes({ activePane, pendingNavigation })
+
+// ── Open-file set → fs/open / fs/close ────────────────────────────────────────
+// The paths that have an open file tab anywhere in the client. fs/open and
+// fs/close are driven from CHANGES to this set, never from FilePane's
+// mount/unmount. A tab that moves between panes (drag, or setPaneLayout evicting
+// tabs out of a hidden pane), or an instance that remounts, changes nothing
+// here — so no message is emitted and there is no ordering hazard. There is no
+// loopback and no per-socket refcount on the worker, so emitting a close for a
+// file that is still open would silently drop it.
+const openFilePaths = computed(() => {
+  const paths = new Set()
+  for (const pane of panes.value) {
+    for (const t of (pane?.tabs || [])) {
+      if (t.kind === 'file' && t.id) paths.add(String(t.id))
+    }
+  }
+  return paths
+})
+
+watch(openFilePaths, (next, prev) => {
+  if (!wsConnected.value) return   // resent wholesale on connect, below
+  for (const p of next) if (!prev.has(p)) workerSocket.send('fs', 'open',  { path: p })
+  for (const p of prev) if (!next.has(p)) workerSocket.send('fs', 'close', { path: p })
+})
 
 // Track agent conversations retained by hydrate/resume. Each hydrate releases
 // the prior set and re-retains the current active set, so reconnect and session
@@ -464,22 +504,19 @@ function activeAgentTab(paneIndex) {
   return (pane.tabs || []).find((t) => t.kind === 'agent' && t.key === pane.activeTab) || null
 }
 
-// Option B: the agent slug lives on the tab (per ADR v2 shape). For a fresh
-// `agent:` tab, pick just records the slug; the conversation is created on first
-// send, and the tab key is rewritten to `agent:<uuid>`. Changing the agent on an
-// EXISTING conversation starts a fresh one — the old id is released and the tab
-// is rewritten back to a bare `agent:` key so the next send creates new.
+// The agent slug lives on the tab (per ADR v2 shape). A fresh `agent:` tab
+// records just the slug; the conversation is created with it on first send.
+//
+// Changing the agent on an EXISTING conversation no longer starts a new
+// conversation (#120): the transcript is kept, the tab key is unchanged (so the
+// tab is not remounted), and the worker re-points the row at the new agent and
+// broadcasts the change. A fresh tab just records the slug; its first send
+// creates the conversation with it.
 function handleAgentPick(paneIndex, conversationId, slug) {
   const tab = activeAgentTab(paneIndex)
   if (!tab) return
-  const pane = panes.value[paneIndex]
-  if (conversationId) {
-    unbindAgentTab(tab, conversationId)
-    tab.key = 'agent:'
-    tab.id = ''
-    pane.activeTab = tab.key
-  }
   tab.agentSlug = slug
+  if (conversationId) agents.setAgent(conversationId, slug)
 }
 
 function handleAgentLoad(id, oldId) {
@@ -579,6 +616,13 @@ function onExplorerOpenUpload(payload) {
   openUploadDialog(payload?.dest || '/', payload?.mode || 'file')
 }
 
+function onExplorerDownloadEntry(path) {
+  if (!path) return
+  downloadProjectEntry(projectId, path).catch((e) => {
+    error.value = e?.response?.data?.error || e.message || 'download failed'
+  })
+}
+
 function openDebugPane() {
   bindTabToActivePane('debug', 0, 'Debug')
 }
@@ -663,6 +707,9 @@ const menuItems = computed(() => ([
     items: [
       { label: 'Upload File / Archive…',           icon: 'pi pi-upload',   command: () => openUploadDialog('/', 'file') },
       { label: 'Import From Disk (rescan files)',  icon: 'pi pi-download', command: () => triggerImportFromDisk() },
+      { separator: true },
+      { label: 'Export Project (tar.gz)',          icon: 'pi pi-download', command: () => onExplorerDownloadEntry('/') },
+      { label: 'Import Project (tar.gz)',          icon: 'pi pi-upload',   command: () => openUploadDialog('/', 'archive') },
       { separator: true },
       { label: 'Refresh Tree (reload from server)',icon: 'pi pi-refresh',  command: () => refreshTreeFromServer() },
     ]
@@ -769,6 +816,13 @@ function forkSession(s) {
   sessionSync.create({ fromUuid: s.session_uuid })
 }
 
+// Explorer "Clone" = session fork (a deep copy of the layout doc). No distance
+// gate, no confirm — cloning is non-destructive (creates a brand-new session).
+function cloneSession(uuid) {
+  if (!uuid) return
+  sessionSync.create({ fromUuid: uuid })
+}
+
 function deleteSession(uuid) {
   if (!uuid) return
   const s = sessionList.value.find((x) => x.session_uuid === uuid)
@@ -826,11 +880,50 @@ async function onExplorerOpenChannel(channelId) {
   await selectChannelNode(channelId)
 }
 
+function onExplorerOpenAgent(id) {
+  if (!id) { agents.openAgentPane(); return }
+  const row = (workspaceStore.agentRecent || []).find((c) => c.conversation_id === id)
+  const label = row?.title || 'Agent'
+  bindTabToActivePane('agent', id, label)
+  const tab = activeAgentTab(activePaneIndex.value)
+  agents.loadConversation(id)
+  bindAgentTab(tab, id)
+}
+
+// Explorer "New Conversation…" for a chosen agent (#120). Created eagerly via
+// agent/create so the conversation has a real uuid up front: that is what lets
+// several conversations coexist and removes the need for a temporary tab
+// identity. The tab opens bound to that uuid and agent.
+async function onExplorerNewAgentConversation(slug) {
+  if (!slug) return
+  try {
+    const cid = await agents.createConversation(slug)
+    bindTabToActivePane('agent', cid, 'Agent')
+    const tab = activeAgentTab(activePaneIndex.value)
+    if (tab) tab.agentSlug = slug
+    agents.selectAgent(cid, slug)
+    agents.loadConversation(cid)
+    bindAgentTab(tab, cid)
+  } catch (e) {
+    error.value = e?.message || 'Failed to create conversation'
+  }
+}
+
+function onAgentRename(id) {
+  if (!id) return
+  const row = (workspaceStore.agentRecent || []).find((c) => c.conversation_id === id)
+  const current = row?.title || ''
+  const next = window.prompt('Rename conversation:', current)
+  if (!next || !next.trim()) return
+  agents.renameConversation(id, next.trim())
+}
+
 async function onExplorerOpenInPane({ kind, id, paneIndex }) {
   activePaneIndex.value = paneIndex
   if (kind === 'file')          selectFileNode(id, { paneIndex })
   else if (kind === 'terminal') await selectTerminalNode(id, { paneIndex })
   else if (kind === 'channel')  await selectChannelNode(id, { paneIndex })
+  else if (kind === 'agent')    onExplorerOpenAgent(id)
 }
 
 // ── Channel dialog ────────────────────────────────────────────────────────────
@@ -890,6 +983,11 @@ onMounted(async () => {
         // (Re)establish this tab's browser session: silent re-resume on a
         // reconnect, resume-or-create on the first connect.
         sessionSync.ensureSession()
+        // Re-open every file that currently has a tab. The worker forgets opens
+        // on disconnect, and the openFilePaths watcher only reports CHANGES, so
+        // a reconnect that leaves the layout untouched would otherwise never
+        // re-establish these.
+        for (const p of openFilePaths.value) workerSocket.send('fs', 'open', { path: p })
       }),
       // Reflect drops so panes can react (e.g. clear stuck spinners) instead of
       // appearing frozen.

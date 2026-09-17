@@ -97,11 +97,19 @@
           <p class="text-muted text-xs mb-4 line-clamp-2 leading-relaxed">{{ p.description || 'No description' }}</p>
           <div class="flex items-center justify-between">
             <span class="text-ui-2xs text-dim font-mono">{{ formatDate(p.created_at) }}</span>
-            <button
-              type="button"
-              class="text-xs text-muted hover:text-accent transition-colors"
-              @click.stop="configWorkspace = p; showConfigModal = true"
-            >Configure</button>
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                class="text-xs text-muted hover:text-accent transition-colors"
+                @click.stop="configWorkspace = p; showConfigModal = true"
+              >Configure</button>
+              <button
+                type="button"
+                class="text-xs text-muted hover:text-warn transition-colors"
+                :disabled="deletingId === p.id"
+                @click.stop="onDelete(p)"
+              >{{ deletingId === p.id ? 'Deleting…' : 'Delete' }}</button>
+            </div>
           </div>
         </div>
       </div>
@@ -122,7 +130,8 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import { listWorkspaces, createWorkspace, getWorkspaceHealth } from '../services/workspaceService'
+import { listWorkspaces, createWorkspace, getWorkspaceHealth, deleteWorkspace } from '../services/workspaceService'
+import { apiErrorMessage } from '../utils/apiError'
 import { setPendingSeed } from '../services/pendingSeed'
 import UiButton from '../components/ui/UiButton.vue'
 import UiInput from '../components/ui/UiInput.vue'
@@ -149,6 +158,7 @@ const showNewForm = ref(false)
 const showControl = ref(false)
 const configWorkspace = ref(null)
 const showConfigModal = ref(false)
+const deletingId    = ref(null)
 const newName = ref('')
 const newDesc = ref('')
 
@@ -184,7 +194,7 @@ async function load() {
   try {
     items.value = await listWorkspaces()
   } catch (e) {
-    error.value = e.message || 'Failed to load workspaces'
+    error.value = apiErrorMessage(e, 'Failed to load workspaces')
   } finally {
     loading.value = false
   }
@@ -243,7 +253,23 @@ async function createItem() {
     await load()
     pollHealth()
   } catch (e) {
-    error.value = e.message || 'Failed to create workspace'
+    error.value = apiErrorMessage(e, 'Failed to create workspace')
+  }
+}
+
+async function onDelete(p) {
+  if (!p?.id) return
+  if (deletingId.value) return
+  const label = p.name || 'this workspace'
+  if (!window.confirm(`Delete "${label}"? This removes the workspace, its files, and its shell. This cannot be undone.`)) return
+  deletingId.value = p.id
+  try {
+    await deleteWorkspace(p.id)
+    await load()
+  } catch (e) {
+    error.value = apiErrorMessage(e, 'Failed to delete workspace')
+  } finally {
+    deletingId.value = null
   }
 }
 

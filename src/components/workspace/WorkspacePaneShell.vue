@@ -30,36 +30,51 @@
       <span v-if="pane.tabs.length === 0" class="text-muted text-ui-xs pl-1">Empty pane</span>
     </div>
 
-    <div class="flex flex-col flex-1 overflow-hidden" v-show="activeTabKind === 'file'">
-      <FilePane :file-id="activeFileId" />
-    </div>
+    <!-- File tabs: one FilePane per open file tab (see the agent block for the
+         rationale). The file identity comes from the tab's own key. -->
+    <template v-for="tab in fileTabs" :key="tab.key">
+      <div
+        class="flex flex-col flex-1 overflow-hidden"
+        v-show="activeTabKind === 'file' && effectiveActiveKey === tab.key"
+      >
+        <FilePane :file-id="fileIdOf(tab)" />
+      </div>
+    </template>
 
-    <div class="flex flex-col flex-1 overflow-hidden" v-show="activeTabKind === 'channel'">
-      <ChatPane
-        :messages="paneMessages"
-        :current-user-id="store.currentUserId"
-        :joining="paneJoining"
-        :connected="store.wsConnected"
-        :can-send="paneCanSend"
-        :users="paneUsers"
-        :typing-map="paneTypingMap"
-        :channel-id="activeChatChannelId"
-        :channel-name="activeChatLabel"
-        :call-active="paneCallActive"
-        :call-available="paneCallAvailable"
-        :call-available-count="paneCallAvailableCount"
-        :local-stream="store.callLocalStream"
-        :remote-streams="store.callRemoteStreams"
-        :participants="store.callParticipants"
-        :mic-enabled="store.callMicEnabled"
-        :cam-enabled="store.callCamEnabled"
-        @send="(text) => emit('send-chat', activeChatChannelId, text)"
-        @start-call="emit('start-call', activeChatChannelId)"
-        @leave-call="emit('leave-call')"
-        @toggle-mic="emit('toggle-mic')"
-        @toggle-cam="emit('toggle-cam')"
-      />
-    </div>
+    <!-- Channel tabs: one ChatPane per open channel tab. Every channel-derived
+         prop is read for THAT tab's channel id, never the pane's active one, so
+         a background channel can no longer render another channel's messages. -->
+    <template v-for="tab in channelTabs" :key="tab.key">
+      <div
+        class="flex flex-col flex-1 overflow-hidden"
+        v-show="activeTabKind === 'channel' && effectiveActiveKey === tab.key"
+      >
+        <ChatPane
+          :messages="messagesFor(channelIdOf(tab))"
+          :current-user-id="store.currentUserId"
+          :joining="joiningFor(channelIdOf(tab))"
+          :connected="store.wsConnected"
+          :can-send="canSendFor(channelIdOf(tab))"
+          :users="usersFor(channelIdOf(tab))"
+          :typing-map="typingMapFor(channelIdOf(tab))"
+          :channel-id="channelIdOf(tab)"
+          :channel-name="channelLabelFor(tab)"
+          :call-active="callActiveFor(channelIdOf(tab))"
+          :call-available="callAvailableFor(channelIdOf(tab))"
+          :call-available-count="callAvailableCountFor(channelIdOf(tab))"
+          :local-stream="store.callLocalStream"
+          :remote-streams="store.callRemoteStreams"
+          :participants="store.callParticipants"
+          :mic-enabled="store.callMicEnabled"
+          :cam-enabled="store.callCamEnabled"
+          @send="(text) => emit('send-chat', channelIdOf(tab), text)"
+          @start-call="emit('start-call', channelIdOf(tab))"
+          @leave-call="emit('leave-call')"
+          @toggle-mic="emit('toggle-mic')"
+          @toggle-cam="emit('toggle-cam')"
+        />
+      </div>
+    </template>
 
     <!-- Terminal tabs: one TerminalPane per open terminal tab, keyed by the
          stable uuid so it stays mounted for the tab's lifetime. Inactive tabs
@@ -103,24 +118,46 @@
       />
     </div>
 
-    <div class="flex flex-col flex-1 overflow-hidden" v-show="activeTabKind === 'debug'">
-      <DebugPane />
-    </div>
+    <!-- Debug tabs: DebugPane reads the global debug-log store, so it has no
+         per-tab identity, but render it per tab anyway for one uniform rule. -->
+    <template v-for="tab in debugTabs" :key="tab.key">
+      <div
+        class="flex flex-col flex-1 overflow-hidden"
+        v-show="activeTabKind === 'debug' && effectiveActiveKey === tab.key"
+      >
+        <DebugPane />
+      </div>
+    </template>
 
-    <div class="flex flex-col flex-1 overflow-hidden" v-show="activeTabKind === 'agent'">
-      <AgentPane
-        :connected="store.wsConnected"
-        :conversation-id="activeAgentConversationId"
-        :agent-slug="activeAgentSlug"
-        :project-id="projectId"
-        @agent-send="(text, images) => emit('agent-send', paneIndex, activeAgentConversationId, text, images)"
-        @agent-reset="emit('agent-reset', paneIndex, activeAgentConversationId)"
-        @agent-pick="(slug) => emit('agent-pick', paneIndex, activeAgentConversationId, slug)"
-        @agent-load="onAgentLoad"
-        @agent-set-visibility="(vis) => emit('agent-set-visibility', activeAgentConversationId, vis)"
-        @agent-stop="emit('agent-stop', activeAgentConversationId)"
-      />
-    </div>
+    <!-- Agent tabs: one AgentPane per open agent tab, keyed by the tab key so
+         each tab owns its own component instance (draft, attachments, scroll,
+         composer state). Inactive tabs stay mounted and are hidden with v-show,
+         so switching never remounts. The transcript is NOT per-instance — it
+         comes from the shared per-conversation store keyed by conversation id
+         (ADR-011); only the instance is per tab. -->
+    <template v-for="tab in agentTabs" :key="tab.key">
+      <div
+        class="flex flex-col flex-1 overflow-hidden"
+        v-show="activeTabKind === 'agent' && effectiveActiveKey === tab.key"
+      >
+        <AgentPane
+          :connected="store.wsConnected"
+          :conversation-id="agentConversationId(tab)"
+          :agent-slug="tab.agentSlug || null"
+          :project-id="projectId"
+          :composer-height-px="tab.composerHeightPx ?? null"
+          @composer-resize="(h) => (tab.composerHeightPx = h)"
+          @agent-send="(text, images) => emit('agent-send', paneIndex, agentConversationId(tab), text, images)"
+          @agent-reset="emit('agent-reset', paneIndex, agentConversationId(tab))"
+          @agent-pick="(slug) => emit('agent-pick', paneIndex, agentConversationId(tab), slug)"
+          @agent-load="(id) => onAgentLoadTab(tab, id)"
+          @agent-set-visibility="(vis) => emit('agent-set-visibility', agentConversationId(tab), vis)"
+          @agent-stop="emit('agent-stop', agentConversationId(tab))"
+          @agent-clean="(opts) => emit('agent-clean', agentConversationId(tab), opts)"
+          @agent-fork="(turn) => emit('agent-fork', agentConversationId(tab), turn)"
+        />
+      </div>
+    </template>
 
     <div class="flex flex-col flex-1 overflow-hidden" v-show="activeTabKind === 'agent-config'">
       <AgentConfigPane v-if="activeTabKind === 'agent-config'" />
@@ -201,98 +238,101 @@ const terminalDefunct = computed(() => {
   return !(store.terminalList || []).some((t) => t.uuid === uuid)
 })
 
-const activeFileId = computed(() => {
-  if (activeTabKind.value !== 'file') return ''
-  return (effectiveActiveKey.value || '').split(':').slice(1).join(':')
-})
-
 const activeSettingsProjectId = computed(() => {
   if (activeTabKind.value !== 'settings') return null
   return Number((effectiveActiveKey.value || '').split(':')[1]) || null
 })
 
-const activeChatChannelId = computed(() => {
-  if (activeTabKind.value !== 'channel') return null
-  return Number((effectiveActiveKey.value || '').split(':')[1]) || null
-})
+// ── File / channel / debug tabs (one instance per tab) ────────────────────
+const fileTabs = computed(() =>
+  (props.pane?.tabs || []).filter((t) => t.kind === 'file')
+)
+function fileIdOf(tab) {
+  return (tab?.key || '').split(':').slice(1).join(':')
+}
 
-const activeAgentConversationId = computed(() => {
-  if (activeTabKind.value !== 'agent') return null
-  const id = (effectiveActiveKey.value || '').split(':').slice(1).join(':') || null
+const channelTabs = computed(() =>
+  (props.pane?.tabs || []).filter((t) => t.kind === 'channel')
+)
+function channelIdOf(tab) {
+  const id = Number((tab?.key || '').split(':')[1])
+  return Number.isFinite(id) && id > 0 ? id : null
+}
+function channelLabelFor(tab) {
+  return tab?.label || String(channelIdOf(tab) ?? '')
+}
+
+const debugTabs = computed(() =>
+  (props.pane?.tabs || []).filter((t) => t.kind === 'debug')
+)
+
+// Per-channel chat state, read for a specific channel id so each tab renders
+// its own channel. These are functions rather than computeds because the
+// template calls them with each tab's id.
+
+// Every agent tab in this pane gets its own AgentPane (see the template).
+const agentTabs = computed(() =>
+  (props.pane?.tabs || []).filter((t) => t.kind === 'agent')
+)
+
+// A tab's conversation id, parsed from its OWN key (`agent:<uuid>`); null for a
+// fresh `agent:` tab, which has no conversation until its first send. Read
+// per-tab, never from the pane's active tab — that is the whole point of the
+// per-tab instance.
+function agentConversationId(tab) {
+  const id = (tab?.key || '').split(':').slice(1).join(':')
   return id || null
-})
+}
 
-const activeAgentSlug = computed(() => {
-  if (activeTabKind.value !== 'agent') return null
-  const tab = props.pane?.tabs?.find((t) => t.key === effectiveActiveKey.value)
-  return tab?.agentSlug || null
-})
-
-// Picking a conversation from the pane's dropdown rewrites this pane's agent tab
-// key to agent:<id> (per-pane identity) before asking ProjectPage to load it.
-// The previous conversation's reference is released so switching doesn't leak a
-// worker subscription + buffered transcript per switch.
-function onAgentLoad(id) {
-  if (!id) return
-  const tab = props.pane?.tabs?.find((t) => t.kind === 'agent' && t.key === effectiveActiveKey.value)
-  const oldId = tab?.id || null
-  if (tab) {
-    tab.key = `agent:${id}`
-    tab.id  = id
-    props.pane.activeTab = tab.key
-  }
+// Picking a conversation from a tab's dropdown rewrites THAT tab's key to
+// agent:<id> before asking ProjectPage to load it. The previous conversation's
+// reference is released (via the emit) so switching doesn't leak a worker
+// subscription + buffered transcript. The tab is passed in explicitly — with
+// one instance per tab there is no longer an "active" tab to look up.
+function onAgentLoadTab(tab, id) {
+  if (!tab || !id) return
+  const oldId = agentConversationId(tab)
+  tab.key = `agent:${id}`
+  tab.id  = id
+  props.pane.activeTab = tab.key
   emit('agent-load', id, oldId)
 }
 
-const paneMessages = computed(() => {
-  const cid = activeChatChannelId.value
+function messagesFor(cid) {
   return cid ? (store.chatMessagesMap[cid] ?? []) : []
-})
+}
 
-const paneJoining = computed(() => {
-  const cid = activeChatChannelId.value
+function joiningFor(cid) {
   return cid ? !!(store.chatJoiningMap[cid]) : false
-})
+}
 
-const paneCanSend = computed(() => {
-  const cid = activeChatChannelId.value
+function canSendFor(cid) {
   if (!cid || !store.wsConnected) return false
-  if (paneJoining.value) return false
+  if (joiningFor(cid)) return false
   return store.joinedChatChannels?.has?.(cid) ?? false
-})
+}
 
-const paneUsers = computed(() => {
-  const cid = activeChatChannelId.value
+function usersFor(cid) {
   return cid ? (store.chatUsersMap[cid] ?? []) : []
-})
+}
 
-const paneTypingMap = computed(() => {
-  const cid = activeChatChannelId.value
+function typingMapFor(cid) {
   return cid ? (store.chatTypingMap[cid] ?? {}) : {}
-})
+}
 
-const paneCallActive = computed(() => {
-  const cid = activeChatChannelId.value
+function callActiveFor(cid) {
   return !!cid && Number(store.callChannelId) === cid
-})
+}
 
 // A call is live in this channel but we haven't joined it yet — offer "Join".
-const paneCallAvailable = computed(() => {
-  const cid = activeChatChannelId.value
-  if (!cid || paneCallActive.value) return false
+function callAvailableFor(cid) {
+  if (!cid || callActiveFor(cid)) return false
   return (store.activeCalls[cid]?.length || 0) > 0
-})
+}
 
-const paneCallAvailableCount = computed(() => {
-  const cid = activeChatChannelId.value
+function callAvailableCountFor(cid) {
   return cid ? (store.activeCalls[cid]?.length || 0) : 0
-})
-
-const activeChatLabel = computed(() => {
-  if (activeTabKind.value !== 'channel') return ''
-  const fromTab = props.pane?.tabs?.find((t) => t.key === effectiveActiveKey.value)?.label
-  return fromTab || String((effectiveActiveKey.value || '').split(':')[1] || '')
-})
+}
 
 const emit = defineEmits([
   'activate-tab',
@@ -313,6 +353,8 @@ const emit = defineEmits([
   'agent-load',
   'agent-set-visibility',
   'agent-stop',
+  'agent-clean',
+  'agent-fork',
 ])
 
 function onTabBarDrop(event) {

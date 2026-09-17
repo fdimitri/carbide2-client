@@ -115,3 +115,26 @@ export async function fetchProjectBlob(projectId, path) {
   return URL.createObjectURL(res.data)
 }
 
+// Download a file or directory from the on-disk VFS and trigger a browser
+// save. A directory (including root '/') is served as a .tar.gz. The filename
+// is taken from the Content-Disposition header when present, else derived from
+// the path.
+export async function downloadProjectEntry(projectId, path) {
+  const res = await authService.api.get(`projects/${projectId}/fs/download`, {
+    params: { path },
+    responseType: 'blob',
+  })
+  const disposition = res.headers?.['content-disposition'] || ''
+  const m = disposition.match(/filename="?([^";]+)"?/)
+  const fallback = path === '/' ? 'project.tar.gz' : (path.split('/').pop() || 'download')
+  const filename = m?.[1] || fallback
+  const url = URL.createObjectURL(res.data)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+

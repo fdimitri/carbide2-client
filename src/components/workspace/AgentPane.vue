@@ -36,22 +36,35 @@
           :disabled="convoStatus === 'thinking'"
           title="Start a fresh conversation"
         >New</UiButton>
+        <UiButton
+          size="xs"
+          :disabled="!convId || convoStatus === 'thinking'"
+          title="Fork this conversation at its latest turn"
+          @click="onFork"
+        >Fork</UiButton>
       </span>
     </PaneToolbar>
 
-    <!-- Conversation picker + visibility -->
+    <!-- Status bar: conversation token totals (cached / missed / completion) -->
+    <div v-if="convId" class="flex items-center gap-3 px-3 py-1 text-ui-xs text-muted border-b border-line/60">
+      <span title="Cache hits (prompt tokens served from cache)">cached {{ fmtCost(usageTotals.cached) }}</span>
+      <span title="Cache misses (prompt tokens re-prefilled uncached)">missed {{ fmtCost(usageTotals.missed) }}</span>
+      <span title="Completion (output) tokens">out {{ fmtCost(usageTotals.completion) }}</span>
+    </div>
+
+    <!-- Peak hours (left-justified) + visibility + stop.
+         The conversation selector that used to live here is gone: conversations
+         are opened from the explorer, not chosen inside the pane (#120). -->
     <PaneToolbar class="text-ui-sm">
-      <label class="opacity-70">Conversation:</label>
-      <select
-        :value="convId || ''"
-        @change="onPickConversation($event.target.value)"
-        class="flex-1 min-w-0 px-1.5 py-0.5 rounded-ui-xs border monaco-input-bg monaco-input-fg monaco-input-border outline-none"
+      <span
+        v-if="peakWindows.length"
+        class="text-ui-xs px-1.5 py-0.5 rounded-ui-xs border font-semibold shrink-0"
+        :class="peakWindow ? 'border-amber-600/60 text-amber-400' : 'border-line text-muted'"
+        :title="peakTooltip"
       >
-        <option value="">— current (new) —</option>
-        <option v-for="c in store.agentRecent" :key="c.conversation_id" :value="c.conversation_id">
-          {{ conversationLabel(c) }}
-        </option>
-      </select>
+        {{ peakWindow ? '● peak hours' : 'off-peak' }}
+      </span>
+      <span class="ml-auto flex items-center gap-2">
       <UiButton
         v-if="convId && convoMeta.ownerIsSelf"
         size="xs"
@@ -72,7 +85,63 @@
         title="Stop the agent (interrupt model + tool activity)"
         @click="onStop"
       >Stop</UiButton>
+      </span>
     </PaneToolbar>
+
+    <!-- Debug expand: tombstone (clean) tool history (ADR-033 phase 1) -->
+    <details class="mx-3 mb-2 text-ui-sm">
+      <summary class="cursor-pointer select-none opacity-70 hover:opacity-100 py-0.5">Clean (tombstone) tool history</summary>
+      <div class="flex flex-col gap-2 mt-2 p-2 rounded-ui-sm bg-white/[0.03]">
+        <div class="flex items-center gap-2">
+          <label class="opacity-70 shrink-0">Scope</label>
+          <select v-model="cleanScope" class="px-1.5 py-0.5 rounded-ui-xs border monaco-input-bg monaco-input-fg monaco-input-border outline-none">
+            <option value="both">results + call text</option>
+            <option value="results">results only</option>
+            <option value="calls">call text only</option>
+          </select>
+          <label class="opacity-70 shrink-0">Mode</label>
+          <select v-model="cleanMode" class="px-1.5 py-0.5 rounded-ui-xs border monaco-input-bg monaco-input-fg monaco-input-border outline-none">
+            <option value="first_n">first N items</option>
+            <option value="n_size">N bytes</option>
+            <option value="before_datetime">before date/time</option>
+          </select>
+        </div>
+        <div class="flex items-center gap-2">
+          <UiInput
+            v-if="cleanMode === 'before_datetime'"
+            v-model="cleanParam"
+            type="datetime-local"
+            class="flex-1"
+            size="sm"
+            placeholder="cutoff"
+          />
+          <UiInput
+            v-else
+            v-model.number="cleanParam"
+            type="number"
+            min="1"
+            class="flex-1"
+            size="sm"
+            :placeholder="cleanMode === 'first_n' ? 'N items' : 'N bytes'"
+          />
+          <UiButton size="xs" @click="onCleanPreview">Preview</UiButton>
+          <UiButton size="xs" variant="warn" :disabled="!cleanPreview" @click="onCleanConfirm">Clean</UiButton>
+        </div>
+        <div v-if="cleanPreview" class="text-ui-xs opacity-80">
+          <div>evictable: {{ cleanPreview.total_results }} results · {{ cleanPreview.total_calls }} calls · {{ formatBytes(cleanPreview.total_bytes) }}</div>
+          <div>would remove: {{ cleanPreview.removed_results }} results · {{ cleanPreview.removed_calls }} calls · {{ formatBytes(cleanPreview.bytes_reclaimed) }}</div>
+          <div v-if="cleanPreview.verdict">
+            verdict: <span :class="cleanPreview.verdict === 'extend' ? 'text-amber' : 'text-accent-fg'">{{ cleanPreview.verdict }}</span>
+            · f={{ (cleanPreview.f * 100).toFixed(0) }}%
+            · surcharge ≈ {{ cleanPreview.surcharge != null ? cleanPreview.surcharge.toFixed(2) + '×' : '—' }}
+            · {{ cleanPreview.recovery_turns != null ? 'recovery ~' + cleanPreview.recovery_turns + ' turns' : 'no recovery' }}
+          </div>
+        </div>
+        <div v-if="cleanResult" class="text-ui-xs text-accent-fg">
+          removed: {{ cleanResult.removed_results }} results · {{ cleanResult.removed_calls }} calls · {{ formatBytes(cleanResult.bytes_reclaimed) }}
+        </div>
+      </div>
+    </details>
 
     <!-- Timeline -->
     <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-2 min-h-0" ref="scrollEl" @scroll="onScroll">
@@ -183,6 +252,18 @@
         <div v-else-if="m.kind === 'error'" class="text-ui-sm text-red-400 italic">
           {{ m.text }}
         </div>
+        <!-- Per-turn fork marker (ADR-032): fork at this logical turn's boundary -->
+        <div v-else-if="m.kind === 'turn_fork'" class="flex items-center gap-2 pl-2 text-ui-xs opacity-70">
+          <UiButton
+            size="xs"
+            :disabled="convoStatus === 'thinking'"
+            title="Fork the conversation up to and including this turn"
+            @click="onForkAt(m.fork_at_turn)"
+          >⤴ fork</UiButton>
+          <span v-if="usageByTurn[m.agent_turn_id]" class="text-muted" :title="usageTooltip(usageByTurn[m.agent_turn_id])">
+            ≈ {{ fmtCost(usageByTurn[m.agent_turn_id].cost) }} tok
+          </span>
+        </div>
         <div v-else class="text-ui-sm opacity-60 italic">{{ m.text }}</div>
       </div>
       <!-- Bottom sentinel: autoscroll anchors to this element via
@@ -193,8 +274,16 @@
       <div ref="bottomRef" class="h-px shrink-0" aria-hidden="true"></div>
     </div>
 
-    <!-- Composer (isolated so typing doesn't re-render the timeline) -->
-    <Composer :connected="connected" :agent-slug="selectedSlug" :agent-status="convoStatus" @send="onComposerSend" />
+    <!-- Composer (isolated so typing doesn't re-render the timeline). Height is
+         passed to/from the owning tab so it is per-tab, not workspace-global. -->
+    <Composer
+      :connected="connected"
+      :agent-slug="selectedSlug"
+      :agent-status="convoStatus"
+      :initial-height="composerHeightPx"
+      @send="onComposerSend"
+      @resize="(h) => emit('composer-resize', h)"
+    />
   </div>
 </template>
 
@@ -203,19 +292,23 @@ import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { renderMarkdownBlocks } from '../../utils/markdown'
 import UiButton from '../ui/UiButton.vue'
+import UiInput from '../ui/UiInput.vue'
 import PaneToolbar from '../ui/PaneToolbar.vue'
 import Avatar from '../ui/Avatar.vue'
 import Composer from './Composer.vue'
 import authService from '../../services/authService'
 import { exportConversation } from '../../services/agentService'
+import { activePeakWindow, describeWindows, wallClockInZone, windowTimeZone } from '../../utils/peakHours'
 
 const props = defineProps({
   connected: { type: Boolean, default: false },
   conversationId: { type: String, default: null },
   agentSlug: { type: String, default: null },
   projectId: { type: [Number, String], required: true },
+  // Per-tab composer height (ADR-011 §4), owned by the agent tab.
+  composerHeightPx: { type: Number, default: null },
 })
-const emit = defineEmits(['agent-send', 'agent-reset', 'agent-pick', 'agent-load', 'agent-set-visibility', 'agent-stop', 'agent-create'])
+const emit = defineEmits(['agent-send', 'agent-reset', 'agent-pick', 'agent-load', 'agent-set-visibility', 'agent-stop', 'agent-create', 'agent-clean', 'agent-fork', 'composer-resize'])
 
 const store    = useWorkspaceStore()
 const scrollEl = ref(null)
@@ -224,6 +317,7 @@ const exporting = ref(false)
 const agents   = computed(() => store.agentList || [])
 const convId   = computed(() => props.conversationId || null)
 const messages = computed(() => store.agentMessagesFor(convId.value))
+const usageRows = computed(() => store.agentUsageFor(convId.value))
 const convoStatus = computed(() => store.agentStatusFor(convId.value))
 const convoMeta   = computed(() => store.agentMetaFor(convId.value))
 const selectedSlug = computed(() => props.agentSlug || convoMeta.value.agentSlug || null)
@@ -266,19 +360,28 @@ function turnSig(items) {
 }
 
 const timeline = computed(() => {
+  // Fork boundaries: agent_turn_id -> last message turn in that logical turn.
+  const boundary = new Map()
+  for (const m of messages.value) {
+    if (m.agent_turn_id == null) continue
+    const cur = boundary.get(m.agent_turn_id)
+    if (cur == null || m.turn > cur) boundary.set(m.agent_turn_id, m.turn)
+  }
+  const forkTurns = new Set(boundary.values())
+
   // Pass 1: merge tool_call + tool_result by id into one `tool` row. Each row
   // carries the source message's stable uid so turn keys don't shift.
   const merged = []
   const byId = new Map()
   for (const m of messages.value) {
     if (m.kind === 'tool_call') {
-      const row = { kind: 'tool', id: m.id, name: m.name, args: m.args, result: undefined, done: false, _uid: uidFor(m) }
+      const row = { kind: 'tool', id: m.id, name: m.name, args: m.args, result: undefined, done: false, turn: m.turn, agent_turn_id: m.agent_turn_id, _uid: uidFor(m) }
       if (m.id != null) byId.set(m.id, row)
       merged.push(row)
     } else if (m.kind === 'tool_result') {
       const row = m.id != null ? byId.get(m.id) : null
-      if (row) { row.result = m.result; row.done = true }
-      else merged.push({ kind: 'tool', id: m.id, name: m.name, result: m.result, done: true, _uid: uidFor(m) })
+      if (row) { row.result = m.result; row.done = true; row.turn = m.turn; row.agent_turn_id = m.agent_turn_id }
+      else merged.push({ kind: 'tool', id: m.id, name: m.name, result: m.result, done: true, turn: m.turn, agent_turn_id: m.agent_turn_id, _uid: uidFor(m) })
     } else {
       merged.push(m)
     }
@@ -288,7 +391,7 @@ const timeline = computed(() => {
   let turn = null
   for (const m of merged) {
     if (m.kind === 'tool' || m.kind === 'assistant') {
-      if (!turn) { turn = { kind: 'assistant_turn', items: [], _uid: (m._uid ?? uidFor(m)) }; out.push(turn) }
+      if (!turn) { turn = { kind: 'assistant_turn', items: [], _uid: (m._uid ?? uidFor(m)), turn: null, agent_turn_id: null }; out.push(turn) }
       if (m.kind === 'tool') {
         const last = turn.items[turn.items.length - 1]
         if (last && last.type === 'tools') last.tools.push(m)
@@ -296,6 +399,8 @@ const timeline = computed(() => {
       } else {
         turn.items.push({ type: 'text', text: m.text, reasoning: m.reasoning, truncated: m.truncated, muted: m.muted, streaming: m.streaming, stopped: m.stopped })
       }
+      if (m.turn != null) turn.turn = Math.max(turn.turn ?? -1, m.turn)
+      if (m.agent_turn_id != null) turn.agent_turn_id = m.agent_turn_id
     } else {
       turn = null
       out.push({ ...m, _uid: uidFor(m), _sig: 'x' + (m.text || '').length + ':' + (m.images ? m.images.length : 0) })
@@ -305,7 +410,22 @@ const timeline = computed(() => {
   for (const row of out) {
     if (row.kind === 'assistant_turn') row._sig = turnSig(row.items)
   }
-  return out
+  // Emit a per-turn fork marker after each completed logical turn (assistant
+  // rows only; a user-only turn is not a valid fork point).
+  const withForks = []
+  for (const row of out) {
+    withForks.push(row)
+    if (row.kind === 'assistant_turn' && row.turn != null && forkTurns.has(row.turn)) {
+      withForks.push({
+        kind: 'turn_fork',
+        fork_at_turn: row.turn,
+        agent_turn_id: row.agent_turn_id,
+        _uid: `fork_${row.turn}`,
+        _sig: `fork:${row.turn}`,
+      })
+    }
+  }
+  return withForks
 })
 
 // Reasoning disclosure open state. Defaults to open-while-streaming and
@@ -352,6 +472,22 @@ const activeAgentMeta = computed(() => {
 })
 const activeAgentDescription = computed(() => activeAgent.value?.description || '')
 
+// Peak hours. Each window carries its own timezone, so the badge compares the
+// current instant against every window in that window's own zone. `now` ticks
+// so it crosses in/out of a window without a reload.
+const now = ref(new Date())
+const peakWindows = computed(() =>
+  Array.isArray(activeAgent.value?.peak_hours) ? activeAgent.value.peak_hours : []
+)
+const peakWindow = computed(() => activePeakWindow(peakWindows.value, now.value))
+const peakTooltip = computed(() => {
+  const w = peakWindow.value
+  const head = w
+    ? `In a peak-hours window — ${wallClockInZone(windowTimeZone(w), now.value).hhmm} ${windowTimeZone(w)}`
+    : 'Not in a peak-hours window'
+  return `${head}\n${describeWindows(peakWindows.value)}`
+})
+
 // The composer owns draft + image state; re-pin to the bottom on send.
 function onComposerSend(text, images) {
   pinned = true
@@ -361,6 +497,89 @@ function onComposerSend(text, images) {
 function onReset()  { emit('agent-reset') }
 function onPickAgent(slug) { emit('agent-pick', slug) }
 function onStop()   { emit('agent-stop') }
+function onFork()   { emit('agent-fork', null) }
+function onForkAt(turn) { emit('agent-fork', turn) }
+
+// ADR-032/033: per-turn token cost, from cached/uncached usage deltas.
+// Cached input costs ~1/3 of uncached; completion output is full price.
+// Cost is normalized to uncached-input units: cached/3 + uncached + completion.
+// Deltas (turn - last_turn) attribute prompt growth to a turn.
+function tokenCost(row) {
+  const cached = row?.cached_tokens || 0
+  const uncached = row?.uncached_tokens || 0
+  const completion = row?.completion_tokens || 0
+  return cached / 3 + uncached + completion
+}
+
+// Group usage rows by logical turn; each turn's cost is the sum of its
+// requests' costs. Returns { [agent_turn_id]: { cached, uncached, completion, cost } }.
+const usageByTurn = computed(() => {
+  const map = {}
+  for (const r of usageRows.value) {
+    const tid = r.agent_turn_id
+    if (tid == null) continue
+    const e = (map[tid] ||= { cached: 0, uncached: 0, completion: 0, cost: 0 })
+    e.cached    += r.cached_tokens || 0
+    e.uncached  += r.uncached_tokens || 0
+    e.completion += r.completion_tokens || 0
+    e.cost      += tokenCost(r)
+  }
+  return map
+})
+
+function fmtCost(c) {
+  if (c == null || !c) return ''
+  if (c < 1000) return `${Math.round(c)}`
+  if (c < 1000000) return `${(c / 1000).toFixed(1)}k`
+  return `${(c / 1000000).toFixed(2)}M`
+}
+
+function usageTooltip(e) {
+  return `cached ${e.cached} · uncached ${e.uncached} · completion ${e.completion} · cost ${Math.round(e.cost)} tok`
+}
+
+// Conversation-wide totals for the status bar: cached (cache hits) vs missed
+// (uncached prompt tokens that re-prefilled), plus completion output.
+const usageTotals = computed(() => {
+  let cached = 0, missed = 0, completion = 0
+  for (const r of usageRows.value) {
+    cached     += r.cached_tokens || 0
+    missed     += r.uncached_tokens || 0
+    completion += r.completion_tokens || 0
+  }
+  return { cached, missed, completion }
+})
+
+// ADR-033 phase 1: clean (tombstone) tool history. Preview does a dry-run;
+// confirm evicts. The preview/result land in store.agentCleanByConversation.
+const cleanMode  = ref('first_n')
+const cleanScope = ref('both')
+const cleanParam = ref(null)
+
+const cleanInfo    = computed(() => store.agentCleanFor(convId.value))
+const cleanPreview = computed(() => cleanInfo.value.preview || null)
+const cleanResult  = computed(() => cleanInfo.value.result || null)
+
+function cleanPayload(dryRun) {
+  const p = { dryRun, mode: cleanMode.value, scope: cleanScope.value }
+  if (cleanMode.value === 'before_datetime') {
+    p.cutoff = cleanParam.value ? new Date(cleanParam.value).toISOString() : ''
+  } else if (cleanMode.value === 'first_n') {
+    p.n = cleanParam.value
+  } else {
+    p.bytes = cleanParam.value
+  }
+  return p
+}
+function onCleanPreview() { emit('agent-clean', cleanPayload(true)) }
+function onCleanConfirm() { emit('agent-clean', cleanPayload(false)) }
+
+function formatBytes(n) {
+  if (n == null) return '—'
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / 1024 / 1024).toFixed(2)} MB`
+}
 
 // Export the current conversation as a JSON file (#33). The server returns
 // lossless JSON; we wrap it in a Blob and trigger a browser download.
@@ -385,35 +604,9 @@ async function onExport() {
   }
 }
 
-function onPickConversation(id) {
-  if (!id) { emit('agent-reset'); return }
-  if (id === convId.value) return
-  emit('agent-load', id)
-}
-
 function onToggleVisibility() {
   const next = convoMeta.value.visibility === 'project' ? 'private' : 'project'
   emit('agent-set-visibility', next)
-}
-
-function conversationLabel(c) {
-  const who    = c.owner_is_self ? 'you' : (c.owner_name || `user ${c.owner_user_id}`)
-  const lock   = c.visibility === 'private' ? '\uD83D\uDD12 ' : ''
-  const when   = relativeTime(c.last_activity_at)
-  const title  = c.title || '(untitled)'
-  const tail   = `· ${c.agent_name} · ${who} · ${when}`
-  return `${lock}${title} ${tail}`
-}
-
-function relativeTime(iso) {
-  if (!iso) return ''
-  const d = new Date(iso).getTime()
-  if (!d) return ''
-  const s = Math.round((Date.now() - d) / 1000)
-  if (s < 60)        return `${s}s ago`
-  if (s < 3600)      return `${Math.round(s/60)}m ago`
-  if (s < 86400)     return `${Math.round(s/3600)}h ago`
-  return `${Math.round(s/86400)}d ago`
 }
 
 function shortArgs(args) {
@@ -572,6 +765,7 @@ function onResizeObserved() {
 }
 
 let resizeObserver = null
+let peakTimer = null
 
 onMounted(async () => {
   await nextTick()
@@ -580,9 +774,16 @@ onMounted(async () => {
     resizeObserver = new ResizeObserver(onResizeObserved)
     resizeObserver.observe(scrollEl.value)
   }
+  // Re-evaluate the peak-hours badge periodically; 30s is plenty for a
+  // minute-grained window boundary.
+  peakTimer = setInterval(() => { now.value = new Date() }, 30_000)
 })
 
 onBeforeUnmount(() => {
+  if (peakTimer != null) {
+    clearInterval(peakTimer)
+    peakTimer = null
+  }
   if (scrollRaf != null) {
     cancelAnimationFrame(scrollRaf)
     scrollRaf = null

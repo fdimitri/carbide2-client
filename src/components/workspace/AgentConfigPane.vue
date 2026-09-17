@@ -198,6 +198,52 @@
               </UiInput>
             </UiField>
           </section>
+          <!-- ── Peak hours ─────────────────────────────────────────────── -->
+          <section class="mb-7">
+            <h3 class="text-ui-xs font-semibold text-muted uppercase tracking-widest mb-3">Peak hours</h3>
+            <p class="text-ui-xs text-muted mb-3">
+              Windows when the provider is rate-limited, slow, or billed at a premium.
+              Each window keeps the timezone its times were entered in.
+            </p>
+
+            <div v-if="!form.peak_hours.length" class="text-ui-sm text-muted mb-2">
+              No peak hours configured.
+            </div>
+
+            <div
+              v-for="(w, i) in form.peak_hours"
+              :key="i"
+              class="flex flex-col gap-2 mb-2 p-3 rounded-lg border border-line bg-bg-2/40"
+            >
+              <div class="flex items-center gap-3 flex-wrap">
+                <label
+                  v-for="d in DAY_OPTIONS"
+                  :key="d.value"
+                  class="flex items-center gap-1 text-ui-xs cursor-pointer select-none"
+                >
+                  <UiCheckbox :value="d.value" v-model="w.days" />
+                  <span>{{ d.label }}</span>
+                </label>
+              </div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <label class="text-ui-xs text-muted">Start</label>
+                <UiInput type="time" v-model="w.start" class="w-32" />
+                <label class="text-ui-xs text-muted">End</label>
+                <UiInput type="time" v-model="w.end" class="w-32" />
+                <UiInput as="select" v-model="w.tz" class="w-72">
+                  <option v-for="tz in tzOptions" :key="tz" :value="tz">{{ tz }}</option>
+                </UiInput>
+                <UiButton size="xs" variant="warn" @click="removeWindow(i)">Remove</UiButton>
+              </div>
+              <p class="text-ui-xs text-muted">
+                {{ formatWindow(w) }}
+                <span v-if="w.start && w.end && w.start > w.end" class="opacity-70">(crosses midnight)</span>
+              </p>
+            </div>
+
+            <UiButton size="sm" variant="ghost" @click="addWindow">+ Add window</UiButton>
+          </section>
+
           <!-- ── Orchestration ────────────────────────────────── -->
           <section class="mb-7">
             <h3 class="text-ui-xs font-semibold text-muted uppercase tracking-widest mb-3">Orchestration</h3>
@@ -255,7 +301,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { listAgents, updateAgent, createAgent, deleteAgent } from '../../services/agentService'
+import { formatWindow, browserTimeZone, timeZoneList, DEFAULT_TZ } from '../../utils/peakHours'
 import workerSocket from '../../services/workerSocket'
 import UiInput from '../ui/UiInput.vue'
 import UiCheckbox from '../ui/UiCheckbox.vue'
@@ -264,6 +310,19 @@ import UiButton from '../ui/UiButton.vue'
 
 // Mirrors Agent::ROLES (server).
 const ROLES = ['general', 'coder', 'reviewer', 'safety', 'router']
+
+// Peak-hours day picker, Mon-first because a work week reads that way; the
+// wire format is lowercase and the server normalizes order anyway.
+const DAY_OPTIONS = [
+  { value: 'mon', label: 'Mon' }, { value: 'tue', label: 'Tue' },
+  { value: 'wed', label: 'Wed' }, { value: 'thu', label: 'Thu' },
+  { value: 'fri', label: 'Fri' }, { value: 'sat', label: 'Sat' },
+  { value: 'sun', label: 'Sun' },
+]
+
+// Zones offered by the per-window picker. A window's zone is part of the
+// window: nothing is converted on load or save.
+const tzOptions = computed(() => timeZoneList())
 
 // The tool allowlist is discovered live from the worker (agent/tools); this
 // static list is only a fallback for a worker that doesn't answer. See #73.
@@ -310,6 +369,7 @@ function loadForm(agent) {
     max_tokens:         s.max_tokens ?? 2048,
     reasoning_effort:   s.reasoning_effort ?? '',
     max_turns:          agent.max_turns ?? null,
+    peak_hours:         normalizeWindows(agent.peak_hours),
   }
   savedOk.value   = false
   saveError.value = ''
@@ -371,31 +431,77 @@ async function remove() {
   if (!window.confirm(`Delete agent "${target.name}"? This cannot be undone.`)) return
   deleting.value  = true
   saveError.value = ''
-  try {
-    await deleteAgent(target.id)
-    agents.value = agents.value.filter((a) => a.id !== target.id)
-    if (agents.value.length) select(agents.value[0].id)
-    else { form.value = null; selectedId.value = null }
-  } catch (e) {
-    saveError.value = e.response?.data?.error || ('Failed to delete: ' + (e.message || e))
-  } finally {
-    deleting.value = false
-  }
+  // The worker deletes and broadcasts; agent/deleted (or system/error) settles
+  // `deleting`.
+  workerSocket.send('agent', 'delete', { id: target.id })
 }
 
 onMounted(async () => {
   loadToolCatalog()
+  socketOffs.push(
+    // The admin list. Distinct from agent/list, which is the enabled-only
+    // catalog the picker uses — a disabled agent must still be editable.
+    workerSocket.on('agent', 'all', (payload) => {
+      agents.value = Array.isArray(payload?.agents) ? payload.agents : []
+      loading.value = false
+      if (!selectedId.value && !isNew.value && agents.value.length) select(agents.value[0].id)
+    }),
+    // The worker saved/created. It has already broadcast the catalog to everyone
+    // (including this socket), so the store is current; we only need this
+    // socket's own selection and form moved onto the saved row.
+    workerSocket.on('agent', 'saved', (payload) => {
+      const a = payload?.agent
+      if (!a) return
+      const idx = agents.value.findIndex((x) => x.id === a.id)
+      if (idx === -1) agents.value.push(a)
+      else agents.value[idx] = a
+      isNew.value      = false
+      selectedId.value = a.id
+      loadForm(a)
+      saving.value = false
+      savedOk.value = true
+    }),
+    workerSocket.on('agent', 'deleted', (payload) => {
+      const id = payload?.id
+      if (id != null) {
+        agents.value = agents.value.filter((a) => a.id !== id)
+        if (selectedId.value === id) {
+          if (agents.value.length) select(agents.value[0].id)
+          else { form.value = null; selectedId.value = null }
+        }
+      }
+      deleting.value = false
+    }),
+    // Command.error arrives as system/error. Only surface it here while an
+    // admin action is in flight; otherwise it belongs to whatever else asked.
+    workerSocket.on('system', 'error', (payload) => {
+      const msg = payload?.message || ''
+      // A worker that predates agent/all would otherwise leave the pane on
+      // "Loading…" forever, since there is no reply to fail.
+      if (loading.value && msg.includes('unknown agent cmd: all')) {
+        loadError.value = 'This worker does not serve agent config over the socket yet.'
+        loading.value = false
+        return
+      }
+      if (!saving.value && !deleting.value) return
+      saveError.value = msg || 'agent config write failed'
+      saving.value    = false
+      deleting.value  = false
+    }),
+  )
   try {
-    agents.value = await listAgents()
-    if (agents.value.length) select(agents.value[0].id)
+    workerSocket.send('agent', 'all', {})
   } catch (e) {
     loadError.value = 'Failed to load agents: ' + (e.message || e)
-  } finally {
     loading.value = false
   }
 })
 
-onUnmounted(stopToolCatalog)
+onUnmounted(() => {
+  stopToolCatalog()
+  socketOffs.forEach((off) => off && off())
+  socketOffs.length = 0
+})
 
 // Ask the worker which tools it can expose. If it doesn't answer we leave
 // toolCatalog null so toolOptions uses the static fallback — an older worker
@@ -425,6 +531,37 @@ function loadToolCatalog() {
   workerSocket.send('agent', 'tools', {})
 }
 
+// Copy the peak-hour windows into editable rows (the stored value is a plain
+// JSON array of {days,start,end,tz} hashes; we deep-copy so edits don't mutate
+// the list we loaded). Times are stored exactly as entered, in the window's own
+// zone — there is no conversion step.
+function normalizeWindows(raw) {
+  if (!Array.isArray(raw)) return []
+  return raw.map((w) => ({
+    days:  Array.isArray(w?.days) ? w.days.map((d) => String(d).toLowerCase()) : [],
+    start: w?.start ?? '09:00',
+    end:   w?.end ?? '17:00',
+    // Windows predating the zone field read as UTC, which is what they meant.
+    tz:    w?.tz || DEFAULT_TZ,
+  }))
+}
+
+function addWindow() {
+  form.value.peak_hours.push({
+    days: ['mon', 'tue', 'wed', 'thu', 'fri'],
+    start: '09:00',
+    end: '17:00',
+    tz: browserTimeZone(),
+  })
+}
+
+function removeWindow(i) {
+  form.value.peak_hours.splice(i, 1)
+}
+
+// Socket subscriptions registered for the lifetime of the pane.
+const socketOffs = []
+
 async function save() {
   if (!form.value) return
   saving.value    = true
@@ -432,6 +569,8 @@ async function save() {
   saveError.value = ''
   try {
     const payload = {
+      id:                 isNew.value ? null : selectedAgent.value?.id,
+      slug:               (form.value.slug || '').trim(),
       name:               form.value.name,
       description:        form.value.description,
       role:               form.value.role,
@@ -450,28 +589,18 @@ async function save() {
           ? { reasoning_effort: form.value.reasoning_effort }
           : {}),
       },
+      // Stored as entered: days, times, and the zone they were entered in. An
+      // empty array clears them.
+      peak_hours:         form.value.peak_hours,
     }
     // Only send api_key when the admin typed one (blank preserves the stored key).
     if (form.value.api_key) payload.api_key = form.value.api_key
 
-    let result
-    if (isNew.value) {
-      payload.slug = (form.value.slug || '').trim()
-      result = await createAgent(payload)
-      agents.value.push(result)
-      isNew.value      = false
-      selectedId.value = result.id
-    } else {
-      if (!selectedAgent.value) return
-      result = await updateAgent(selectedAgent.value.id, payload)
-      const idx = agents.value.findIndex((a) => a.id === result.id)
-      if (idx !== -1) agents.value[idx] = result
-    }
-    loadForm(result)
-    savedOk.value = true
+    // Fire and forget: agent/saved (or system/error) settles `saving` and the
+    // selection, and the worker's own broadcast refreshes the catalog.
+    workerSocket.send('agent', 'save', payload)
   } catch (e) {
-    saveError.value = e.response?.data?.error || ('Failed to save: ' + (e.message || e))
-  } finally {
+    saveError.value = e.message || 'Failed to save'
     saving.value = false
   }
 }

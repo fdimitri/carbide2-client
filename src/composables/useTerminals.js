@@ -20,6 +20,14 @@ export function useTerminals({ error, bindTabToActivePane, activePane }) {
 
   let createTerminalTimeout = null
 
+  // A terminal create can now legitimately take a long time. Under ADR-029 the
+  // shell is scaled to zero when idle, so the first terminal after an idle
+  // period waits for a StatefulSet to schedule, possibly pull an image, and
+  // pass its readiness probe. The worker gives that 90s before it gives up;
+  // anything shorter here just reports a spurious failure over a request that
+  // is still perfectly alive and about to succeed.
+  const CREATE_TIMEOUT_MS = 100000
+
   // Suggest a sensible default name based on whether the terminal is being
   // created agent-accessible. AgentShell-N is the convention the user picked
   // so all agent-touchable terminals are visually grouped/searchable.
@@ -70,10 +78,10 @@ export function useTerminals({ error, bindTabToActivePane, activePane }) {
       debugLog.push({ severity: 'info', source: 'term', action: 'create-requested', detail: `name=${options.name || '(default)'} agent=${!!options.agent_accessible}` })
       createTerminalTimeout = setTimeout(() => {
         terminalLoading.value = false
-        error.value = 'Timed out creating terminal. Check worker logs and JWT secret.'
+        error.value = 'Timed out creating terminal. The workspace shell did not become ready — check its status in the workspace config dialog.'
         debugLog.push({ severity: 'error', source: 'term', action: 'create-timeout', detail: `name=${options.name || '(default)'}` })
         createTerminalTimeout = null
-      }, 5000)
+      }, CREATE_TIMEOUT_MS)
     } catch (e) {
       if (createTerminalTimeout) {
         clearTimeout(createTerminalTimeout)

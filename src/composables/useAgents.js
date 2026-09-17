@@ -28,6 +28,7 @@ export function useAgents({ error, bindTabToActivePane, onConversationLoaded = n
   const {
     agentList, agentListLoaded, agentRecent,
     agentMessagesByConversation, agentStatusByConversation, agentMetaByConversation,
+    agentCleanByConversation, agentUsageByConversation,
   } = storeToRefs(store)
 
   function openAgentPane() {
@@ -50,10 +51,22 @@ export function useAgents({ error, bindTabToActivePane, onConversationLoaded = n
     // (pane) owns resetting its tab key to the fresh agent:<uuid>.
   }
 
+  // Change which agent a conversation runs as (#120). Unlike selectAgent this
+  // does NOT start a new conversation: the transcript is kept, the worker
+  // updates the row and broadcasts agent_changed, and the next turn is answered
+  // by the new agent. Any member who can see the conversation may do this.
+  function setAgent(conversationId, slug) {
+    if (!conversationId || !slug) return
+    workerSocket.send('agent', 'set_agent', { conversation_id: conversationId, agent_slug: slug })
+    debugLog.push({ source: 'agent', action: 'set_agent',
+      detail: `convo=${conversationId} -> ${slug}` })
+  }
+
   function loadConversation(conversationId) {
     if (!conversationId) return
     workerSocket.send('agent', 'load', { conversation_id: conversationId })
     workerSocket.send('agent', 'subscribe', { conversation_id: conversationId })
+    workerSocket.send('agent', 'usage', { conversation_id: conversationId })
   }
 
   // Ref-counted unsubscribe: callers increment/decrement per pane tab reference.
@@ -114,6 +127,39 @@ export function useAgents({ error, bindTabToActivePane, onConversationLoaded = n
     if (!conversationId) return
     workerSocket.send('agent', 'stop', { conversation_id: conversationId })
     debugLog.push({ source: 'agent', action: 'stop', detail: `convo=${conversationId}` })
+  }
+
+  // Rename a conversation's title (owner-only on the worker).
+  function renameConversation(conversationId, title) {
+    if (!conversationId) return
+    workerSocket.send('agent', 'rename', { conversation_id: conversationId, title })
+    debugLog.push({ source: 'agent', action: 'rename', detail: `convo=${conversationId}` })
+  }
+
+  // ADR-032: fork a conversation at a turn boundary (or latest when no turn
+  // is given). The worker replies agent/forked with the new conversation id.
+  function forkConversation(conversationId, forkAtTurn = null) {
+    if (!conversationId) return
+    const payload = { conversation_id: conversationId }
+    if (forkAtTurn != null) payload.fork_at_turn = forkAtTurn
+    workerSocket.send('agent', 'fork', payload)
+    debugLog.push({ source: 'agent', action: 'fork',
+      detail: `convo=${conversationId} turn=${forkAtTurn ?? 'latest'}` })
+  }
+
+  // ADR-033 phase 1: clean (tombstone) tool results/calls. dry_run previews
+  // without writing; confirm evicts. Response lands in store.agentCleanByConversation.
+  function clean(conversationId, opts = {}) {
+    if (!conversationId) return
+    const payload = { conversation_id: conversationId, dry_run: !!opts.dryRun }
+    if (opts.mode)   payload.mode   = opts.mode
+    if (opts.scope)  payload.scope  = opts.scope
+    if (opts.n != null)    payload.n     = opts.n
+    if (opts.bytes != null) payload.bytes = opts.bytes
+    if (opts.cutoff) payload.cutoff = opts.cutoff
+    workerSocket.send('agent', 'clean', payload)
+    debugLog.push({ source: 'agent', action: opts.dryRun ? 'clean_preview' : 'clean',
+      detail: `convo=${conversationId} mode=${opts.mode || '?'} scope=${opts.scope || 'both'}` })
   }
 
   function currentUserName() {
@@ -202,6 +248,9 @@ export function useAgents({ error, bindTabToActivePane, onConversationLoaded = n
           pendingCreates.delete(slug)
           waiters.forEach((resolve) => resolve(cid))
         }
+        // A new conversation changes the sidebar/explorer lists, not just this
+        // client's stream state.
+        workerSocket.send('agent', 'recent', { limit: 25 })
         debugLog.push({ source: 'agent', action: 'created',
           detail: `convo=${cid || '?'} agent=${slug || '?'}` })
       }),
@@ -283,6 +332,15 @@ export function useAgents({ error, bindTabToActivePane, onConversationLoaded = n
         const finish    = p?.finish_reason || null
         const reasoning = p?.reasoning || null
         const truncated = finish === 'length'
+        // Backfill turn identity onto the just-completed turn's live messages
+        // (they were appended without turn/agent_turn_id; load() would carry
+        // them). Walk back from the end to the last user message.
+        const arr = messages(cid)
+        for (let i = arr.length - 1; i >= 0; i--) {
+          if (arr[i].kind === 'user') break
+          if (p?.turn != null) arr[i].turn = p.turn
+          if (p?.agent_turn_id != null) arr[i].agent_turn_id = p.agent_turn_id
+        }
         const live = liveStreamMsg(cid)
         if (live) {
           live.streaming = false
@@ -307,6 +365,7 @@ export function useAgents({ error, bindTabToActivePane, onConversationLoaded = n
           action: 'done',
           detail: `turn=${p?.turn ?? '?'} finish=${finish || '?'} chars=${(p?.content || '').length}${reasoning ? ` reasoning=${reasoning.length}` : ''}` })
         workerSocket.send('agent', 'recent', { limit: 25 })
+        workerSocket.send('agent', 'usage', { conversation_id: cid })
       }),
       workerSocket.on('agent', 'error', (p) => {
         const cid = p?.conversation_id
@@ -317,6 +376,17 @@ export function useAgents({ error, bindTabToActivePane, onConversationLoaded = n
         }
         debugLog.push({ source: 'agent', severity: 'error', action: 'error', detail: msg })
       }),
+      workerSocket.on('agent', 'agent_changed', (p) => {
+        const cid = p?.conversation_id
+        if (!cid) return
+        const m = meta(cid)
+        if (m && p?.agent_slug) m.agentSlug = p.agent_slug
+        // Re-list so the sidebar/explorer (and its agent grouping) re-derive
+        // from the authoritative rows rather than patching a single field.
+        workerSocket.send('agent', 'recent', { limit: 25 })
+        debugLog.push({ source: 'agent', action: 'agent_changed',
+          detail: `convo=${cid} -> ${p?.agent_slug || '?'}` })
+      }),
       workerSocket.on('agent', 'recent', (p) => {
         agentRecent.value = Array.isArray(p?.conversations) ? p.conversations : []
       }),
@@ -326,6 +396,7 @@ export function useAgents({ error, bindTabToActivePane, onConversationLoaded = n
         store.ensureAgentConversation(cid)
         const arr = agentMessagesByConversation.value[cid]
         arr.splice(0, arr.length, ...(Array.isArray(p?.messages) ? p.messages : []))
+        if (Array.isArray(p?.usage)) agentUsageByConversation.value[cid] = p.usage
         agentStatusByConversation.value[cid] = 'idle'
         const m = meta(cid)
         m.visibility = p?.visibility || 'project'
@@ -335,6 +406,11 @@ export function useAgents({ error, bindTabToActivePane, onConversationLoaded = n
         if (typeof onConversationLoaded === 'function') onConversationLoaded(cid, p?.agent || null)
         debugLog.push({ source: 'agent', action: 'loaded',
           detail: `convo=${cid} msgs=${(p?.messages || []).length} vis=${p?.visibility}` })
+      }),
+      workerSocket.on('agent', 'usage', (p) => {
+        const cid = p?.conversation_id
+        if (!cid) return
+        agentUsageByConversation.value[cid] = Array.isArray(p?.rows) ? p.rows : []
       }),
       workerSocket.on('agent', 'visibility_changed', (p) => {
         const cid = p?.conversation_id
@@ -355,6 +431,35 @@ export function useAgents({ error, bindTabToActivePane, onConversationLoaded = n
         debugLog.push({ source: 'agent', action: 'unsubscribed',
           detail: `convo=${p?.conversation_id || '?'}` })
       }),
+      workerSocket.on('agent', 'clean_preview', (p) => {
+        const cid = p?.conversation_id
+        if (!cid) return
+        agentCleanByConversation.value[cid] = { preview: p, result: undefined }
+        debugLog.push({ source: 'agent', action: 'clean_preview',
+          detail: `convo=${cid} remove=${p?.removed_results || 0}r/${p?.removed_calls || 0}c ${p?.bytes_reclaimed || 0}B` })
+      }),
+      workerSocket.on('agent', 'cleaned', (p) => {
+        const cid = p?.conversation_id
+        if (!cid) return
+        agentCleanByConversation.value[cid] = { ...(agentCleanByConversation.value[cid] || {}), result: p }
+        workerSocket.send('agent', 'recent', { limit: 25 })
+        debugLog.push({ source: 'agent', action: 'cleaned',
+          detail: `convo=${cid} removed ${p?.removed_results || 0}r/${p?.removed_calls || 0}c ${p?.bytes_reclaimed || 0}B` })
+      }),
+      workerSocket.on('agent', 'forked', (p) => {
+        const cid = p?.conversation_id
+        if (!cid) return
+        workerSocket.send('agent', 'recent', { limit: 25 })
+        debugLog.push({ source: 'agent', action: 'forked',
+          detail: `convo=${cid} from=${p?.forked_from_conversation_id || '?'} @turn=${p?.forked_at_turn ?? '?'}` })
+      }),
+      workerSocket.on('agent', 'renamed', (p) => {
+        const cid = p?.conversation_id
+        if (!cid) return
+        workerSocket.send('agent', 'recent', { limit: 25 })
+        debugLog.push({ source: 'agent', action: 'renamed',
+          detail: `convo=${cid} -> ${p?.title || ''}` })
+      }),
     )
   }
 
@@ -362,9 +467,10 @@ export function useAgents({ error, bindTabToActivePane, onConversationLoaded = n
     agentList, agentListLoaded, agentRecent,
     agentMessagesByConversation, agentStatusByConversation, agentMetaByConversation,
     messages, status, meta,
-    openAgentPane, selectAgent, loadConversation, createConversation,
+    openAgentPane, selectAgent, setAgent, loadConversation, createConversation,
     retain, release,
     setVisibility, stop, send, releaseAgentConversation: store.releaseAgentConversation,
+    clean, forkConversation, renameConversation,
     registerHandlers,
   }
 }

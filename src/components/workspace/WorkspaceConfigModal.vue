@@ -1,9 +1,10 @@
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import Dialog from 'primevue/dialog'
 import UiButton from '../ui/UiButton.vue'
 import {
-  listTemplates, listRegistryImages, patchWorkspace, rollWorkspace, getWorkspace
+  listTemplates, listRegistryImages, patchWorkspace, rollWorkspace, getWorkspace,
+  getShellStatus, setShellMode
 } from '../../services/workspaceService'
 
 const props = defineProps({
@@ -14,12 +15,45 @@ const emit = defineEmits(['update:visible', 'close', 'changed'])
 
 const templates = ref([])
 const registry = ref(null)          // { images: [...] } or null when no registry
-const registryError = ref(false)    // true -> no registry configured (503)
+// 503 means no registry is configured; anything else means one IS configured
+// and the listing failed, which needs a different action from the operator.
+// Collapsing the two sent someone hunting a picker bug while the real fault was
+// a 401 from the registry.
+const registryError = ref(false)
+const registryFault = ref('')
 const error = ref('')
 const busy = ref(false)
 
 const selectedTemplate = ref('')
 const selectedImageTag = ref('')
+const selectedShellRepo = ref('')
+const selectedShellImageTag = ref('')
+
+// ADR-029 shell lifecycle. Phase is derived server-side from the live pod on
+// every call, so this is polled rather than read once: a shell can idle down,
+// cold start, or fail an image pull entirely between opening the dialog and
+// looking at it.
+const shell = ref(null)
+const shellBusy = ref(false)
+let shellPoll = null
+
+const SHELL_MODES = [
+  { value: 'eager',    label: 'Eager — always running' },
+  { value: 'lazy',     label: 'Lazy — start on demand, stop when idle' },
+  { value: 'disabled', label: 'Disabled — no shell' },
+]
+
+// Reason is only ever populated for a Failed phase, and it is a kubelet reason
+// (ImagePullBackOff, CrashLoopBackOff, ...) rather than prose. Showing it raw
+// is the point: it is the string you would search for.
+const shellPhaseClass = computed(() => {
+  switch (shell.value?.phase) {
+    case 'Running':  return 'text-success'
+    case 'Failed':   return 'text-warn'
+    case 'Starting': return 'text-amber'
+    default:         return 'text-muted'
+  }
+})
 
 const current = ref(null)
 
@@ -27,18 +61,93 @@ const workspaceImages = computed(() =>
   (registry.value?.images || []).find((i) => i.repository === 'carbide2')?.tags || []
 )
 
-watch(() => props.visible, (v) => { if (v) load() }, { immediate: true })
+// Shell variants live in the repo name (carbide2-shell, carbide2-shell-rust, ...),
+// so the shell picker is repo + tag, unlike the workspace picker's tag-only.
+const shellRepos = computed(() =>
+  (registry.value?.images || []).filter((i) => i.repository.startsWith('carbide2-shell'))
+)
+
+const selectedShellTags = computed(() =>
+  shellRepos.value.find((r) => r.repository === selectedShellRepo.value)?.tags || []
+)
+
+// Each tag is { tag, build_time, version, codename } (ADR-032 versioning). The
+// release version/codename come from the image's org.carbide.* labels; render
+// them prominently so the picker shows the manifest version, not just SHAs.
+function formatBuildTime(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (!d.getTime()) return ''
+  return d.toLocaleString()
+}
+
+function formatImageLabel(t) {
+  const parts = []
+  if (t.version) parts.push(t.version + (t.codename ? `-${t.codename}` : ''))
+  parts.push(t.tag)
+  if (t.build_time) parts.push(formatBuildTime(t.build_time))
+  return parts.join(' · ')
+}
+
+watch(() => props.visible, (v) => {
+  if (v) {
+    load()
+    refreshShell()
+    shellPoll = setInterval(refreshShell, 5000)
+  } else if (shellPoll) {
+    // Stop polling a dialog nobody is looking at — each call reads a pod from
+    // the API server.
+    clearInterval(shellPoll)
+    shellPoll = null
+  }
+}, { immediate: true })
+
+onBeforeUnmount(() => { if (shellPoll) clearInterval(shellPoll) })
+
+async function refreshShell() {
+  try {
+    shell.value = await getShellStatus(props.workspace.id)
+  } catch {
+    shell.value = null
+  }
+}
+
+async function applyShellMode(mode) {
+  if (!mode || mode === shell.value?.mode) return
+  shellBusy.value = true
+  error.value = ''
+  try {
+    await setShellMode(props.workspace.id, mode)
+    await refreshShell()
+    emit('changed')
+  } catch (e) {
+    error.value = e.response?.data?.error || e.message || 'Failed to change shell mode'
+    // The <select> is :value-bound, so without a re-fetch it keeps showing the
+    // mode that did not take.
+    await refreshShell()
+  } finally {
+    shellBusy.value = false
+  }
+}
 
 async function load() {
   error.value = ''
   busy.value = false
   selectedTemplate.value = ''
   selectedImageTag.value = ''
+  selectedShellRepo.value = ''
+  selectedShellImageTag.value = ''
 
   try {
     const [t, ws] = await Promise.all([listTemplates(), getWorkspace(props.workspace.id)])
     templates.value = t
     current.value = ws
+    // Seed the image-tag selector from the workspace's CURRENT tag so the
+    // existing server-worker SHA shows up instead of the empty placeholder.
+    if (ws?.workspace_image_tag) selectedImageTag.value = ws.workspace_image_tag
+    // Strip the registry host prefix to match the catalog's bare repo name.
+    if (ws?.shell_image_repo) selectedShellRepo.value = ws.shell_image_repo.split('/').pop()
+    if (ws?.shell_image_tag) selectedShellImageTag.value = ws.shell_image_tag
   } catch (e) {
     error.value = e.message || 'Failed to load workspace config'
   }
@@ -46,9 +155,13 @@ async function load() {
   try {
     registry.value = await listRegistryImages()
     registryError.value = false
-  } catch {
+    registryFault.value = ''
+  } catch (e) {
     registry.value = null
     registryError.value = true
+    registryFault.value = e?.response?.status === 503
+      ? ''
+      : (e?.response?.data?.error || e?.message || 'the registry listing failed')
   }
 }
 
@@ -77,6 +190,24 @@ async function applyImageTag() {
     emit('changed')
   } catch (e) {
     error.value = e.response?.data?.error || e.message || 'Failed to apply image tag'
+  } finally {
+    busy.value = false
+  }
+}
+
+async function applyShellImageTag() {
+  if (!selectedShellRepo.value || !selectedShellImageTag.value) return
+  busy.value = true
+  error.value = ''
+  try {
+    await patchWorkspace(props.workspace.id, {
+      shellImageRepo: selectedShellRepo.value,
+      shellImageTag: selectedShellImageTag.value
+    })
+    await refreshCurrent()
+    emit('changed')
+  } catch (e) {
+    error.value = e.response?.data?.error || e.message || 'Failed to apply shell image tag'
   } finally {
     busy.value = false
   }
@@ -118,8 +249,21 @@ function close() {
       <!-- Current state -->
       <section v-if="current" class="rounded-xl border border-line bg-bg-1/60 p-4 text-sm space-y-1">
         <h3 class="text-muted text-xs font-semibold uppercase tracking-widest mb-2">Current</h3>
-        <div class="flex justify-between"><span class="text-muted">status</span><span class="font-mono">{{ current.status }}</span></div>
+        <div class="flex justify-between">
+          <span class="text-muted">status</span>
+          <span class="font-mono" :class="current.status ? '' : 'text-dim'" :title="current.last_error || ''">
+            {{ current.status || 'unknown' }}
+          </span>
+        </div>
+        <div v-if="current.last_error" class="flex justify-between">
+          <span class="text-warn">last error</span>
+          <span class="font-mono text-xs text-warn truncate max-w-56">{{ current.last_error }}</span>
+        </div>
         <div class="flex justify-between"><span class="text-muted">template</span><span class="font-mono">{{ current.template_name || 'custom' }}</span></div>
+        <div v-if="current.workspace_image_tag" class="flex justify-between">
+          <span class="text-muted">image tag</span>
+          <span class="font-mono text-xs truncate max-w-56">{{ current.workspace_image_tag }}</span>
+        </div>
         <div v-if="current.spec_drift" class="flex justify-between">
           <span class="text-warn">drift</span>
           <span class="font-mono text-warn">
@@ -135,6 +279,37 @@ function close() {
           <span class="font-mono">{{ current.resources.requests?.cpu || '—' }} / {{ current.resources.requests?.memory || '—' }}</span>
         </div>
         <div class="flex justify-between"><span class="text-muted">uuid</span><span class="font-mono text-xs truncate max-w-56">{{ current.uuid }}</span></div>
+      </section>
+
+      <!-- Shell (ADR-029) -->
+      <section class="rounded-xl border border-line bg-bg-1/60 p-4">
+        <h3 class="text-muted text-xs font-semibold uppercase tracking-widest mb-2">Shell</h3>
+        <div class="flex justify-between text-sm mb-1">
+          <span class="text-muted">status</span>
+          <span class="font-mono" :class="shellPhaseClass">{{ shell?.phase || '—' }}</span>
+        </div>
+        <div v-if="shell?.reason" class="flex justify-between text-sm mb-1">
+          <span class="text-warn">reason</span>
+          <span class="font-mono text-warn">{{ shell.reason }}</span>
+        </div>
+        <p class="text-muted text-sm mb-2">
+          Terminals run in a separate pod. Lazy shells stop when no terminal has been
+          open for a while, and the next terminal you open starts one again.
+        </p>
+        <div class="flex items-end gap-2">
+          <div class="flex-1">
+            <label class="text-muted text-label uppercase tracking-widest text-xs">Mode</label>
+            <select
+              :value="shell?.mode || ''"
+              :disabled="shellBusy || !shell"
+              class="w-full mt-1 rounded border border-line bg-bg-0 text-text text-sm px-2 py-1.5"
+              @change="applyShellMode($event.target.value)"
+            >
+              <option value="" disabled>—</option>
+              <option v-for="m in SHELL_MODES" :key="m.value" :value="m.value">{{ m.label }}</option>
+            </select>
+          </div>
+        </div>
       </section>
 
       <!-- Resources -->
@@ -158,16 +333,55 @@ function close() {
       <!-- Image tag -->
       <section class="rounded-xl border border-line bg-bg-1/60 p-4">
         <h3 class="text-muted text-xs font-semibold uppercase tracking-widest mb-2">Workspace image</h3>
-        <p v-if="registryError" class="text-muted text-sm">No registry configured — using the imported image.</p>
+        <p v-if="registryError" class="text-muted text-sm">
+          {{ registryFault ? `Registry unreachable: ${registryFault} — using the imported image.`
+                           : 'No registry configured — using the imported image.' }}
+        </p>
         <div v-else class="flex items-end gap-2">
           <div class="flex-1">
             <label class="text-muted text-label uppercase tracking-widest text-xs">Tag</label>
             <select v-model="selectedImageTag" class="w-full mt-1 rounded border border-line bg-bg-0 text-text text-sm px-2 py-1.5">
               <option value="" disabled>Select a tag…</option>
-              <option v-for="tag in workspaceImages" :key="tag" :value="tag">{{ tag }}</option>
+              <option v-for="t in workspaceImages" :key="t.tag" :value="t.tag">
+                {{ formatImageLabel(t) }}
+              </option>
             </select>
           </div>
           <UiButton :disabled="busy || !selectedImageTag" @click="applyImageTag">Apply</UiButton>
+        </div>
+      </section>
+
+      <!-- Shell image -->
+      <section class="rounded-xl border border-line bg-bg-1/60 p-4">
+        <h3 class="text-muted text-xs font-semibold uppercase tracking-widest mb-2">Shell image</h3>
+        <p v-if="registryError" class="text-muted text-sm">
+          {{ registryFault ? `Registry unreachable: ${registryFault} — using the imported image.`
+                           : 'No registry configured — using the imported image.' }}
+        </p>
+        <div v-else class="flex flex-col gap-2">
+          <div class="flex items-end gap-2">
+            <div class="flex-1">
+              <label class="text-muted text-label uppercase tracking-widest text-xs">Repository</label>
+              <select v-model="selectedShellRepo" class="w-full mt-1 rounded border border-line bg-bg-0 text-text text-sm px-2 py-1.5">
+                <option value="" disabled>Select a variant…</option>
+                <option v-for="r in shellRepos" :key="r.repository" :value="r.repository">
+                  {{ r.repository }}
+                </option>
+              </select>
+            </div>
+          </div>
+          <div class="flex items-end gap-2">
+            <div class="flex-1">
+              <label class="text-muted text-label uppercase tracking-widest text-xs">Tag</label>
+              <select v-model="selectedShellImageTag" class="w-full mt-1 rounded border border-line bg-bg-0 text-text text-sm px-2 py-1.5">
+                <option value="" disabled>Select a tag…</option>
+                <option v-for="t in selectedShellTags" :key="t.tag" :value="t.tag">
+                  {{ formatImageLabel(t) }}
+                </option>
+              </select>
+            </div>
+            <UiButton :disabled="busy || !selectedShellRepo || !selectedShellImageTag" @click="applyShellImageTag">Apply</UiButton>
+          </div>
         </div>
       </section>
 

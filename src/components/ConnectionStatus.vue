@@ -18,10 +18,10 @@
       <svg
         class="shrink-0"
         :width="SPARK_W" :height="SPARK_H"
-        viewBox="0 0 64 18" preserveAspectRatio="none"
+        :viewBox="sparkViewBox" preserveAspectRatio="none"
         :title="`↓${rateInText} ↑${rateOutText} · Peak ↓${peakInText} ↑${peakOutText}`"
       >
-        <rect x="0" y="0" width="64" height="18" fill="rgba(255,255,255,0.04)" rx="2" />
+        <rect x="0" y="0" :width="viewW" height="18" fill="rgba(255,255,255,0.04)" rx="2" />
         <polyline
           v-if="inPoints" :points="inPoints"
           fill="none" stroke="#a6e3a1" stroke-width="1" stroke-linejoin="round" vector-effect="non-scaling-stroke"
@@ -31,7 +31,14 @@
           fill="none" stroke="#f38ba8" stroke-width="1" stroke-linejoin="round" vector-effect="non-scaling-stroke"
         />
       </svg>
-      <span class="text-muted opacity-70">↓{{ rateInText }} ↑{{ rateOutText }}, Peak ↓{{ peakInText }} ↑{{ peakOutText }}</span>
+      <!-- Each value sits in a reserved box so the bar doesn't shift as digits change -->
+      <span class="text-muted opacity-70">
+        <template v-for="r in rateFields" :key="r.key"
+          ><span class="whitespace-pre">{{ r.label }}</span
+          ><span class="inline-block w-[4ch] text-right">{{ r.num }}</span
+          ><span class="inline-block w-[5ch] pl-[1ch]">{{ r.unit }}</span
+        ></template>
+      </span>
     </template>
     <UiButton
       v-else-if="status === 'offline' || status === 'reconnecting'"
@@ -43,7 +50,7 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
+import { computed } from 'vue'
 import workerSocket from '../services/workerSocket'
 import UiButton from './ui/UiButton.vue'
 
@@ -56,55 +63,37 @@ const rateOutPeak = workerSocket.rateOutPeak
 const attempt   = workerSocket.attempt
 
 // ── Throughput sparkline ──────────────────────────────────────────────────────
-// Keep a short ring buffer of recent in/out samples and draw two polylines on a
-// shared auto-scaled axis. Display size (CSS px) vs the fixed 64×18 viewbox.
+// Draw the worker's 1-second buckets — the SAME series the Peak readout reports
+// — not the 30s average. One point per bucket, newest on the right, shared
+// auto-scale across both directions. No 1024 floor: idle sits at the bottom.
 const SPARK_W = 64
 const SPARK_H = 18
-const SAMPLES = 64           // one column per viewbox unit
-const SAMPLE_MS = 1000
-const inHist  = ref([])
-const outHist = ref([])
-let sampleTimer = null
 
-onMounted(() => {
-  sampleTimer = setInterval(() => {
-    const push = (arr, v) => {
-      arr.push(v || 0)
-      if (arr.length > SAMPLES) arr.shift()
-    }
-    push(inHist.value,  rateIn.value)
-    push(outHist.value, rateOut.value)
-    // trigger reactivity (arrays mutated in place)
-    inHist.value  = inHist.value.slice()
-    outHist.value = outHist.value.slice()
-  }, SAMPLE_MS)
-})
-onBeforeUnmount(() => clearInterval(sampleTimer))
+const bucketsIn  = workerSocket.rateInBuckets
+const bucketsOut = workerSocket.rateOutBuckets
 
-// Shared peak across both series so up/down stay comparable. Min floor avoids a
-// flat line jumping to full-scale on the first byte.
-const peak = computed(() => {
-  const m = Math.max(1024, ...inHist.value, ...outHist.value)
-  return m
-})
+const viewW = computed(() => Math.max(1, bucketsIn.value.length - 1))
+const sparkViewBox = computed(() => `0 0 ${viewW.value} 18`)
 
-function toPoints(arr) {
-  if (arr.length < 2) return ''
+// Shared scale across both series so up/down stay comparable. Floor at 1 (not
+// 1024) so a flat line hugs the bottom rather than a phantom 1 KB/s axis.
+const peak = computed(() =>
+  Math.max(1, ...bucketsIn.value, ...bucketsOut.value))
+
+function toPoints(buckets) {
+  if (!buckets || buckets.length < 2) return ''
   const max = peak.value
-  const stepX = 64 / (SAMPLES - 1)
-  // newest sample on the right; pad older history to the left
-  const offset = SAMPLES - arr.length
-  return arr
+  return buckets
     .map((v, i) => {
-      const x = (offset + i) * stepX
+      const x = i                       // integer columns — no fractional shimmer
       const y = 18 - (Math.min(v, max) / max) * 17 - 0.5
-      return `${x.toFixed(1)},${y.toFixed(1)}`
+      return `${x},${y.toFixed(1)}`
     })
     .join(' ')
 }
 
-const inPoints  = computed(() => toPoints(inHist.value))
-const outPoints = computed(() => toPoints(outHist.value))
+const inPoints  = computed(() => toPoints(bucketsIn.value))
+const outPoints = computed(() => toPoints(bucketsOut.value))
 
 const label = computed(() => ({
   connecting:   'Connecting…',
@@ -127,19 +116,49 @@ const labelClass = computed(() =>
     ? 'text-warn'
     : 'text-muted')
 
+// ── Rate formatting ───────────────────────────────────────────────────────────
+// Three digits maximum, tenths at most, so the readout can never grow a fourth
+// glyph and shove the bar sideways. Units are binary (1<<10); the rollover just
+// happens at 1000 instead of 1024, so 1000 B/s reads as 1.0 KB/s.
+const RATE_UNITS = ['B/s', 'KB/s', 'MB/s', 'GB/s']
+
+// Whole bytes read better than tenths of a byte; tenths only below 100. Test
+// the rounded tenth, not v: 99.999 is under 100 but renders as "100.0".
+function rateDigits(v, unitIdx) {
+  if (unitIdx === 0) return String(Math.round(v))
+  const tenth = v.toFixed(1)
+  return Number(tenth) >= 100 ? String(Math.round(v)) : tenth
+}
+
 function fmtRate(bytesPerSec) {
-  const b = bytesPerSec || 0
-  if (b < 1024) return `${Math.round(b)} B/s`
-  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB/s`
-  return `${(b / (1024 * 1024)).toFixed(1)} MB/s`
+  let v = Math.max(0, bytesPerSec || 0)
+  let u = 0
+  // Re-check after rounding: 999.6 B/s renders "1000", so it must promote too.
+  while (u < RATE_UNITS.length - 1 && Number(rateDigits(v, u)) >= 1000) {
+    v /= 1024
+    u++
+  }
+  return { num: rateDigits(v, u), unit: RATE_UNITS[u] }
+}
+
+function rateText(bytesPerSec) {
+  const { num, unit } = fmtRate(bytesPerSec)
+  return `${num} ${unit}`
 }
 
 const latencyText = computed(() =>
   latencyMs.value == null ? '—' : `${latencyMs.value} ms`)
-const rateInText  = computed(() => fmtRate(rateIn.value))
-const rateOutText = computed(() => fmtRate(rateOut.value))
-const peakInText  = computed(() => fmtRate(rateInPeak.value))
-const peakOutText = computed(() => fmtRate(rateOutPeak.value))
+const rateInText  = computed(() => rateText(rateIn.value))
+const rateOutText = computed(() => rateText(rateOut.value))
+const peakInText  = computed(() => rateText(rateInPeak.value))
+const peakOutText = computed(() => rateText(rateOutPeak.value))
+
+const rateFields = computed(() => [
+  { key: 'in',   label: '↓',        ...fmtRate(rateIn.value) },
+  { key: 'out',  label: ' ↑',       ...fmtRate(rateOut.value) },
+  { key: 'pin',  label: ', Peak ↓', ...fmtRate(rateInPeak.value) },
+  { key: 'pout', label: ' ↑',       ...fmtRate(rateOutPeak.value) },
+])
 
 const title = computed(() =>
   `Worker connection: ${label.value}` +

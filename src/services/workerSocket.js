@@ -103,6 +103,8 @@ class WorkerSocket {
     this._rateTimer      = null
     this._inBuckets      = new Array(RATE_BUCKETS).fill(0)  // 1s buckets, newest last
     this._outBuckets     = new Array(RATE_BUCKETS).fill(0)
+    this.rateInBuckets   = ref(new Array(RATE_BUCKETS).fill(0)) // reactive 1s mirror for the sparkline
+    this.rateOutBuckets  = ref(new Array(RATE_BUCKETS).fill(0))
     this._tokenExpMs     = null // worker JWT expiry (ms), from system/connected
     this._tokenTtlMs     = null // worker JWT lifetime (ms), from the minted token
     this._reauthInFlight = false
@@ -308,6 +310,8 @@ class WorkerSocket {
     this.rateOutPeak.value = 0
     this._inBuckets  = new Array(RATE_BUCKETS).fill(0)
     this._outBuckets = new Array(RATE_BUCKETS).fill(0)
+    this.rateInBuckets.value  = new Array(RATE_BUCKETS).fill(0)
+    this.rateOutBuckets.value = new Array(RATE_BUCKETS).fill(0)
     this._tokenExpMs = null
     this._tokenTtlMs = null
     this._reauthInFlight = false
@@ -430,6 +434,8 @@ class WorkerSocket {
   _tickRates() {
     this._inBuckets.shift();  this._inBuckets.push(0)
     this._outBuckets.shift(); this._outBuckets.push(0)
+    this.rateInBuckets.value  = this._inBuckets.slice()
+    this.rateOutBuckets.value = this._outBuckets.slice()
     this._recomputeRates()
   }
 

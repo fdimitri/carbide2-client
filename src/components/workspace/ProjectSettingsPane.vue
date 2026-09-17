@@ -78,13 +78,13 @@
 
         <!-- ── Shell Image ────────────────────────────────────────────── -->
         <section class="mb-7">
-          <h3 class="text-ui-xs font-semibold text-muted uppercase tracking-widest mb-3">Docker Shell</h3>
+          <h3 class="text-ui-xs font-semibold text-muted uppercase tracking-widest mb-3">Shell</h3>
 
           <FieldLabel label="Container image" helpKey="shell_image" :openHelp="openHelp" :activeHelp="activeHelp" />
           <HelpText helpKey="shell_image" :activeHelp="activeHelp">
-            The Docker image used for terminal sessions in this project.
-            Leave blank to use the server default (<code class="font-mono text-accent">ubuntu:24.04</code>).
-            The image must be accessible to the Docker daemon on the server.
+            A per-project shell image. Not currently consumed: the workspace's
+            shell image is set on the workspace (imageRepo / imageTag) and
+            provisioned by the control plane.
           </HelpText>
           <UiInput
             v-model="form.shell_image"
