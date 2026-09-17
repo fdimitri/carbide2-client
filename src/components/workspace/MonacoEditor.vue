@@ -6,6 +6,7 @@
 <script setup>
 import { ref, watch, onMounted, onBeforeUnmount, shallowRef } from 'vue'
 import loader from '@monaco-editor/loader'
+import { minimalEdit } from '../../utils/textChanges'
 
 // Point loader at the locally installed monaco-editor so it works offline
 import * as monaco from 'monaco-editor'
@@ -131,6 +132,39 @@ onBeforeUnmount(() => {
   editor.value?.dispose()
 })
 
+// Apply an ordered list of DBFS change specs ({ change_type, change_data })
+// without re-emitting them. Each edit is executed before the next is computed,
+// so their coordinates are sequential. Returns false when there is no model yet.
+function applyChanges(changes) {
+  if (!editor.value || !editor.value.getModel()) return false
+  for (const c of (changes || [])) applyRemoteChange(c.change_type, c.change_data)
+  return true
+}
+
+// Bring the model to `text` with the smallest single edit (common prefix and
+// suffix kept), so cursors and scroll outside the changed span stay put — unlike
+// setValue. Returns false when there is no model yet.
+function replaceContent(text) {
+  const model = editor.value?.getModel()
+  if (!model) return false
+  const edit = minimalEdit(model.getValue(), String(text ?? ''))
+  if (!edit) return true
+  const [from, to, insert] = edit
+  const a = model.getPositionAt(from)
+  const b = model.getPositionAt(to)
+  applyingRemote = true
+  try {
+    editor.value.executeEdits('remote', [{
+      range: { startLineNumber: a.lineNumber, startColumn: a.column, endLineNumber: b.lineNumber, endColumn: b.column },
+      text: insert,
+      forceMoveMarkers: true,
+    }])
+  } finally {
+    applyingRemote = false
+  }
+  return true
+}
+
 // Apply a change received from another client without re-emitting it.
 function applyRemoteChange(changeType, changeDataStr) {
   if (!editor.value) return
@@ -143,16 +177,20 @@ function applyRemoteChange(changeType, changeDataStr) {
       return
     }
     let data
-    try { data = JSON.parse(changeDataStr) } catch { return }
+    if (changeDataStr && typeof changeDataStr === 'object') data = changeDataStr
+    else { try { data = JSON.parse(changeDataStr) } catch { return } }
     const startLineNumber = (data.startLine ?? 0) + 1
     const startColumn     = (data.startChar ?? 0) + 1
+    const text = Array.isArray(data.data) ? data.data.join('\n') : String(data.data ?? '')
+    const single = /SingleLine$/.test(changeType)
+    const endLineNumber = (single ? (data.startLine ?? 0) : (data.endLine ?? data.startLine ?? 0)) + 1
+    const endColumn     = (data.endChar ?? data.startChar ?? 0) + 1
     if (changeType === 'insertDataSingleLine' || changeType === 'insertDataMultiLine') {
-      const text = Array.isArray(data.data) ? data.data.join('\n') : String(data.data ?? '')
       editor.value.executeEdits('remote', [{ range: { startLineNumber, startColumn, endLineNumber: startLineNumber, endColumn: startColumn }, text, forceMoveMarkers: true }])
     } else if (changeType === 'deleteDataSingleLine' || changeType === 'deleteDataMultiLine') {
-      const endLineNumber = (data.endLine ?? data.startLine ?? 0) + 1
-      const endColumn     = (data.endChar ?? data.startChar ?? 0) + 1
       editor.value.executeEdits('remote', [{ range: { startLineNumber, startColumn, endLineNumber, endColumn }, text: '', forceMoveMarkers: true }])
+    } else if (changeType === 'replaceDataSingleLine' || changeType === 'replaceDataMultiLine') {
+      editor.value.executeEdits('remote', [{ range: { startLineNumber, startColumn, endLineNumber, endColumn }, text, forceMoveMarkers: true }])
     }
   } finally {
     applyingRemote = false
@@ -182,7 +220,7 @@ function removePeerCursor(userId) {
   delete peerDecorations[userId]
 }
 
-defineExpose({ applyRemoteChange, setPeerCursor, removePeerCursor })
+defineExpose({ applyRemoteChange, applyChanges, replaceContent, setPeerCursor, removePeerCursor })
 </script>
 
 

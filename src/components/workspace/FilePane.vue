@@ -47,6 +47,8 @@ import workerSocket from '../../services/workerSocket'
 import { extensionToLanguage } from '../../utils/monacoLanguage'
 import { useDebugLogStore } from '../../stores/debugLogStore'
 import { fetchProjectBlob } from '../../services/projectService'
+import { createFileSync } from '../../services/fileSync'
+import { applyChanges as applyChangesToText } from '../../utils/textChanges'
 
 const debugLog = useDebugLogStore()
 const route    = useRoute()
@@ -89,6 +91,29 @@ async function loadBinaryPreview(path) {
   }
 }
 
+// ── DBFS sync ─────────────────────────────────────────────────────────────────
+// One fileSync per open path (services/fileSync.js): it owns the base revision,
+// the in-flight/pending edit queue and the decision of which remote frames to
+// apply. The editor adapter falls back to the `content` prop while Monaco is
+// still mounting, so nothing that arrives in that window is lost.
+const editorAdapter = {
+  applyChanges(changes) {
+    if (editorRef.value?.applyChanges(changes)) return
+    content.value = applyChangesToText(content.value, changes)
+  },
+  replaceContent(text) {
+    if (editorRef.value?.replaceContent(text)) return
+    content.value = text
+  },
+}
+
+let sync = null
+
+function syncLog(action, detail, extra) {
+  debugLog.push({ severity: action === 'write refused' ? 'warn' : 'info', source: 'fs', action,
+                  detail: [props.fileId, detail, extra].filter(Boolean).join(' — ') })
+}
+
 function requestFile(path) {
   if (!path) return
   releaseBlob()
@@ -96,7 +121,13 @@ function requestFile(path) {
   loading.value   = true
   loadError.value = ''
   content.value   = ''
-  workerSocket.send('fs', 'read', { path })
+  sync = createFileSync({
+    path,
+    send: (cmd, payload) => workerSocket.send('fs', cmd, payload),
+    editor: editorAdapter,
+    log: syncLog,
+  })
+  sync.load()
 }
 
 function normPath(p) { return (p || '').replace(/^\//, '') }
@@ -123,9 +154,8 @@ function monacoChangesToWsPayload(changes) {
 }
 
 function onEditorChange(monacoChanges) {
-  if (!props.fileId) return
-  const changes = monacoChangesToWsPayload(monacoChanges)
-  if (changes.length) workerSocket.send('fs', 'write', { path: props.fileId, changes })
+  if (!props.fileId || !sync) return
+  sync.localChanges(monacoChangesToWsPayload(monacoChanges))
 }
 
 // ── Cursor tracking ───────────────────────────────────────────────────────────
@@ -141,7 +171,7 @@ function onCursorChange({ line, char }) {
 // ── Receive remote edits from peers ──────────────────────────────────────────
 function onFsChange(payload) {
   if (normPath(payload.path) !== normPath(props.fileId)) return
-  editorRef.value?.applyRemoteChange(payload.change_type, payload.change_data)
+  sync?.onRemote('change', payload)
 }
 
 function onFsSetContents(payload) {
@@ -151,9 +181,15 @@ function onFsSetContents(payload) {
     severity: 'info',
     source: 'fs',
     action: 'set_contents',
-    detail: `${payload.path} (${bytes} chars) — inotify reload`,
+    detail: `${payload.path} (${bytes} chars)${payload.source ? ` — ${payload.source}` : ''}`,
   })
-  editorRef.value?.applyRemoteChange('setContents', payload.content)
+  sync?.onRemote('set_contents', payload)
+}
+
+function onFsWritten(payload) {
+  if (normPath(payload.path) !== normPath(props.fileId)) return
+  if (payload.mode === 'rebased') syncLog('rebased', `onto ${payload.head}`, payload.branch)
+  sync?.onWritten(payload)
 }
 
 function onFsCursor(payload) {
@@ -173,12 +209,22 @@ function onFsOpened(payload) {
 function onFsContent(payload) {
   if (normPath(payload.path) !== normPath(props.fileId)) return
   loading.value = false
-  content.value = payload.content ?? ''
+  const res = sync?.onContent(payload)
+  if (!res || res.initial) content.value = res ? res.content : (payload.content ?? '')
 }
 
 function onFsError(payload) {
   if (normPath(payload.path) !== normPath(props.fileId)) return
   loading.value = false
+  // A refused batch (conflicting merge, bad coordinates, unknown base): nothing
+  // reached main, and fileSync re-reads the file. When a merge conflicted the
+  // edits are kept on an auto-branch server-side; say where.
+  if (sync?.onError(payload)) {
+    loadError.value = payload.branch
+      ? `Your last edits overlapped someone else's and were not merged; they are saved on branch ${payload.branch}.`
+      : ''
+    return
+  }
   // The worker returns this exact error string when a binary entry is read
   // via the text path. Promote into the binary-preview branch and fetch the
   // bytes via HTTP. See #13 in May30-Questions.md.
@@ -195,6 +241,7 @@ const offContent    = workerSocket.on('fs', 'content',     onFsContent)
 const offError      = workerSocket.on('fs', 'error',       onFsError)
 const offChange     = workerSocket.on('fs', 'change',      onFsChange)
 const offSetContents = workerSocket.on('fs', 'set_contents', onFsSetContents)
+const offWritten     = workerSocket.on('fs', 'written',      onFsWritten)
 const offCursor      = workerSocket.on('fs', 'cursor',       onFsCursor)
 const offOpened      = workerSocket.on('fs', 'opened',       onFsOpened)
 
@@ -207,7 +254,13 @@ const offOpened      = workerSocket.on('fs', 'opened',       onFsOpened)
 // a file is owned centrally by ProjectPage, driven by the set of open file tabs,
 // so a tab that moves between panes or remounts never emits a close that would
 // drop the file out from under another view. This component is a pure view.
+//
+// Edits typed while disconnected stay queued in fileSync (not in the socket's
+// own queue) and are sent against the revision they were typed on once the
+// socket is back; the server merges them. A batch that was in flight when the
+// socket dropped is resent with the same batch_id, which the worker dedupes.
 function onWsDisconnected() {
+  sync?.onDisconnected()
   if (loading.value) {
     loading.value = false
     loadError.value = 'Connection lost — will reload when reconnected.'
@@ -216,7 +269,11 @@ function onWsDisconnected() {
 function onWsConnected() {
   if (!props.fileId) return
   loadError.value = ''
-  requestFile(props.fileId)
+  if (sync && sync.state.path === props.fileId && sync.state.loaded) {
+    sync.onConnected()
+  } else {
+    requestFile(props.fileId)
+  }
 }
 const offDisconnected = workerSocket.on('system', 'disconnected', onWsDisconnected)
 const offConnected    = workerSocket.on('system', 'connected',    onWsConnected)
@@ -234,7 +291,7 @@ watch(() => props.fileId, (next) => {
 onBeforeUnmount(() => {
   clearTimeout(cursorTimer)
   releaseBlob()
-  offContent(); offError(); offChange(); offSetContents(); offCursor(); offOpened()
+  offContent(); offError(); offChange(); offSetContents(); offWritten(); offCursor(); offOpened()
   offDisconnected(); offConnected()
 })
 </script>
