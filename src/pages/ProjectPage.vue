@@ -72,6 +72,7 @@
           :is-joined-channel="isJoinedChannel"
           @open-file="onExplorerOpenFile"
           @open-project-merge="openProjectMergePane"
+          @open-project-history="openProjectHistoryPane"
           @open-terminal="onExplorerOpenTerminal"
           @open-channel="onExplorerOpenChannel"
           @open-agent="onExplorerOpenAgent"
@@ -124,6 +125,7 @@
               @open-history="openHistoryPane"
               @open-preview="openPreviewPane"
               @open-merge="openMergePane"
+              @open-project-merge="openProjectMergePane"
               @open-file-at="openFileAt"
               @close-tab="handleCloseTab"
               @tab-drag-start="onTabDragStart"
@@ -165,6 +167,7 @@
                   @open-history="openHistoryPane"
                   @open-preview="openPreviewPane"
                   @open-merge="openMergePane"
+                  @open-project-merge="openProjectMergePane"
                   @open-file-at="openFileAt"
                   @close-tab="handleCloseTab"
                   @tab-drag-start="onTabDragStart"
@@ -665,6 +668,11 @@ function openMergePane(path, { source, target = MAIN_BRANCH } = {}) {
   if (!path || !source) return
   const name = String(path).split('/').pop() || String(path)
   bindTabToActivePane('merge', `${source}|${target}|${path}`, `${name} · ${source} → ${target}`)
+}
+
+// The project's branch graph, one tab per pane.
+function openProjectHistoryPane() {
+  bindTabToActivePane('project-history', 0, 'Branches')
 }
 
 // From the explorer's branch bar: merge project branch `source` into `target`
