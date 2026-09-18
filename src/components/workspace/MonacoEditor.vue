@@ -221,7 +221,13 @@ function removePeerCursor(userId) {
   delete peerDecorations[userId]
 }
 
-defineExpose({ applyRemoteChange, applyChanges, replaceContent, setPeerCursor, removePeerCursor })
+// Drop every peer cursor: the view moved to another file or branch, whose
+// viewers are a different set.
+function clearPeerCursors() {
+  for (const userId of Object.keys(peerDecorations)) removePeerCursor(userId)
+}
+
+defineExpose({ applyRemoteChange, applyChanges, replaceContent, setPeerCursor, removePeerCursor, clearPeerCursors })
 </script>
 
 

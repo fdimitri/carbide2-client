@@ -45,6 +45,12 @@
           :title="`Merge ${branch} into ${MAIN_BRANCH}`"
           @click="mergeIntoMain"
         >{{ merging ? 'Merging…' : `Merge into ${MAIN_BRANCH}` }}</button>
+        <button
+          v-if="branch !== MAIN_BRANCH"
+          class="ui-btn ui-btn-ghost ui-btn-sm"
+          :title="`Delete branch ${branch} of ${filename}`"
+          @click="deleteBranch"
+        >Delete branch</button>
         <span v-if="branchNotice" class="text-muted italic truncate">{{ branchNotice }}</span>
       </div>
       <div v-if="loading || loadError || isBinary"
@@ -176,6 +182,33 @@ function onFsBranchCreated(payload) {
   }
 }
 
+function deleteBranch() {
+  const name = props.branch
+  if (name === MAIN_BRANCH) return
+  const msg = `Delete branch ${name} of ${filename.value}?\n\n` +
+    'Its history is kept (the branch can be recreated at any of its revisions), but anything on it ' +
+    `that was not merged into ${MAIN_BRANCH} will no longer be reachable from a branch.`
+  if (!window.confirm(msg)) return
+  branchNotice.value = ''
+  workerSocket.send('fs', 'branch_delete', { path: props.fileId, name })
+}
+
+function onFsBranchDeleted(payload) {
+  if (normPath(payload.path) !== normPath(props.fileId)) return
+  branches.value = branches.value.filter(b => b.name !== payload.name)
+  // Our own branch is gone (the worker only lets the sole viewer delete it, so
+  // that was us — or a viewer whose open had not registered yet): back to main.
+  if (payload.name === props.branch) {
+    branchNotice.value = `Branch ${payload.name} was deleted; back on ${MAIN_BRANCH}.`
+    switchBranch(MAIN_BRANCH)
+  }
+}
+
+function onFsViewerLeft(payload) {
+  if (!forThisView(payload)) return
+  editorRef.value?.removePeerCursor(payload.user_id)
+}
+
 function onFsMerged(payload) {
   if (normPath(payload.path) !== normPath(props.fileId)) return
   merging.value = false
@@ -266,6 +299,7 @@ function requestFile(path, branch = props.branch) {
   loadError.value = ''
   content.value   = ''
   conflictBranch.value = ''
+  editorRef.value?.clearPeerCursors()   // another file or branch: different viewers
   sync?.dispose()
   sync = createFileSync({
     path,
@@ -400,6 +434,8 @@ const offCursor      = workerSocket.on('fs', 'cursor',       onFsCursor)
 const offOpened      = workerSocket.on('fs', 'opened',       onFsOpened)
 const offBranches    = workerSocket.on('fs', 'branches',     onFsBranches)
 const offBranchCreated = workerSocket.on('fs', 'branch_created', onFsBranchCreated)
+const offBranchDeleted = workerSocket.on('fs', 'branch_deleted', onFsBranchDeleted)
+const offViewerLeft  = workerSocket.on('fs', 'viewer_left',  onFsViewerLeft)
 const offMerged      = workerSocket.on('fs', 'merged',       onFsMerged)
 
 // Connection-aware loading. A dropped socket would otherwise leave the editor
@@ -418,6 +454,9 @@ const offMerged      = workerSocket.on('fs', 'merged',       onFsMerged)
 // socket dropped is resent with the same batch_id, which the worker dedupes.
 function onWsDisconnected() {
   sync?.onDisconnected()
+  // The worker forgets who is viewing what; peers re-announce themselves by
+  // moving after the reconnect, so nothing stale should be left drawn.
+  editorRef.value?.clearPeerCursors()
   if (loading.value) {
     loading.value = false
     loadError.value = 'Connection lost — will reload when reconnected.'
@@ -452,7 +491,7 @@ onBeforeUnmount(() => {
   sync?.dispose()
   releaseBlob()
   offContent(); offError(); offChange(); offSetContents(); offWritten(); offCursor(); offOpened()
-  offBranches(); offBranchCreated(); offMerged()
+  offBranches(); offBranchCreated(); offBranchDeleted(); offViewerLeft(); offMerged()
   offDisconnected(); offConnected()
 })
 </script>

@@ -38,8 +38,8 @@ import { ref } from 'vue'
 
 // ── Wire-protocol constants ──────────────────────────────────────────────────
 export const SESSION_CS          = 'session' // commandSet name (worker ROUTES)
-export const SESSION_DOC_VERSION = 2          // v2: agent tabs carry agent:<uuid> + agentSlug/composerHeightPx
-                                              //     (still v2) file tabs may carry `branch`; absent means main
+export const SESSION_DOC_VERSION = 3          // v2: agent tabs carry agent:<uuid> + agentSlug/composerHeightPx
+                                              // v3: file tabs carry `branch` (per-file DBFS branch; main by default)
 export const MAIN_BRANCH         = 'main'
 export const PANE_SLOTS          = 4          // usePanes keeps 4 fixed pane slots
 
