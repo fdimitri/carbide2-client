@@ -37,7 +37,7 @@
         class="flex flex-col flex-1 overflow-hidden"
         v-show="activeTabKind === 'file' && effectiveActiveKey === tab.key"
       >
-        <FilePane :file-id="fileIdOf(tab)" />
+        <FilePane :file-id="fileIdOf(tab)" :branch="tabBranch(tab)" />
       </div>
     </template>
 
@@ -179,6 +179,7 @@ import ProjectSettingsPane from './ProjectSettingsPane.vue'
 import DebugPane from './DebugPane.vue'
 import AgentPane from './AgentPane.vue'
 import AgentConfigPane from './AgentConfigPane.vue'
+import { tabBranch } from '../../stores/sessionStore'
 
 const store = useWorkspaceStore()
 
