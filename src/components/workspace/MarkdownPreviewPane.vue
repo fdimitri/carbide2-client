@@ -47,6 +47,7 @@ const props = defineProps({
 const emit = defineEmits(['open-file'])
 
 const filename  = computed(() => props.fileId.split('/').pop() || props.fileId)
+const isMdx     = computed(() => /\.mdx$/i.test(filename.value))
 const docEl     = ref(null)
 const text      = ref('')
 const html      = ref('')
@@ -58,7 +59,7 @@ const loadError = ref('')
 let renderTimer = null
 watch(text, (t) => {
   clearTimeout(renderTimer)
-  renderTimer = setTimeout(() => { html.value = renderMarkdownDocument(t) }, 120)
+  renderTimer = setTimeout(() => { html.value = renderMarkdownDocument(t, { mdx: isMdx.value }) }, 120)
 })
 // v-html has replaced the DOM by the next tick; diagram fences are then filled
 // in (cached ones at once, edited ones when their render lands).

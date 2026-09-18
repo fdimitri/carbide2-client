@@ -103,7 +103,73 @@ docMarked.use({
   },
 })
 
-export function renderMarkdownDocument(src) {
+// A file preview. `mdx`: the file is MDX, so its ESM and JSX lines are not
+// prose (see stripMdx). Front matter is handled for both.
+export function renderMarkdownDocument(src, { mdx = false } = {}) {
   if (src == null) return ''
-  return DOMPurify.sanitize(docMarked.parse(String(src)), { USE_PROFILES: { html: true } })
+  let { meta, body } = splitFrontMatter(String(src))
+  if (mdx) body = stripMdx(body)
+  const html = frontMatterHtml(meta) + docMarked.parse(body)
+  return DOMPurify.sanitize(html, { USE_PROFILES: { html: true } })
+}
+
+// ── Front matter ─────────────────────────────────────────────────────────────
+// A leading ---…--- block is metadata, not prose: left in, marked makes the
+// first --- a rule and the last one a setext underline of whatever key came
+// before it. Only top-level scalar keys are read (title, description, status,
+// date …); nested keys are dropped. No YAML parser: this is a header, not data.
+function splitFrontMatter(text) {
+  const m = text.match(/^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/)
+  if (!m) return { meta: null, body: text }
+  const meta = {}
+  for (const line of m[1].split(/\r?\n/)) {
+    const kv = line.match(/^([A-Za-z_][\w-]*):[ \t]*(.*?)[ \t]*$/)
+    if (!kv || !kv[2]) continue
+    meta[kv[1]] = kv[2].replace(/^(['"])(.*)\1$/, '$2')
+  }
+  return { meta, body: text.slice(m[0].length) }
+}
+
+const FM_SKIP = new Set(['title', 'description'])
+
+function frontMatterHtml(meta) {
+  if (!meta) return ''
+  const rest = Object.entries(meta).filter(([k]) => !FM_SKIP.has(k))
+  if (!meta.title && !meta.description && !rest.length) return ''
+  let out = '<header class="md-frontmatter">'
+  if (meta.title) out += `<h1 id="${slug(escapeHtml(meta.title))}">${escapeHtml(meta.title)}</h1>`
+  if (meta.description) out += `<p class="md-fm-desc">${escapeHtml(meta.description)}</p>`
+  if (rest.length) {
+    out += '<dl>' + rest.map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd>`).join('') + '</dl>'
+  }
+  return out + '</header>\n'
+}
+
+// ── MDX ──────────────────────────────────────────────────────────────────────
+// MDX is not run here (it compiles to a component; executing agent-written JSX
+// is a sandbox question, not a rendering one). Its non-prose is removed so the
+// prose reads cleanly:
+//   - ESM blocks: a paragraph starting `import`/`export`, up to the blank line
+//     (MDX's own rule).
+//   - Component tags on a line of their own (<AdrHeader … />, <Tabs>, </Tabs>):
+//     dropped, keeping whatever they wrapped. Capitalised names only, so
+//     ordinary HTML passes through to the sanitizer as before.
+// Fenced code is left alone.
+function stripMdx(text) {
+  const out = []
+  let inFence = null, inEsm = false
+  for (const line of text.split('\n')) {
+    const fence = line.match(/^(\s{0,3})(`{3,}|~{3,})/)
+    if (fence && (!inFence || (line.trim().startsWith(inFence) && line.trim().length >= inFence.length))) {
+      inFence = inFence ? null : fence[2]
+      out.push(line)
+      continue
+    }
+    if (inFence) { out.push(line); continue }
+    if (inEsm) { if (line.trim() === '') { inEsm = false; out.push(line) } ; continue }
+    if (/^(import|export)\s/.test(line)) { inEsm = true; continue }
+    if (/^\s*<\/?[A-Z][\w.]*(\s[^>]*)?\/?>\s*$/.test(line)) continue
+    out.push(line)
+  }
+  return out.join('\n')
 }
