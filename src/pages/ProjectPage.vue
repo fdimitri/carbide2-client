@@ -122,6 +122,7 @@
               @activate-tab="activatePaneTab"
               @open-history="openHistoryPane"
               @open-preview="openPreviewPane"
+              @open-merge="openMergePane"
               @open-file-at="openFileAt"
               @close-tab="handleCloseTab"
               @tab-drag-start="onTabDragStart"
@@ -162,6 +163,7 @@
                   @activate-tab="activatePaneTab"
                   @open-history="openHistoryPane"
                   @open-preview="openPreviewPane"
+                  @open-merge="openMergePane"
                   @open-file-at="openFileAt"
                   @close-tab="handleCloseTab"
                   @tab-drag-start="onTabDragStart"
@@ -291,7 +293,7 @@ import { mintWorkspaceToken } from '../services/workspaceToken'
 import { storeToRefs } from 'pinia'
 import { usePanes, PANE_COUNTS } from '../composables/usePanes'
 import { useSessionSync } from '../composables/useSessionSync'
-import { useSessionStore, sessionGateInfo, SESSION_DOC_VERSION, tabBranch } from '../stores/sessionStore'
+import { useSessionStore, sessionGateInfo, SESSION_DOC_VERSION, MAIN_BRANCH, tabBranch } from '../stores/sessionStore'
 import { CLIENT_SHA } from '../version'
 import { useTerminals } from '../composables/useTerminals'
 import { useChat } from '../composables/useChat'
@@ -654,6 +656,14 @@ function openPreviewPane(path) {
   if (!path) return
   const name = String(path).split('/').pop() || String(path)
   bindTabToActivePane('preview', String(path), `${name} · preview`)
+}
+
+// A three-way merge tab for one file: resolve `source` into `target` by hand.
+// Keyed by all three so the same merge is one tab client-wide.
+function openMergePane(path, { source, target = MAIN_BRANCH } = {}) {
+  if (!path || !source) return
+  const name = String(path).split('/').pop() || String(path)
+  bindTabToActivePane('merge', `${source}|${target}|${path}`, `${name} · ${source} → ${target}`)
 }
 
 // From the history rail or a preview: open (or focus) the file's tab and, when

@@ -80,10 +80,11 @@ export function usePanes({ activePane, pendingNavigation }) {
     const at = key.indexOf(':')
     const kind = key.slice(0, at)
     const rawId = key.slice(at + 1)
-    // file paths (file/history/preview), terminal UUIDs, and agent conversation UUIDs
+    // file paths (file/history/preview), merge ids (source|target|path), terminal
+    // UUIDs, and agent conversation UUIDs
     // are string identities. channels use numeric id; agent-config/debug stay
     // :0 singletons.
-    if (kind === 'file' || kind === 'history' || kind === 'preview' || kind === 'terminal' || kind === 'agent') return { kind, id: rawId }
+    if (kind === 'file' || kind === 'history' || kind === 'preview' || kind === 'merge' || kind === 'terminal' || kind === 'agent') return { kind, id: rawId }
     return { kind, id: Number(rawId) }
   }
 
@@ -148,6 +149,7 @@ export function usePanes({ activePane, pendingNavigation }) {
     if (kind === 'file' && focusExistingFile(id)) return
     if (kind === 'history' && focusExistingOfKind('history', id)) return
     if (kind === 'preview' && focusExistingOfKind('preview', id)) return
+    if (kind === 'merge' && focusExistingOfKind('merge', id)) return
     const pane = panes.value[activePaneIndex.value]
     const key  = `${kind}:${id}`
     if (!pane.tabs.find((t) => t.key === key)) {
@@ -161,6 +163,7 @@ export function usePanes({ activePane, pendingNavigation }) {
     if (kind === 'file' && focusExistingFile(id)) return
     if (kind === 'history' && focusExistingOfKind('history', id)) return
     if (kind === 'preview' && focusExistingOfKind('preview', id)) return
+    if (kind === 'merge' && focusExistingOfKind('merge', id)) return
     const pane = panes.value[targetPaneIndex]
     if (!pane) return
     activePaneIndex.value = targetPaneIndex

@@ -77,7 +77,7 @@ export function sessionGateInfo(session) {
 // Tab kinds this build can render/parse. Anything else is "from the future" and
 // is preserved raw (kept in the doc, not rendered) rather than dropped.
 export const KNOWN_TAB_KINDS = new Set([
-  'file', 'channel', 'terminal', 'settings', 'debug', 'agent', 'agent-config', 'history', 'preview',
+  'file', 'channel', 'terminal', 'settings', 'debug', 'agent', 'agent-config', 'history', 'preview', 'merge',
 ])
 
 // Server → client messages (see session_handlers.rb):

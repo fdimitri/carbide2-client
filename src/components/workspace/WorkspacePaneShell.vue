@@ -43,6 +43,22 @@
           :revision="tab.revision || null"
           @open-history="emit('open-history', fileIdOf(tab))"
           @open-preview="emit('open-preview', fileIdOf(tab))"
+          @open-merge="(m) => emit('open-merge', fileIdOf(tab), m)"
+        />
+      </div>
+    </template>
+
+    <!-- Merge tabs: a three-way resolution of source into target for one file. -->
+    <template v-for="tab in mergeTabs" :key="tab.key">
+      <div
+        class="flex flex-col flex-1 overflow-hidden"
+        v-show="activeTabKind === 'merge' && effectiveActiveKey === tab.key"
+      >
+        <MergePane
+          :path="mergeIdOf(tab).path"
+          :source="mergeIdOf(tab).source"
+          :target="mergeIdOf(tab).target"
+          @done="() => { emit('open-file-at', mergeIdOf(tab).path, { branch: mergeIdOf(tab).target, revision: null }); emit('close-tab', paneIndex, tab.key) }"
         />
       </div>
     </template>
@@ -213,6 +229,7 @@ import AgentPane from './AgentPane.vue'
 import AgentConfigPane from './AgentConfigPane.vue'
 import { tabBranch, useSessionStore } from '../../stores/sessionStore'
 import MarkdownPreviewPane from './MarkdownPreviewPane.vue'
+import MergePane from './MergePane.vue'
 
 const store = useWorkspaceStore()
 
@@ -304,6 +321,16 @@ const debugTabs = computed(() =>
 const historyTabs = computed(() =>
   (props.pane?.tabs || []).filter((t) => t.kind === 'history')
 )
+const mergeTabs = computed(() =>
+  (props.pane?.tabs || []).filter((t) => t.kind === 'merge')
+)
+// A merge tab's id is "source|target|path" (see ProjectPage.openMergePane).
+function mergeIdOf(tab) {
+  const id = String(tab.id)
+  const a = id.indexOf('|')
+  const b = id.indexOf('|', a + 1)
+  return { source: id.slice(0, a), target: id.slice(a + 1, b), path: id.slice(b + 1) }
+}
 const previewTabs = computed(() =>
   (props.pane?.tabs || []).filter((t) => t.kind === 'preview')
 )
@@ -379,6 +406,7 @@ function callAvailableCountFor(cid) {
 const emit = defineEmits([
   'open-history',
   'open-preview',
+  'open-merge',
   'open-file-at',
   'activate-tab',
   'close-tab',
