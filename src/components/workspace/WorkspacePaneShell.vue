@@ -63,6 +63,21 @@
       </div>
     </template>
 
+    <!-- Project merge tabs: a whole-tree merge of one project branch into another. -->
+    <template v-for="tab in projectMergeTabs" :key="tab.key">
+      <div
+        class="flex flex-col flex-1 overflow-hidden"
+        v-show="activeTabKind === 'project-merge' && effectiveActiveKey === tab.key"
+      >
+        <ProjectMergePane
+          :source="projectMergeIdOf(tab).source"
+          :target="projectMergeIdOf(tab).target"
+          @open-merge="(path, m) => emit('open-merge', path, m)"
+          @done="() => emit('close-tab', paneIndex, tab.key)"
+        />
+      </div>
+    </template>
+
     <!-- History tabs: the file's revision DAG as a rail, one per open history tab. -->
     <template v-for="tab in historyTabs" :key="tab.key">
       <div
@@ -230,6 +245,7 @@ import AgentConfigPane from './AgentConfigPane.vue'
 import { tabBranch, useSessionStore } from '../../stores/sessionStore'
 import MarkdownPreviewPane from './MarkdownPreviewPane.vue'
 import MergePane from './MergePane.vue'
+import ProjectMergePane from './ProjectMergePane.vue'
 
 const store = useWorkspaceStore()
 
@@ -324,6 +340,15 @@ const historyTabs = computed(() =>
 const mergeTabs = computed(() =>
   (props.pane?.tabs || []).filter((t) => t.kind === 'merge')
 )
+const projectMergeTabs = computed(() =>
+  (props.pane?.tabs || []).filter((t) => t.kind === 'project-merge')
+)
+// A project-merge tab's id is "source|target" (see ProjectPage.openProjectMergePane).
+function projectMergeIdOf(tab) {
+  const id = String(tab.id)
+  const a = id.indexOf('|')
+  return { source: id.slice(0, a), target: id.slice(a + 1) }
+}
 // A merge tab's id is "source|target|path" (see ProjectPage.openMergePane).
 function mergeIdOf(tab) {
   const id = String(tab.id)

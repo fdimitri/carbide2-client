@@ -31,14 +31,29 @@
       <button v-else class="ui-btn ui-btn-ghost ui-btn-sm" :title="`New project branch from ${branch}`" @click="startCreateBranch">
         <i class="pi pi-plus text-ui-xs"></i>
       </button>
-      <button
-        v-if="branch !== MAIN_BRANCH"
-        class="ui-btn ui-btn-ghost ui-btn-sm"
-        :title="`Delete project branch ${branch} (history kept)`"
-        @click="deleteBranch"
-      >
-        <i class="pi pi-trash text-ui-xs"></i>
-      </button>
+      <template v-if="branch !== MAIN_BRANCH && parentBranch">
+        <button
+          class="ui-btn ui-btn-ghost ui-btn-sm"
+          :title="`Merge ${branch} into ${parentBranch}…`"
+          @click="emit('open-project-merge', { source: branch, target: parentBranch })"
+        >
+          <i class="pi pi-arrow-up text-ui-xs"></i>
+        </button>
+        <button
+          class="ui-btn ui-btn-ghost ui-btn-sm"
+          :title="`Update ${branch} from ${parentBranch}…`"
+          @click="emit('open-project-merge', { source: parentBranch, target: branch })"
+        >
+          <i class="pi pi-arrow-down text-ui-xs"></i>
+        </button>
+        <button
+          class="ui-btn ui-btn-ghost ui-btn-sm"
+          :title="`Delete project branch ${branch} (history kept)`"
+          @click="deleteBranch"
+        >
+          <i class="pi pi-trash text-ui-xs"></i>
+        </button>
+      </template>
     </div>
     <div v-if="branchNotice" class="px-2.5 pb-1 text-ui-xs text-muted truncate" :title="branchNotice">{{ branchNotice }}</div>
 
@@ -231,6 +246,7 @@ const props = defineProps({
 const emit = defineEmits([
   'open-file',
   'branch-changed',
+  'open-project-merge',
   'open-preview',
   'open-terminal',
   'open-channel',
@@ -353,6 +369,7 @@ const creatingBranch  = ref(false)
 const newBranchName   = ref('')
 const newBranchInput  = ref(null)
 const branchNotice    = ref('')
+const parentBranch    = computed(() => projectBranches.value.find((b) => b.name === branch.value)?.forked_from || null)
 
 function requestFileTree() {
   workerSocket.send('fs', 'tree', { branch: branch.value })
@@ -447,6 +464,7 @@ onMounted(() => {
     workerSocket.on('fs', 'project_branches',        onProjectBranches),
     workerSocket.on('fs', 'project_branch_created',  onProjectBranchCreated),
     workerSocket.on('fs', 'project_branch_deleted',  onProjectBranchDeleted),
+    workerSocket.on('fs', 'project_merged', (p) => { if (p?.merged && p.target === branch.value) requestFileTree() }),
     workerSocket.on('fs', 'error', (p) => {
       if (p?.error && /project branch|branch name/.test(String(p.error))) branchNotice.value = p.error
     }),
