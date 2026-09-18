@@ -52,6 +52,11 @@
           @click="deleteBranch"
         >Delete branch</button>
         <span v-if="branchNotice" class="text-muted italic truncate">{{ branchNotice }}</span>
+        <button
+          class="ui-btn ui-btn-ghost ui-btn-sm ml-auto"
+          :title="`Revision history of ${filename}`"
+          @click="emit('open-history')"
+        ><i class="pi pi-history text-ui-xs"></i> History</button>
       </div>
       <div v-if="loading || loadError || isBinary"
            class="flex items-center gap-3 px-3 py-1 bg-bg-2 border-b border-line text-ui-sm shrink-0">
@@ -105,6 +110,8 @@ const debugLog = useDebugLogStore()
 const session  = useSessionStore()
 const route    = useRoute()
 const projectId = Number(route.params.id)
+
+const emit = defineEmits(['open-history'])
 
 const props = defineProps({
   fileId: {

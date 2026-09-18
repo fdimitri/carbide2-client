@@ -37,7 +37,17 @@
         class="flex flex-col flex-1 overflow-hidden"
         v-show="activeTabKind === 'file' && effectiveActiveKey === tab.key"
       >
-        <FilePane :file-id="fileIdOf(tab)" :branch="tabBranch(tab)" />
+        <FilePane :file-id="fileIdOf(tab)" :branch="tabBranch(tab)" @open-history="emit('open-history', fileIdOf(tab))" />
+      </div>
+    </template>
+
+    <!-- History tabs: the file's revision DAG as a rail, one per open history tab. -->
+    <template v-for="tab in historyTabs" :key="tab.key">
+      <div
+        class="flex flex-col flex-1 overflow-hidden"
+        v-show="activeTabKind === 'history' && effectiveActiveKey === tab.key"
+      >
+        <HistoryPane :file-id="String(tab.id)" />
       </div>
     </template>
 
@@ -175,6 +185,7 @@ import { useWorkspaceStore } from '../../stores/workspaceStore'
 import TerminalPane from './TerminalPane.vue'
 import ChatPane from './ChatPane.vue'
 import FilePane from './FilePane.vue'
+import HistoryPane from './HistoryPane.vue'
 import ProjectSettingsPane from './ProjectSettingsPane.vue'
 import DebugPane from './DebugPane.vue'
 import AgentPane from './AgentPane.vue'
@@ -266,6 +277,9 @@ function channelLabelFor(tab) {
 const debugTabs = computed(() =>
   (props.pane?.tabs || []).filter((t) => t.kind === 'debug')
 )
+const historyTabs = computed(() =>
+  (props.pane?.tabs || []).filter((t) => t.kind === 'history')
+)
 
 // Per-channel chat state, read for a specific channel id so each tab renders
 // its own channel. These are functions rather than computeds because the
@@ -336,6 +350,7 @@ function callAvailableCountFor(cid) {
 }
 
 const emit = defineEmits([
+  'open-history',
   'activate-tab',
   'close-tab',
   'rename-terminal',
