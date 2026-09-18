@@ -621,9 +621,19 @@ html.theme-green {
 .markdown-body p { margin: 0.25rem 0; }
 .markdown-body p:first-child { margin-top: 0; }
 .markdown-body p:last-child  { margin-bottom: 0; }
+/* Tailwind's preflight sets list-style: none on every ul/ol; put the markers
+   back wherever markdown is rendered (chat and the file preview alike). */
 .markdown-body ul,
-.markdown-body ol { margin: 0.25rem 0 0.25rem 1.2rem; }
+.markdown-body ol { margin: 0.25rem 0 0.25rem 1.2rem; padding-left: 0.4rem; }
+.markdown-body ul { list-style: disc; }
+.markdown-body ul ul { list-style: circle; }
+.markdown-body ul ul ul { list-style: square; }
+.markdown-body ol { list-style: decimal; }
+.markdown-body ol ol { list-style: lower-alpha; }
 .markdown-body li { margin: 0.1rem 0; }
+.markdown-body li::marker { color: rgb(127 127 127 / 0.9); }
+/* GFM task items carry their own checkbox; no bullet in front of it. */
+.markdown-body li:has(> input[type="checkbox"]) { list-style: none; margin-left: -1.2rem; }
 .markdown-body code {
   font-family: var(--font-mono);
   font-size: 0.85em;
@@ -672,9 +682,10 @@ html.theme-green {
 .markdown-doc { line-height: 1.6; max-width: 52rem; }
 .markdown-doc p  { margin: 0.6rem 0; }
 .markdown-doc ul,
-.markdown-doc ol { margin: 0.5rem 0 0.5rem 1.6rem; }
+.markdown-doc ol { margin: 0.5rem 0 0.5rem 1.4rem; padding-left: 0.4rem; }
+.markdown-doc li > p { margin: 0.3rem 0; }
 .markdown-doc li { margin: 0.2rem 0; }
-.markdown-doc li > input[type="checkbox"] { margin: 0 0.4em 0 -1.3em; vertical-align: middle; }
+.markdown-doc li > input[type="checkbox"] { margin: 0 0.5em 0 0; vertical-align: middle; }
 .markdown-doc h1,
 .markdown-doc h2,
 .markdown-doc h3,
@@ -696,6 +707,15 @@ html.theme-green {
 .markdown-doc td { padding: 0.35rem 0.7rem; }
 .markdown-doc hr { border: 0; border-top: 1px solid rgb(127 127 127 / 0.3); margin: 1.5rem 0; }
 .markdown-doc img { max-width: 100%; height: auto; }
+
+/* Front matter (---…--- at the top of a .md/.mdx): rendered as the document's
+   header instead of leaking as text. */
+.md-frontmatter { margin-bottom: 1.5rem; }
+.md-frontmatter h1 { margin-top: 0; }
+.md-frontmatter .md-fm-desc { margin: 0.5rem 0; opacity: 0.85; font-style: italic; }
+.md-frontmatter dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.15rem 1rem; font-size: 0.85em; margin: 0.6rem 0 0; }
+.md-frontmatter dt { opacity: 0.6; }
+.md-frontmatter dd { margin: 0; font-family: var(--font-mono); }
 
 /* Diagram fences (```mermaid, ```d2). Source shows until the SVG lands, and
    stays, with the message, when the engine rejects it. */
