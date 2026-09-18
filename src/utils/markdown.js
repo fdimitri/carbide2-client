@@ -6,7 +6,7 @@
 //
 // Usage in a template:
 //   <span v-html="renderMarkdown(message.text)"></span>
-import { marked } from 'marked'
+import { marked, Marked } from 'marked'
 import DOMPurify from 'dompurify'
 
 // Sensible defaults: GFM-like, treat single newlines as <br> (matches what
@@ -66,4 +66,29 @@ export function renderMarkdownBlocks(src, streaming = false) {
     else out.push({ key: i, kind: 'html', content: renderMarkdown(raw) })
   }
   return out
+}
+
+// ── Documents ────────────────────────────────────────────────────────────────
+// A file preview (README.md, docs) is a document, not chat: a single newline is
+// a soft break, not <br>, and headings get ids so in-page #links work. Own
+// Marked instance so the chat settings above are untouched. Same sanitizer;
+// the file may have been written by an agent, so it is as untrusted as chat.
+const docMarked = new Marked({ gfm: true, breaks: false })
+
+function slug(text) {
+  return text.toLowerCase().trim().replace(/<[^>]+>/g, '').replace(/[^\w\s-]/g, '').replace(/\s+/g, '-')
+}
+
+docMarked.use({
+  renderer: {
+    heading({ tokens, depth }) {
+      const inner = this.parser.parseInline(tokens)
+      return `<h${depth} id="${slug(inner)}">${inner}</h${depth}>\n`
+    },
+  },
+})
+
+export function renderMarkdownDocument(src) {
+  if (src == null) return ''
+  return DOMPurify.sanitize(docMarked.parse(String(src)), { USE_PROFILES: { html: true } })
 }

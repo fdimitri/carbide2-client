@@ -94,6 +94,7 @@
           @open-upload="onExplorerOpenUpload"
           @download-entry="onExplorerDownloadEntry"
           @open-debug="openDebugPane"
+          @open-preview="openPreviewPane"
         />
         <div
           class="explorer-resizer"
@@ -120,6 +121,7 @@
               @set-active-pane="setActivePane($event)"
               @activate-tab="activatePaneTab"
               @open-history="openHistoryPane"
+              @open-preview="openPreviewPane"
               @open-file-at="openFileAt"
               @close-tab="handleCloseTab"
               @tab-drag-start="onTabDragStart"
@@ -159,6 +161,7 @@
                   @set-active-pane="setActivePane($event)"
                   @activate-tab="activatePaneTab"
                   @open-history="openHistoryPane"
+                  @open-preview="openPreviewPane"
                   @open-file-at="openFileAt"
                   @close-tab="handleCloseTab"
                   @tab-drag-start="onTabDragStart"
@@ -377,12 +380,13 @@ const {
 // the branch it left stop arriving.
 const openFileSubs = computed(() => {
   const subs = new Map()   // "branch\0path" => { path, branch }
-  for (const pane of panes.value) {
-    for (const t of (pane?.tabs || [])) {
-      if (t.kind !== 'file' || !t.id) continue
-      const sub = { path: String(t.id), branch: tabBranch(t) }
-      subs.set(`${sub.branch}\0${sub.path}`, sub)
-    }
+  const add = (sub) => subs.set(`${sub.branch}\0${sub.path}`, sub)
+  const tabs = panes.value.flatMap((p) => p?.tabs || [])
+  for (const t of tabs) {
+    if (!t.id) continue
+    if (t.kind === 'file') add({ path: String(t.id), branch: tabBranch(t) })
+    // A preview is a viewer on the file's view: its editor tab's branch, or main.
+    if (t.kind === 'preview') add({ path: String(t.id), branch: tabBranch(tabs.find((f) => f.key === `file:${t.id}`)) })
   }
   return subs
 })
@@ -645,11 +649,21 @@ function openHistoryPane(path) {
   bindTabToActivePane('history', String(path), `${name} · history`)
 }
 
-// From the history rail: open (or focus) the file's tab and point it at a
-// view — pinned at a revision (read-only), or on a branch head.
-function openFileAt(path, { revision = null, branch } = {}) {
+// Rendered markdown, in a tab beside the editor.
+function openPreviewPane(path) {
+  if (!path) return
+  const name = String(path).split('/').pop() || String(path)
+  bindTabToActivePane('preview', String(path), `${name} · preview`)
+}
+
+// From the history rail or a preview: open (or focus) the file's tab and, when
+// a view is given, point it there — pinned at a revision (read-only), or on a
+// branch head. With no view the tab keeps whatever it is on.
+function openFileAt(path, view = {}) {
   if (!path) return
   selectFileNode(String(path))
+  if (!('revision' in view) && !('branch' in view)) return
+  const { revision = null, branch } = view
   sessionStore.setFileTabView(String(path), branch === undefined ? { revision } : { branch, revision })
 }
 

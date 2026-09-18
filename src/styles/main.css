@@ -667,6 +667,36 @@ html.theme-green {
   padding: 0.2rem 0.5rem;
 }
 
+/* A markdown DOCUMENT (MarkdownPreviewPane): the chat sizes above are compact
+   for messages; a file preview reads like a page. Layered on .markdown-body. */
+.markdown-doc { line-height: 1.6; max-width: 52rem; }
+.markdown-doc p  { margin: 0.6rem 0; }
+.markdown-doc ul,
+.markdown-doc ol { margin: 0.5rem 0 0.5rem 1.6rem; }
+.markdown-doc li { margin: 0.2rem 0; }
+.markdown-doc li > input[type="checkbox"] { margin: 0 0.4em 0 -1.3em; vertical-align: middle; }
+.markdown-doc h1,
+.markdown-doc h2,
+.markdown-doc h3,
+.markdown-doc h4,
+.markdown-doc h5,
+.markdown-doc h6 { margin: 1.4em 0 0.5em; line-height: 1.25; }
+.markdown-doc h1:first-child,
+.markdown-doc h2:first-child { margin-top: 0.2em; }
+.markdown-doc h1 { font-size: 1.9em; padding-bottom: 0.25em; border-bottom: 1px solid rgb(127 127 127 / 0.3); }
+.markdown-doc h2 { font-size: 1.45em; padding-bottom: 0.2em; border-bottom: 1px solid rgb(127 127 127 / 0.2); }
+.markdown-doc h3 { font-size: 1.2em; }
+.markdown-doc h4 { font-size: 1.05em; }
+.markdown-doc pre { margin: 0.8rem 0; padding: 0.7rem 0.9rem; }
+.markdown-doc pre code { font-size: 0.85rem; line-height: 1.5; }
+.markdown-doc blockquote { margin: 0.8rem 0; padding: 0.2rem 1rem; }
+.markdown-doc table { margin: 0.8rem 0; display: block; max-width: 100%; overflow-x: auto; }
+.markdown-doc th { font-weight: 600; background: rgb(127 127 127 / 0.1); }
+.markdown-doc th,
+.markdown-doc td { padding: 0.35rem 0.7rem; }
+.markdown-doc hr { border: 0; border-top: 1px solid rgb(127 127 127 / 0.3); margin: 1.5rem 0; }
+.markdown-doc img { max-width: 100%; height: auto; }
+
 /* ── Generic fade transition (Vue <Transition name="fade">) ───────────────── */
 .fade-enter-active, .fade-leave-active { transition: opacity 0.4s; }
 .fade-enter-from, .fade-leave-to       { opacity: 0; }

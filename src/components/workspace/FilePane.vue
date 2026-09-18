@@ -53,7 +53,14 @@
         >Delete branch</button>
         <span v-if="branchNotice" class="text-muted italic truncate">{{ branchNotice }}</span>
         <button
+          v-if="isMarkdown"
           class="ui-btn ui-btn-ghost ui-btn-sm ml-auto"
+          :title="`Rendered preview of ${filename}, following this tab`"
+          @click="emit('open-preview')"
+        ><i class="pi pi-eye text-ui-xs"></i> Preview</button>
+        <button
+          class="ui-btn ui-btn-ghost ui-btn-sm"
+          :class="{ 'ml-auto': !isMarkdown }"
           :title="`Revision history of ${filename}`"
           @click="emit('open-history')"
         ><i class="pi pi-history text-ui-xs"></i> History</button>
@@ -120,7 +127,7 @@ const session  = useSessionStore()
 const route    = useRoute()
 const projectId = Number(route.params.id)
 
-const emit = defineEmits(['open-history'])
+const emit = defineEmits(['open-history', 'open-preview'])
 
 const props = defineProps({
   fileId: {
@@ -271,6 +278,7 @@ const blobError   = ref('')
 const filename = computed(() => (props.fileId || '').split('/').pop() || props.fileId)
 const language = computed(() => extensionToLanguage(filename.value))
 const isImage  = computed(() => /\.(png|jpe?g|gif|webp|bmp|svg|ico|avif)$/i.test(filename.value))
+const isMarkdown = computed(() => /\.(md|mdx|markdown)$/i.test(filename.value))
 
 function releaseBlob() {
   if (blobUrl.value) { try { URL.revokeObjectURL(blobUrl.value) } catch {} ; blobUrl.value = '' }
