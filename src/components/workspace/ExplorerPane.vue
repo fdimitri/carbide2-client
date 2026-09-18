@@ -51,6 +51,17 @@
         </button>
         <button
           class="ui-btn ui-btn-ghost ui-btn-sm"
+          :class="{ 'text-accent-fg': currentBranch?.materialized }"
+          :disabled="materializing"
+          :title="currentBranch?.materialized
+            ? `On disk at ${currentBranch.disk} — click to take it off disk (the DBFS keeps it)`
+            : `Put ${branch} on disk (.branches/<id>) with its own sync, for terminals and tools`"
+          @click="toggleMaterialized"
+        >
+          <i class="pi text-ui-xs" :class="materializing ? 'pi-spin pi-spinner' : 'pi-database'"></i>
+        </button>
+        <button
+          class="ui-btn ui-btn-ghost ui-btn-sm"
           :title="`Delete project branch ${branch} (history kept)`"
           @click="deleteBranch"
         >
@@ -373,7 +384,9 @@ const creatingBranch  = ref(false)
 const newBranchName   = ref('')
 const newBranchInput  = ref(null)
 const branchNotice    = ref('')
-const parentBranch    = computed(() => projectBranches.value.find((b) => b.name === branch.value)?.forked_from || null)
+const currentBranch   = computed(() => projectBranches.value.find((b) => b.name === branch.value) || null)
+const parentBranch    = computed(() => currentBranch.value?.forked_from || null)
+const materializing   = ref(false)
 
 function requestFileTree() {
   workerSocket.send('fs', 'tree', { branch: branch.value })
@@ -415,6 +428,28 @@ function deleteBranch() {
   if (name === MAIN_BRANCH) return
   if (!window.confirm(`Delete project branch "${name}"? Its history is kept; the name becomes free.`)) return
   workerSocket.send('fs', 'project_branch_delete', { name })
+}
+
+// Materialization is the user's call per branch: on disk (its own directory
+// and flusher/watcher pair) or DBFS-only. Main is always on disk.
+function toggleMaterialized() {
+  const b = currentBranch.value
+  if (!b || b.name === MAIN_BRANCH || materializing.value) return
+  const on = !b.materialized
+  if (!on && !window.confirm(`Take "${b.name}" off disk? Its directory ${b.disk} is removed; the branch stays in the DBFS.`)) return
+  materializing.value = true
+  branchNotice.value = on ? `Writing ${b.name} to disk…` : `Removing ${b.name} from disk…`
+  workerSocket.send('fs', 'project_branch_materialize', { name: b.name, on })
+}
+
+function onProjectBranchMaterialized(payload) {
+  const b = payload?.branch
+  if (!b?.name) return
+  projectBranches.value = projectBranches.value.map((x) => (x.name === b.name ? { ...x, ...b } : x))
+  if (b.name === branch.value) {
+    materializing.value = false
+    branchNotice.value = b.materialized ? `${b.name} is on disk at ${b.disk}` : ''
+  }
 }
 
 function onProjectBranches(payload) {
@@ -468,9 +503,13 @@ onMounted(() => {
     workerSocket.on('fs', 'project_branches',        onProjectBranches),
     workerSocket.on('fs', 'project_branch_created',  onProjectBranchCreated),
     workerSocket.on('fs', 'project_branch_deleted',  onProjectBranchDeleted),
+    workerSocket.on('fs', 'project_branch_materialized', onProjectBranchMaterialized),
     workerSocket.on('fs', 'project_merged', (p) => { if (p?.merged && p.target === branch.value) requestFileTree() }),
     workerSocket.on('fs', 'error', (p) => {
-      if (p?.error && /project branch|branch name/.test(String(p.error))) branchNotice.value = p.error
+      if (p?.error && /project branch|branch name|materialize|on disk/.test(String(p.error))) {
+        branchNotice.value = p.error
+        materializing.value = false
+      }
     }),
   )
   _offFsStat.value      = workerSocket.on('fs', 'stat', (payload) => {
