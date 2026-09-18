@@ -27,7 +27,7 @@
             v-model="newBranchName"
             type="text"
             spellcheck="false"
-            :placeholder="`new branch from ${branch}`"
+            :placeholder="revision ? `new branch at ${revision.slice(0, 8)}` : `new branch from ${branch}`"
             class="px-1.5 py-0.5 rounded-ui-xs border monaco-input-bg monaco-input-fg monaco-input-border outline-none w-48"
             @keydown.enter.prevent="createBranch"
             @keydown.esc.prevent="creatingBranch = false"
@@ -58,6 +58,14 @@
           @click="emit('open-history')"
         ><i class="pi pi-history text-ui-xs"></i> History</button>
       </div>
+      <!-- Pinned: the content AT one revision (from the history rail), read-only. -->
+      <div v-if="revision && !isBinary"
+           class="flex items-center gap-2 px-3 py-1 bg-bg-2 border-b border-line text-ui-sm shrink-0">
+        <i class="pi pi-history text-muted text-ui-xs"></i>
+        <span>Viewing revision <span class="font-mono">{{ revision.slice(0, 8) }}</span> — read-only.</span>
+        <button class="ui-btn ui-btn-ghost ui-btn-sm" :title="`Back to the head of ${branch}`" @click="unpin">Back to {{ branch }}</button>
+        <button class="ui-btn ui-btn-ghost ui-btn-sm" title="Fork a branch at this revision and edit there" @click="startCreateBranch">Branch from here…</button>
+      </div>
       <div v-if="loading || loadError || isBinary"
            class="flex items-center gap-3 px-3 py-1 bg-bg-2 border-b border-line text-ui-sm shrink-0">
         <span v-if="loading" class="text-muted italic">Loading…</span>
@@ -87,6 +95,7 @@
         :content="content"
         :language="language"
         :path="fileId"
+        :read-only="!!revision"
         @change="onEditorChange"
         @cursor-change="onCursorChange"
       />
@@ -124,6 +133,12 @@ const props = defineProps({
   branch: {
     type: String,
     default: MAIN_BRANCH,
+  },
+  // Set: the view is pinned at this revision (read-only, no sync); `branch` is
+  // then the branch to return to. Owned by the tab like `branch`.
+  revision: {
+    type: String,
+    default: null,
   },
 })
 
@@ -163,7 +178,14 @@ function createBranch() {
   if (!name) return
   pendingCreate = name
   creatingBranch.value = false
-  workerSocket.send('fs', 'branch_create', { path: props.fileId, name, from: props.branch })
+  const req = { path: props.fileId, name, from: props.branch }
+  if (props.revision) req.at_revision = props.revision   // pinned: fork where we are looking
+  workerSocket.send('fs', 'branch_create', req)
+}
+
+function unpin() {
+  loadError.value = ''
+  if (!session.setFileTabView(props.fileId, { revision: null })) requestFile(props.fileId, props.branch, null)
 }
 
 function mergeIntoMain() {
@@ -298,7 +320,7 @@ function onSyncAbandon() {
   loadError.value = 'Your last edits were not acknowledged by the worker and have been dropped; the file was reloaded.'
 }
 
-function requestFile(path, branch = props.branch) {
+function requestFile(path, branch = props.branch, revision = props.revision) {
   if (!path) return
   releaseBlob()
   isBinary.value  = false
@@ -308,6 +330,14 @@ function requestFile(path, branch = props.branch) {
   conflictBranch.value = ''
   editorRef.value?.clearPeerCursors()   // another file or branch: different viewers
   sync?.dispose()
+  if (revision) {
+    // Pinned: one read of the content at that revision, no sync — nothing here
+    // is a branch head to base edits on, and Monaco is read-only.
+    sync = null
+    workerSocket.send('fs', 'read', { path, branch, revision_id: revision })
+    requestBranches()
+    return
+  }
   sync = createFileSync({
     path,
     branch,
@@ -398,6 +428,14 @@ function onFsOpened(payload) {
 
 function onFsContent(payload) {
   if (!forThisView(payload)) return
+  if (props.revision) {
+    // Only the pinned read we asked for; a live head arriving late is not ours.
+    if (!payload.pinned || payload.revision !== props.revision) return
+    loading.value = false
+    content.value = payload.content ?? ''
+    return
+  }
+  if (payload.pinned) return
   loading.value = false
   const res = sync?.onContent(payload)
   if (!res || res.initial) content.value = res ? res.content : (payload.content ?? '')
@@ -489,7 +527,7 @@ onMounted(() => {
 // open/close wire (see onWsDisconnected above). A branch change comes from
 // the tab (switchBranch wrote it there): re-read on the new branch. The
 // open/close for the (path, branch) pair is ProjectPage's, from the same tab.
-watch(() => [props.fileId, props.branch], ([next]) => {
+watch(() => [props.fileId, props.branch, props.revision], ([next]) => {
   if (next) requestFile(next)
 })
 

@@ -37,7 +37,12 @@
         class="flex flex-col flex-1 overflow-hidden"
         v-show="activeTabKind === 'file' && effectiveActiveKey === tab.key"
       >
-        <FilePane :file-id="fileIdOf(tab)" :branch="tabBranch(tab)" @open-history="emit('open-history', fileIdOf(tab))" />
+        <FilePane
+          :file-id="fileIdOf(tab)"
+          :branch="tabBranch(tab)"
+          :revision="tab.revision || null"
+          @open-history="emit('open-history', fileIdOf(tab))"
+        />
       </div>
     </template>
 
@@ -47,7 +52,7 @@
         class="flex flex-col flex-1 overflow-hidden"
         v-show="activeTabKind === 'history' && effectiveActiveKey === tab.key"
       >
-        <HistoryPane :file-id="String(tab.id)" />
+        <HistoryPane :file-id="String(tab.id)" @open-file-at="(view) => emit('open-file-at', String(tab.id), view)" />
       </div>
     </template>
 
@@ -351,6 +356,7 @@ function callAvailableCountFor(cid) {
 
 const emit = defineEmits([
   'open-history',
+  'open-file-at',
   'activate-tab',
   'close-tab',
   'rename-terminal',
