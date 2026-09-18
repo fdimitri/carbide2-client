@@ -20,7 +20,7 @@
 //     layout: "one",
 //     activePaneIndex: 0,
 //     panes: {
-//       "0": { activeTab: "file:src/x", tabs: [ { key, kind, id, label, branch? } ] },
+//       "0": { activeTab: "file:src/x", tabs: [ { key, kind, id, label, branch?, revision? } ] },
 //       "1": { activeTab: null, tabs: [] },
 //       "2": { activeTab: null, tabs: [] },
 //       "3": { activeTab: null, tabs: [] }
@@ -40,6 +40,7 @@ import { ref } from 'vue'
 export const SESSION_CS          = 'session' // commandSet name (worker ROUTES)
 export const SESSION_DOC_VERSION = 3          // v2: agent tabs carry agent:<uuid> + agentSlug/composerHeightPx
                                               // v3: file tabs carry `branch` (per-file DBFS branch; main by default)
+                                              //     and `revision` (null, or a revision the view is pinned at, read-only)
 export const MAIN_BRANCH         = 'main'
 export const PANE_SLOTS          = 4          // usePanes keeps 4 fixed pane slots
 
@@ -185,7 +186,10 @@ function serializeTab(t) {
   // Always written for a file tab, main included: toDoc() patch-preserves
   // fields of the raw doc that the render model omits, so leaving `branch` out
   // on main would let a previously saved branch survive the switch back.
-  if (t.kind === 'file') out.branch = t.branch || MAIN_BRANCH
+  if (t.kind === 'file') {
+    out.branch = t.branch || MAIN_BRANCH
+    out.revision = t.revision || null
+  }
   return out
 }
 
@@ -195,6 +199,7 @@ function deserializeTab(t) {
     agentSlug: t.agentSlug ?? null,
     composerHeightPx: t.composerHeightPx ?? null,
     branch: t.kind === 'file' ? (t.branch || MAIN_BRANCH) : null,
+    revision: t.kind === 'file' ? (t.revision || null) : null,
   }
 }
 
@@ -389,20 +394,32 @@ export const useSessionStore = defineStore('session', () => {
     sessions.value        = []
   }
 
-  // Point the file tab for `fileId` (one tab per file across all panes) at
-  // `branch`. The tabs array is replaced, not mutated in place, so the emitter
-  // sees one whole-array patch (the only form the server can store).
-  function setFileTabBranch(fileId, branch) {
+  // Point the file tab for `fileId` (one tab per file across all panes) at a
+  // view: a branch (live, editable) or a revision it is pinned at (read-only;
+  // `branch` is then the branch to return to). The tabs array is replaced, not
+  // mutated in place, so the emitter sees one whole-array patch (the only form
+  // the server can store). Returns false when no tab has the file open.
+  function setFileTabView(fileId, { branch, revision } = {}) {
     const key = `file:${fileId}`
-    const next = branch || MAIN_BRANCH
     for (const pane of panes.value) {
       const idx = (pane?.tabs || []).findIndex((t) => t.key === key)
       if (idx === -1) continue
-      if (tabBranch(pane.tabs[idx]) === next) return true
-      pane.tabs = pane.tabs.map((t, i) => (i === idx ? { ...t, branch: next } : t))
+      const cur = pane.tabs[idx]
+      const next = {
+        branch:   branch === undefined ? tabBranch(cur) : (branch || MAIN_BRANCH),
+        revision: revision === undefined ? (cur.revision || null) : (revision || null),
+      }
+      if (tabBranch(cur) === next.branch && (cur.revision || null) === next.revision) return true
+      pane.tabs = pane.tabs.map((t, i) => (i === idx ? { ...t, ...next } : t))
       return true
     }
     return false
+  }
+
+  // Switch the file's tab to a branch head. Un-pins: a pinned view is a
+  // revision, not a branch head to edit on.
+  function setFileTabBranch(fileId, branch) {
+    return setFileTabView(fileId, { branch, revision: null })
   }
 
   return {
@@ -411,7 +428,7 @@ export const useSessionStore = defineStore('session', () => {
     versionHistory, forkedFrom, rawDoc,
     isProducer, isWatcher,
     // layout state
-    layout, activePaneIndex, panes, setFileTabBranch,
+    layout, activePaneIndex, panes, setFileTabBranch, setFileTabView,
     // resume picker
     sessions,
     // (de)serialization + patch application

@@ -25,6 +25,11 @@ const props = defineProps({
     type: String,
     default: '',
   },
+  // A pinned history view: nothing typed here goes anywhere.
+  readOnly: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 const emit = defineEmits(['change', 'cursor-change'])
@@ -91,6 +96,7 @@ onMounted(async () => {
     renderWhitespace: 'selection',
     smoothScrolling:   false,
     wordWrap:          'off',
+    readOnly:          props.readOnly,
   })
   editor.value.onDidChangeModelContent((e) => {
     if (applyingRemote) return
@@ -119,6 +125,10 @@ watch(() => props.content, (next) => {
       applyingRemote = false
     }
   }
+})
+
+watch(() => props.readOnly, (ro) => {
+  editor.value?.updateOptions({ readOnly: ro })
 })
 
 // Re-apply language when the file extension changes

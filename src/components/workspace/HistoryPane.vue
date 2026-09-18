@@ -25,6 +25,8 @@
         <i class="pi pi-refresh text-ui-xs"></i>
       </button>
 
+      <span class="text-muted text-ui-xs hidden lg:inline">right-click a node to load it</span>
+
       <span class="ml-auto text-muted text-ui-xs whitespace-nowrap">
         <template v-if="loading">loading…</template>
         <template v-else-if="graph">{{ rows.length }} nodes · {{ revisionCount }} revisions · {{ laneCount }} lane{{ laneCount === 1 ? '' : 's' }}</template>
@@ -68,9 +70,12 @@
           <div
             v-for="r in rows"
             :key="r.node.id"
-            class="flex items-center gap-2 px-2 text-ui-sm whitespace-nowrap hover:bg-bg-2/60"
+            class="flex items-center gap-2 px-2 text-ui-sm whitespace-nowrap hover:bg-bg-2/60 cursor-context-menu"
+            :class="{ 'bg-bg-2': menuNode && menuNode.id === r.node.id }"
             :style="{ height: `${ROW_H}px` }"
             :title="rowTitle(r.node)"
+            @contextmenu.prevent="onNodeContextMenu($event, r.node)"
+            @dblclick="loadIntoEditor(r.node)"
           >
             <button
               v-for="h in headsAt(r.node.id)"
@@ -100,13 +105,16 @@
       </div>
       <div v-else-if="!loading && !error" class="p-4 text-muted text-ui-sm italic">Waiting for the worker…</div>
     </div>
+
+    <ContextMenu ref="nodeMenu" :model="menuItems" class="tree-context-overlay" @hide="menuNode = null" />
   </div>
 </template>
 
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import ContextMenu from 'primevue/contextmenu'
 import workerSocket from '../../services/workerSocket'
-import { useSessionStore, MAIN_BRANCH } from '../../stores/sessionStore'
+import { MAIN_BRANCH } from '../../stores/sessionStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { layoutRail, segmentPath } from '../../utils/railLayout'
 
@@ -114,7 +122,10 @@ const props = defineProps({
   fileId: { type: String, required: true },
 })
 
-const session = useSessionStore()
+// open-file-at(view): ProjectPage opens (or focuses) the file's tab and points
+// it at { revision } (pinned, read-only) or { branch } (live).
+const emit = defineEmits(['open-file-at'])
+
 const store   = useWorkspaceStore()
 
 const GAPS = [
@@ -204,13 +215,64 @@ function rowTitle(node) {
   return lines.filter(Boolean).join('\n')
 }
 
-// A head chip switches the file's tab (if open) to that branch.
+// A head chip puts the file's tab on that branch (opening the tab if needed).
 function switchTo(branch) {
   notice.value = ''
-  if (!session.setFileTabBranch(props.fileId, branch)) {
-    notice.value = `Open ${filename.value} in a tab to switch it to ${branch}.`
-  }
+  emit('open-file-at', { branch, revision: null })
 }
+
+// ── Node context menu ────────────────────────────────────────────────────────
+const nodeMenu = ref(null)
+const menuNode = ref(null)
+let   pendingBranch = ''   // name asked for by "Branch from here"; open it when created
+
+function onNodeContextMenu(event, node) {
+  menuNode.value = node
+  nodeMenu.value?.show(event)
+}
+
+// The node is a run; its id is the LAST revision, i.e. the state after every
+// edit in the run. That is what the editor shows.
+function loadIntoEditor(node) {
+  if (!node) return
+  notice.value = ''
+  emit('open-file-at', { revision: node.id })
+}
+
+function branchFromHere(node) {
+  if (!node) return
+  const name = window.prompt(`New branch of ${filename.value} at revision ${node.id.slice(0, 8)}:`, '')
+  const trimmed = (name || '').trim()
+  if (!trimmed) return
+  pendingBranch = trimmed
+  notice.value = ''
+  workerSocket.send('fs', 'branch_create', { path: props.fileId, name: trimmed, at_revision: node.id })
+}
+
+function onFsBranchCreated(payload) {
+  scheduleRefresh(payload)
+  if (!forThisFile(payload) || !pendingBranch || payload.name !== pendingBranch) return
+  pendingBranch = ''
+  emit('open-file-at', { branch: payload.name, revision: null })
+}
+
+const menuItems = computed(() => {
+  const n = menuNode.value
+  if (!n) return []
+  const items = [
+    { label: 'Load into editor', icon: 'pi pi-file-edit', command: () => loadIntoEditor(n) },
+    { label: 'Branch from here…', icon: 'pi pi-sitemap', command: () => branchFromHere(n) },
+  ]
+  for (const h of headsAt(n.id)) {
+    items.push({ label: `Switch editor to ${h.branch}`, icon: 'pi pi-arrow-right', command: () => switchTo(h.branch) })
+  }
+  items.push({ separator: true })
+  items.push({ label: 'Copy revision id', icon: 'pi pi-copy', command: () => navigator.clipboard?.writeText(n.id) })
+  if (n.first && n.first !== n.id) {
+    items.push({ label: 'Copy first revision id', icon: 'pi pi-copy', command: () => navigator.clipboard?.writeText(n.first) })
+  }
+  return items
+})
 
 // ── Data ─────────────────────────────────────────────────────────────────────
 function fetchDag() {
@@ -252,7 +314,7 @@ const offs = [
   workerSocket.on('fs', 'written',        scheduleRefresh),
   workerSocket.on('fs', 'change',         scheduleRefresh),
   workerSocket.on('fs', 'set_contents',   scheduleRefresh),
-  workerSocket.on('fs', 'branch_created', scheduleRefresh),
+  workerSocket.on('fs', 'branch_created', onFsBranchCreated),
   workerSocket.on('fs', 'branch_deleted', scheduleRefresh),
   workerSocket.on('fs', 'merged',         scheduleRefresh),
   workerSocket.on('system', 'connected',  () => fetchDag()),

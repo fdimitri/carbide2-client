@@ -120,6 +120,7 @@
               @set-active-pane="setActivePane($event)"
               @activate-tab="activatePaneTab"
               @open-history="openHistoryPane"
+              @open-file-at="openFileAt"
               @close-tab="handleCloseTab"
               @tab-drag-start="onTabDragStart"
               @tab-drop="onTabDrop"
@@ -158,6 +159,7 @@
                   @set-active-pane="setActivePane($event)"
                   @activate-tab="activatePaneTab"
                   @open-history="openHistoryPane"
+                  @open-file-at="openFileAt"
                   @close-tab="handleCloseTab"
                   @tab-drag-start="onTabDragStart"
                   @tab-drop="onTabDrop"
@@ -641,6 +643,14 @@ function openHistoryPane(path) {
   if (!path) return
   const name = String(path).split('/').pop() || String(path)
   bindTabToActivePane('history', String(path), `${name} · history`)
+}
+
+// From the history rail: open (or focus) the file's tab and point it at a
+// view — pinned at a revision (read-only), or on a branch head.
+function openFileAt(path, { revision = null, branch } = {}) {
+  if (!path) return
+  selectFileNode(String(path))
+  sessionStore.setFileTabView(String(path), branch === undefined ? { revision } : { branch, revision })
 }
 
 async function confirmUpload() {
