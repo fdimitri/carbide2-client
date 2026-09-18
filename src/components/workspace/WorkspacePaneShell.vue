@@ -42,6 +42,7 @@
           :branch="tabBranch(tab)"
           :revision="tab.revision || null"
           @open-history="emit('open-history', fileIdOf(tab))"
+          @open-preview="emit('open-preview', fileIdOf(tab))"
         />
       </div>
     </template>
@@ -53,6 +54,21 @@
         v-show="activeTabKind === 'history' && effectiveActiveKey === tab.key"
       >
         <HistoryPane :file-id="String(tab.id)" @open-file-at="(view) => emit('open-file-at', String(tab.id), view)" />
+      </div>
+    </template>
+
+    <!-- Preview tabs: a markdown file rendered, following its editor tab's view. -->
+    <template v-for="tab in previewTabs" :key="tab.key">
+      <div
+        class="flex flex-col flex-1 overflow-hidden"
+        v-show="activeTabKind === 'preview' && effectiveActiveKey === tab.key"
+      >
+        <MarkdownPreviewPane
+          :file-id="String(tab.id)"
+          :branch="session.fileTabView(String(tab.id)).branch"
+          :revision="session.fileTabView(String(tab.id)).revision"
+          @open-file="emit('open-file-at', String(tab.id), {})"
+        />
       </div>
     </template>
 
@@ -195,9 +211,12 @@ import ProjectSettingsPane from './ProjectSettingsPane.vue'
 import DebugPane from './DebugPane.vue'
 import AgentPane from './AgentPane.vue'
 import AgentConfigPane from './AgentConfigPane.vue'
-import { tabBranch } from '../../stores/sessionStore'
+import { tabBranch, useSessionStore } from '../../stores/sessionStore'
+import MarkdownPreviewPane from './MarkdownPreviewPane.vue'
 
 const store = useWorkspaceStore()
+
+const session = useSessionStore()
 
 const props = defineProps({
   pane: { type: Object, required: true },
@@ -285,6 +304,9 @@ const debugTabs = computed(() =>
 const historyTabs = computed(() =>
   (props.pane?.tabs || []).filter((t) => t.kind === 'history')
 )
+const previewTabs = computed(() =>
+  (props.pane?.tabs || []).filter((t) => t.kind === 'preview')
+)
 
 // Per-channel chat state, read for a specific channel id so each tab renders
 // its own channel. These are functions rather than computeds because the
@@ -356,6 +378,7 @@ function callAvailableCountFor(cid) {
 
 const emit = defineEmits([
   'open-history',
+  'open-preview',
   'open-file-at',
   'activate-tab',
   'close-tab',

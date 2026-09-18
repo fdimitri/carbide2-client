@@ -75,15 +75,15 @@ export function usePanes({ activePane, pendingNavigation }) {
 
   function parseTabKey(key) {
     if (!key || typeof key !== 'string' || !key.includes(':')) return null
-    // Split at the FIRST colon only: a file path (and so a history id) may
+    // Split at the FIRST colon only: a file path (and so a history/preview id) may
     // itself contain one.
     const at = key.indexOf(':')
     const kind = key.slice(0, at)
     const rawId = key.slice(at + 1)
-    // file paths, history paths, terminal UUIDs, and agent conversation UUIDs
+    // file paths (file/history/preview), terminal UUIDs, and agent conversation UUIDs
     // are string identities. channels use numeric id; agent-config/debug stay
     // :0 singletons.
-    if (kind === 'file' || kind === 'history' || kind === 'terminal' || kind === 'agent') return { kind, id: rawId }
+    if (kind === 'file' || kind === 'history' || kind === 'preview' || kind === 'terminal' || kind === 'agent') return { kind, id: rawId }
     return { kind, id: Number(rawId) }
   }
 
@@ -147,6 +147,7 @@ export function usePanes({ activePane, pendingNavigation }) {
     if (kind === 'terminal' && focusExistingTerminal(id)) return
     if (kind === 'file' && focusExistingFile(id)) return
     if (kind === 'history' && focusExistingOfKind('history', id)) return
+    if (kind === 'preview' && focusExistingOfKind('preview', id)) return
     const pane = panes.value[activePaneIndex.value]
     const key  = `${kind}:${id}`
     if (!pane.tabs.find((t) => t.key === key)) {
@@ -159,6 +160,7 @@ export function usePanes({ activePane, pendingNavigation }) {
     if (kind === 'terminal' && focusExistingTerminal(id)) return
     if (kind === 'file' && focusExistingFile(id)) return
     if (kind === 'history' && focusExistingOfKind('history', id)) return
+    if (kind === 'preview' && focusExistingOfKind('preview', id)) return
     const pane = panes.value[targetPaneIndex]
     if (!pane) return
     activePaneIndex.value = targetPaneIndex

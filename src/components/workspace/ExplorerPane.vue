@@ -190,6 +190,7 @@ const props = defineProps({
 
 const emit = defineEmits([
   'open-file',
+  'open-preview',
   'open-terminal',
   'open-channel',
   'open-agent',
@@ -644,6 +645,9 @@ function openNodeInPane(node, paneIndex) {
   }
 }
 
+// Files the preview tab can render.
+function isMarkdownPath(p) { return /\.(md|mdx|markdown)$/i.test(p || '') }
+
 function buildOpenItems(node) {
   const validPaneCount = PANE_COUNTS[props.paneLayout] || 1
   if (validPaneCount === 1) {
@@ -763,6 +767,9 @@ function buildContextMenuItems(node) {
     const filePath = '/' + node.key.replace(/^\//, '')
     return [
       ...buildOpenItems(node),
+      ...(isMarkdownPath(filePath)
+        ? [{ label: 'Open Preview', icon: 'pi pi-eye', command: () => emit('open-preview', String(node.data.id)) }]
+        : []),
       { separator: true },
       { label: 'Download', icon: 'pi pi-download', command: () => emit('download-entry', filePath) },
       { label: 'Properties...', icon: 'pi pi-info-circle', command: () => openPropertiesDialog(filePath) },

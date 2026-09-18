@@ -77,7 +77,7 @@ export function sessionGateInfo(session) {
 // Tab kinds this build can render/parse. Anything else is "from the future" and
 // is preserved raw (kept in the doc, not rendered) rather than dropped.
 export const KNOWN_TAB_KINDS = new Set([
-  'file', 'channel', 'terminal', 'settings', 'debug', 'agent', 'agent-config', 'history',
+  'file', 'channel', 'terminal', 'settings', 'debug', 'agent', 'agent-config', 'history', 'preview',
 ])
 
 // Server → client messages (see session_handlers.rb):
@@ -416,6 +416,18 @@ export const useSessionStore = defineStore('session', () => {
     return false
   }
 
+  // The view the file's tab (in any pane) is on; main, unpinned, when the file
+  // is not open. A preview tab follows this, so previewing a branch is just
+  // having the editor on it.
+  function fileTabView(fileId) {
+    const key = `file:${fileId}`
+    for (const pane of panes.value) {
+      const t = (pane?.tabs || []).find((x) => x.key === key)
+      if (t) return { branch: tabBranch(t), revision: t.revision || null }
+    }
+    return { branch: MAIN_BRANCH, revision: null }
+  }
+
   // Switch the file's tab to a branch head. Un-pins: a pinned view is a
   // revision, not a branch head to edit on.
   function setFileTabBranch(fileId, branch) {
@@ -428,7 +440,7 @@ export const useSessionStore = defineStore('session', () => {
     versionHistory, forkedFrom, rawDoc,
     isProducer, isWatcher,
     // layout state
-    layout, activePaneIndex, panes, setFileTabBranch, setFileTabView,
+    layout, activePaneIndex, panes, setFileTabBranch, setFileTabView, fileTabView,
     // resume picker
     sessions,
     // (de)serialization + patch application
