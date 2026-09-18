@@ -56,8 +56,13 @@ const getWorkerUrl = () => {
 // `branch` on tree/create_file/create_dir/rename/delete selects the project
 // branch's tree; tree/created/renamed/deleted frames carry `branch`. The
 // explorer's branch bar needs all of it, so MIN_SERVER is 10.
-const PROTOCOL   = 10
-const MIN_SERVER = 10
+// PROTOCOL 11: fs/project_branch_materialize { name, on } ->
+// fs/project_branch_materialized { branch, on }; branches carry `disk` (their
+// directory under the project root when materialized). Additive on the wire
+// but the tree/created/... frames of a materialized branch are new — a worker
+// at 10 cannot serve the toggle, so MIN_SERVER moves.
+const PROTOCOL   = 11
+const MIN_SERVER = 11
 
 const RECONNECT_BASE_MS  = 1000
 const RECONNECT_MAX_MS   = 30000
