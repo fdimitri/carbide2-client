@@ -6,10 +6,54 @@
     <template v-else>
       <!-- No filename header: the tab already shows it. This strip only
            appears when there's a transient status to surface. -->
+      <!-- Branch bar: which branch of this file the editor is on, fork a new
+           one from it, merge it back. Branches are per file (DBFS v2). -->
+      <div v-if="!isBinary"
+           class="flex items-center gap-2 px-3 py-1 bg-bg-2 border-b border-line text-ui-sm shrink-0">
+        <i class="pi pi-sitemap text-muted text-ui-xs"></i>
+        <select
+          :value="branch"
+          :disabled="!branches.length"
+          :title="`Branch of ${filename}`"
+          class="px-1.5 py-0.5 rounded-ui-xs border monaco-input-bg monaco-input-fg monaco-input-border outline-none"
+          @change="switchBranch($event.target.value)"
+        >
+          <option v-if="!branches.some(b => b.name === branch)" :value="branch">{{ branch }}</option>
+          <option v-for="b in branches" :key="b.name" :value="b.name">{{ b.name }}</option>
+        </select>
+        <template v-if="creatingBranch">
+          <input
+            ref="newBranchInput"
+            v-model="newBranchName"
+            type="text"
+            spellcheck="false"
+            :placeholder="`new branch from ${branch}`"
+            class="px-1.5 py-0.5 rounded-ui-xs border monaco-input-bg monaco-input-fg monaco-input-border outline-none w-48"
+            @keydown.enter.prevent="createBranch"
+            @keydown.esc.prevent="creatingBranch = false"
+          />
+          <button class="ui-btn ui-btn-ghost ui-btn-sm" :disabled="!newBranchName.trim()" @click="createBranch">Create</button>
+          <button class="ui-btn ui-btn-ghost ui-btn-sm" @click="creatingBranch = false">Cancel</button>
+        </template>
+        <button v-else class="ui-btn ui-btn-ghost ui-btn-sm" :title="`Fork a new branch of ${filename} from ${branch}`" @click="startCreateBranch">
+          New branch
+        </button>
+        <button
+          v-if="branch !== MAIN_BRANCH"
+          class="ui-btn ui-btn-ghost ui-btn-sm"
+          :disabled="merging"
+          :title="`Merge ${branch} into ${MAIN_BRANCH}`"
+          @click="mergeIntoMain"
+        >{{ merging ? 'Merging…' : `Merge into ${MAIN_BRANCH}` }}</button>
+        <span v-if="branchNotice" class="text-muted italic truncate">{{ branchNotice }}</span>
+      </div>
       <div v-if="loading || loadError || isBinary"
            class="flex items-center gap-3 px-3 py-1 bg-bg-2 border-b border-line text-ui-sm shrink-0">
         <span v-if="loading" class="text-muted italic">Loading…</span>
         <span v-if="loadError" class="text-warn">{{ loadError }}</span>
+        <button v-if="conflictBranch" class="ui-btn ui-btn-ghost ui-btn-sm" @click="switchBranch(conflictBranch)">
+          Open {{ conflictBranch }}
+        </button>
         <span v-if="isBinary" class="text-muted italic">(binary)</span>
       </div>
       <!-- Binary preview — image inline if it looks like one, else a placeholder + download link. See #13. -->
@@ -40,17 +84,19 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import MonacoEditor from './MonacoEditor.vue'
 import workerSocket from '../../services/workerSocket'
 import { extensionToLanguage } from '../../utils/monacoLanguage'
 import { useDebugLogStore } from '../../stores/debugLogStore'
+import { useSessionStore, MAIN_BRANCH } from '../../stores/sessionStore'
 import { fetchProjectBlob } from '../../services/projectService'
 import { createFileSync } from '../../services/fileSync'
 import { applyChanges as applyChangesToText } from '../../utils/textChanges'
 
 const debugLog = useDebugLogStore()
+const session  = useSessionStore()
 const route    = useRoute()
 const projectId = Number(route.params.id)
 
@@ -59,7 +105,97 @@ const props = defineProps({
     type: String,
     default: '',
   },
+  // The branch of the file this view is on. Owned by the file's tab (session
+  // doc), so it survives a reload and a session resume; switchBranch() changes
+  // it there and the new value arrives back through this prop.
+  branch: {
+    type: String,
+    default: MAIN_BRANCH,
+  },
 })
+
+// ── Branches ──────────────────────────────────────────────────────────────────
+const branches       = ref([])      // [{ name, head }] for this file
+const creatingBranch = ref(false)
+const newBranchName  = ref('')
+const newBranchInput = ref(null)
+const merging        = ref(false)
+const branchNotice   = ref('')
+const conflictBranch = ref('')      // auto-branch holding a refused batch; offered as "Open …"
+let   pendingCreate  = ''           // name we asked for; switch to it when branch_created lands
+
+function requestBranches() {
+  if (props.fileId) workerSocket.send('fs', 'branches', { path: props.fileId })
+}
+
+function switchBranch(name) {
+  if (!name || name === props.branch) return
+  conflictBranch.value = ''
+  loadError.value = ''
+  if (!session.setFileTabBranch(props.fileId, name)) {
+    // No tab owns this view (should not happen); keep the editor usable anyway.
+    requestFile(props.fileId, name)
+  }
+}
+
+function startCreateBranch() {
+  creatingBranch.value = true
+  newBranchName.value = ''
+  branchNotice.value = ''
+  nextTick(() => newBranchInput.value?.focus())
+}
+
+function createBranch() {
+  const name = newBranchName.value.trim()
+  if (!name) return
+  pendingCreate = name
+  creatingBranch.value = false
+  workerSocket.send('fs', 'branch_create', { path: props.fileId, name, from: props.branch })
+}
+
+function mergeIntoMain() {
+  if (props.branch === MAIN_BRANCH || merging.value) return
+  merging.value = true
+  branchNotice.value = ''
+  workerSocket.send('fs', 'merge', { path: props.fileId, source: props.branch, target: MAIN_BRANCH })
+}
+
+function onFsBranches(payload) {
+  if (normPath(payload.path) !== normPath(props.fileId)) return
+  branches.value = Array.isArray(payload.branches) ? payload.branches : []
+}
+
+function onFsBranchCreated(payload) {
+  if (normPath(payload.path) !== normPath(props.fileId)) return
+  if (!branches.value.some(b => b.name === payload.name)) {
+    branches.value = [...branches.value, { name: payload.name, head: payload.head }].sort((a, b) => a.name.localeCompare(b.name))
+  }
+  if (pendingCreate && payload.name === pendingCreate) {
+    pendingCreate = ''
+    switchBranch(payload.name)
+  }
+}
+
+function onFsMerged(payload) {
+  if (normPath(payload.path) !== normPath(props.fileId)) return
+  merging.value = false
+  if (payload.merged) {
+    branchNotice.value = `Merged ${payload.source} into ${payload.target}.`
+    syncLog('merged', `${payload.source} → ${payload.target}`, payload.head)
+    requestBranches()
+  } else {
+    const why = payload.reason === 'conflict'
+      ? `${payload.source} conflicts with ${payload.target}; not merged.`
+      : `Not merged: ${payload.error || payload.reason || 'unknown reason'}.`
+    branchNotice.value = why
+    syncLog('merge refused', why)
+  }
+}
+
+// Frames for this file but another branch belong to another view.
+function forThisView(payload) {
+  return normPath(payload.path) === normPath(props.fileId) && (payload.branch || MAIN_BRANCH) === props.branch
+}
 
 const content    = ref('')
 const loading    = ref(false)
@@ -109,7 +245,7 @@ const editorAdapter = {
 
 let sync = null
 
-const WARN_ACTIONS = new Set(['write refused', 'write abandoned', 'resend'])
+const WARN_ACTIONS = new Set(['write refused', 'write abandoned', 'resend', 'merge refused'])
 
 function syncLog(action, detail, extra) {
   debugLog.push({ severity: WARN_ACTIONS.has(action) ? 'warn' : 'info', source: 'fs', action,
@@ -122,22 +258,25 @@ function onSyncAbandon() {
   loadError.value = 'Your last edits were not acknowledged by the worker and have been dropped; the file was reloaded.'
 }
 
-function requestFile(path) {
+function requestFile(path, branch = props.branch) {
   if (!path) return
   releaseBlob()
   isBinary.value  = false
   loading.value   = true
   loadError.value = ''
   content.value   = ''
+  conflictBranch.value = ''
   sync?.dispose()
   sync = createFileSync({
     path,
+    branch,
     send: (cmd, payload) => workerSocket.send('fs', cmd, payload),
     editor: editorAdapter,
     log: syncLog,
     onAbandon: onSyncAbandon,
   })
   sync.load()
+  requestBranches()
 }
 
 function normPath(p) { return (p || '').replace(/^\//, '') }
@@ -174,18 +313,18 @@ function onCursorChange({ line, char }) {
   if (!props.fileId) return
   clearTimeout(cursorTimer)
   cursorTimer = setTimeout(() => {
-    workerSocket.send('fs', 'cursor', { path: props.fileId, line, char })
+    workerSocket.send('fs', 'cursor', { path: props.fileId, branch: props.branch, line, char })
   }, 50)
 }
 
 // ── Receive remote edits from peers ──────────────────────────────────────────
 function onFsChange(payload) {
-  if (normPath(payload.path) !== normPath(props.fileId)) return
+  if (!forThisView(payload)) return
   sync?.onRemote('change', payload)
 }
 
 function onFsSetContents(payload) {
-  if (normPath(payload.path) !== normPath(props.fileId)) return
+  if (!forThisView(payload)) return
   const bytes = (payload.content ?? '').length
   debugLog.push({
     severity: 'info',
@@ -197,18 +336,18 @@ function onFsSetContents(payload) {
 }
 
 function onFsWritten(payload) {
-  if (normPath(payload.path) !== normPath(props.fileId)) return
-  if (payload.mode === 'rebased') syncLog('rebased', `onto ${payload.head}`, payload.branch)
+  if (!forThisView(payload)) return
+  if (payload.mode === 'rebased') syncLog('rebased', `onto ${payload.head}`, payload.auto_branch)
   sync?.onWritten(payload)
 }
 
 function onFsCursor(payload) {
-  if (normPath(payload.path) !== normPath(props.fileId)) return
+  if (!forThisView(payload)) return
   editorRef.value?.setPeerCursor(payload.user_id, payload.name, payload.line, payload.char)
 }
 
 function onFsOpened(payload) {
-  if (normPath(payload.path) !== normPath(props.fileId)) return
+  if (!forThisView(payload)) return
   for (const v of (payload.viewers || [])) {
     if (v.cursor) editorRef.value?.setPeerCursor(v.user_id, v.name, v.cursor.line, v.cursor.char)
   }
@@ -217,22 +356,27 @@ function onFsOpened(payload) {
 // ── WS response handlers ──────────────────────────────────────────────────────
 
 function onFsContent(payload) {
-  if (normPath(payload.path) !== normPath(props.fileId)) return
+  if (!forThisView(payload)) return
   loading.value = false
   const res = sync?.onContent(payload)
   if (!res || res.initial) content.value = res ? res.content : (payload.content ?? '')
 }
 
 function onFsError(payload) {
+  // Errors for a command that named no branch (branch_create, a bad path)
+  // still concern this file's view.
   if (normPath(payload.path) !== normPath(props.fileId)) return
+  if (payload.branch && payload.branch !== props.branch) return
   loading.value = false
   // A refused batch (conflicting merge, bad coordinates, unknown base): nothing
-  // reached main, and fileSync re-reads the file. When a merge conflicted the
-  // edits are kept on an auto-branch server-side; say where.
+  // reached the branch, and fileSync re-reads the file. When a merge conflicted
+  // the edits are kept on an auto-branch server-side; say where and offer to
+  // open it (the auto-branch is a branch like any other).
   if (sync?.onError(payload)) {
-    loadError.value = payload.branch
-      ? `Your last edits overlapped someone else's and were not merged; they are saved on branch ${payload.branch}.`
-      : ''
+    conflictBranch.value = payload.auto_branch || ''
+    loadError.value = payload.auto_branch
+      ? `Your last edits overlapped someone else's and were not merged; they are saved on branch ${payload.auto_branch}.`
+      : `Your last edits could not be applied (${payload.error || 'refused'}); the file was reloaded.`
     return
   }
   // The worker returns this exact error string when a binary entry is read
@@ -254,6 +398,9 @@ const offSetContents = workerSocket.on('fs', 'set_contents', onFsSetContents)
 const offWritten     = workerSocket.on('fs', 'written',      onFsWritten)
 const offCursor      = workerSocket.on('fs', 'cursor',       onFsCursor)
 const offOpened      = workerSocket.on('fs', 'opened',       onFsOpened)
+const offBranches    = workerSocket.on('fs', 'branches',     onFsBranches)
+const offBranchCreated = workerSocket.on('fs', 'branch_created', onFsBranchCreated)
+const offMerged      = workerSocket.on('fs', 'merged',       onFsMerged)
 
 // Connection-aware loading. A dropped socket would otherwise leave the editor
 // stuck on "Loading…" forever (the fs/content reply never arrives). Clear the
@@ -279,7 +426,7 @@ function onWsDisconnected() {
 function onWsConnected() {
   if (!props.fileId) return
   loadError.value = ''
-  if (sync && sync.state.path === props.fileId && sync.state.loaded) {
+  if (sync && sync.state.path === props.fileId && sync.state.branch === props.branch && sync.state.loaded) {
     sync.onConnected()
   } else {
     requestFile(props.fileId)
@@ -293,8 +440,10 @@ onMounted(() => {
 })
 
 // fileId only changes if this instance is repointed; it does not touch the
-// open/close wire (see onWsDisconnected above).
-watch(() => props.fileId, (next) => {
+// open/close wire (see onWsDisconnected above). A branch change comes from
+// the tab (switchBranch wrote it there): re-read on the new branch. The
+// open/close for the (path, branch) pair is ProjectPage's, from the same tab.
+watch(() => [props.fileId, props.branch], ([next]) => {
   if (next) requestFile(next)
 })
 
@@ -303,6 +452,7 @@ onBeforeUnmount(() => {
   sync?.dispose()
   releaseBlob()
   offContent(); offError(); offChange(); offSetContents(); offWritten(); offCursor(); offOpened()
+  offBranches(); offBranchCreated(); offMerged()
   offDisconnected(); offConnected()
 })
 </script>

@@ -1,4 +1,5 @@
-// fileSync — keeps one open text file in step with DBFS v2 (worker PROTOCOL 7).
+// fileSync — keeps one open text file, on one branch, in step with DBFS v2
+// (worker PROTOCOL 8).
 //
 // The client holds no revision DAG and does no OT. It tracks:
 //
@@ -29,7 +30,9 @@
 // Framework-free so it can be exercised without Vue or Monaco: the caller
 // supplies `send` and an `editor` adapter.
 //
-//   const sync = createFileSync({ path, send, editor })
+//   const sync = createFileSync({ path, branch, send, editor })
+//   branch: the file's branch this view is on (default main); every read and
+//     write names it, and the caller only feeds this sync frames for it
 //   editor: { applyChanges(changes), replaceContent(text) }
 //     changes: [{ change_type, change_data }] applied in order; change_data is
 //     the JSON string of { startLine, startChar, endLine?, endChar?, data? }
@@ -53,12 +56,15 @@ function sameRev(a, b) {
   return (a ?? null) === (b ?? null)
 }
 
+export const MAIN_BRANCH = 'main'
+
 export function createFileSync({
-  path, send, editor, log = () => {}, onAbandon = () => {},
+  path, branch = MAIN_BRANCH, send, editor, log = () => {}, onAbandon = () => {},
   ackTimeoutMs = ACK_TIMEOUT_MS, maxSends = MAX_SENDS,
 }) {
   const state = {
     path,
+    branch,
     loaded: false,
     connected: true,
     baseRev: null,
@@ -74,7 +80,7 @@ export function createFileSync({
 
   function load() {
     state.resyncing = state.loaded
-    send('read', { path: state.path })
+    send('read', { path: state.path, branch: state.branch })
   }
 
   function resync(reason) {
@@ -90,7 +96,7 @@ export function createFileSync({
   function sendInflight() {
     const b = state.inflight
     b.sends += 1
-    send('write', { path: state.path, changes: b.changes, base_revision_id: b.base, batch_id: b.batchId })
+    send('write', { path: state.path, branch: state.branch, changes: b.changes, base_revision_id: b.base, batch_id: b.batchId })
     clearAckTimer()
     if (ackTimeoutMs > 0) ackTimer = setTimeout(onAckTimeout, ackTimeoutMs)
   }
@@ -180,10 +186,10 @@ export function createFileSync({
 
     if (payload.mode === 'rebased') {
       if (state.pending.length > 0) {
-        // Our editor holds branch_head + pending. Base the next batch on our
-        // own branch head (the server keeps the bridge from it to the head);
-        // that ack brings the combined view.
-        state.baseRev = payload.branch_head
+        // Our editor holds auto_branch_head + pending. Base the next batch on
+        // our own auto-branch head (the server keeps the bridge from it to the
+        // head); that ack brings the combined view.
+        state.baseRev = payload.auto_branch_head
       } else {
         editor.applyChanges(payload.changes || [])
         state.baseRev = payload.head
@@ -217,7 +223,7 @@ export function createFileSync({
   function onError(payload) {
     if (!payload.resync) return false
     if (payload.batch_id && state.inflight && payload.batch_id !== state.inflight.batchId) return false
-    log('write refused', payload.error, payload.branch)
+    log('write refused', payload.error, payload.auto_branch)
     discard()
     resync('write refused')
     return true

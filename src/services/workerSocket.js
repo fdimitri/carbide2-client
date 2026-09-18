@@ -44,8 +44,13 @@ const getWorkerUrl = () => {
 // base_revision_id + batch_id and expects fs/written { mode, head, ... };
 // frames carry `parent`. A worker below 7 has no rebase path and no acks to
 // base the next batch on, so MIN_SERVER is 7.
-const PROTOCOL   = 7
-const MIN_SERVER = 7
+// PROTOCOL 8: per-file branches. fs/open, read, write, cursor carry `branch`
+// and every file frame names its branch; fs/branches, fs/branch_create,
+// fs/merge; the rebase source in fs/written is auto_branch/auto_branch_head.
+// A worker below 8 ignores `branch` and would write branch edits to main, so
+// MIN_SERVER is 8.
+const PROTOCOL   = 8
+const MIN_SERVER = 8
 
 const RECONNECT_BASE_MS  = 1000
 const RECONNECT_MAX_MS   = 30000

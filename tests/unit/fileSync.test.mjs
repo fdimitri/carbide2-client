@@ -27,6 +27,21 @@ function harness(opts = {}) {
   return { sent, view, sync, loaded, type, writes, reads, abandoned }
 }
 
+test('every read and write names the branch; main by default', () => {
+  const h = harness()
+  h.loaded('abc', 'r0')
+  assert.equal(h.reads()[0].branch, 'main')
+  h.type(ins(0, 3, 'd'))
+  assert.equal(h.writes()[0].branch, 'main')
+
+  const t = harness({ branch: 'topic' })
+  t.loaded('abc', 'r0')
+  assert.equal(t.reads()[0].branch, 'topic')
+  t.type(ins(0, 3, 'd'))
+  assert.equal(t.writes()[0].branch, 'topic')
+  assert.equal(t.sync.state.branch, 'topic')
+})
+
 test('one batch in flight; later edits queue and go out on the ack, based on its head', () => {
   const h = harness()
   h.loaded('abc', 'r0')
@@ -47,7 +62,7 @@ test('rebased ack with nothing pending applies the changes to the view', () => {
   h.type(ins(1, 3, '!'))
   const w = h.sent.at(-1)
   // server: someone put X at the start; merge commit m1
-  h.sync.onWritten({ path: '/f', mode: 'rebased', head: 'm1', branch_head: 'b1', batch_id: w.batch_id,
+  h.sync.onWritten({ path: '/f', mode: 'rebased', head: 'm1', auto_branch_head: 'b1', batch_id: w.batch_id,
                      changes: [ins(0, 0, 'X')] })
   assert.equal(h.view.text, 'Xone\ntwo!')
   assert.equal(h.sync.state.baseRev, 'm1')
@@ -59,7 +74,7 @@ test('rebased ack while more is pending: next batch is based on our branch head,
   h.type(ins(0, 2, 'c'))
   const w = h.sent.at(-1)
   h.type(ins(0, 3, 'd'))
-  h.sync.onWritten({ path: '/f', mode: 'rebased', head: 'm1', branch_head: 'b1', batch_id: w.batch_id,
+  h.sync.onWritten({ path: '/f', mode: 'rebased', head: 'm1', auto_branch_head: 'b1', batch_id: w.batch_id,
                      changes: [ins(0, 0, 'X')] })
   assert.equal(h.view.text, 'abcd')
   const next = h.sent.at(-1)
@@ -110,7 +125,7 @@ test('a refused batch drops local state and re-reads', () => {
   h.loaded('abc', 'r0')
   h.type(ins(0, 3, 'd'))
   const w = h.sent.at(-1)
-  assert.equal(h.sync.onError({ path: '/f', error: 'conflict', conflict: true, resync: true, branch: 'auto/1/x', batch_id: w.batch_id }), true)
+  assert.equal(h.sync.onError({ path: '/f', branch: 'main', error: 'conflict', conflict: true, resync: true, auto_branch: 'auto/1/x', batch_id: w.batch_id }), true)
   assert.equal(h.sync.outstanding, false)
   assert.equal(h.sent.at(-1).cmd, 'read')
   h.sync.onContent({ path: '/f', content: 'XYZ', revision: 'r2' })

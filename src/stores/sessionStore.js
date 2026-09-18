@@ -20,7 +20,7 @@
 //     layout: "one",
 //     activePaneIndex: 0,
 //     panes: {
-//       "0": { activeTab: "file:src/x", tabs: [ { key, kind, id, label } ] },
+//       "0": { activeTab: "file:src/x", tabs: [ { key, kind, id, label, branch? } ] },
 //       "1": { activeTab: null, tabs: [] },
 //       "2": { activeTab: null, tabs: [] },
 //       "3": { activeTab: null, tabs: [] }
@@ -39,6 +39,8 @@ import { ref } from 'vue'
 // ── Wire-protocol constants ──────────────────────────────────────────────────
 export const SESSION_CS          = 'session' // commandSet name (worker ROUTES)
 export const SESSION_DOC_VERSION = 2          // v2: agent tabs carry agent:<uuid> + agentSlug/composerHeightPx
+                                              //     (still v2) file tabs may carry `branch`; absent means main
+export const MAIN_BRANCH         = 'main'
 export const PANE_SLOTS          = 4          // usePanes keeps 4 fixed pane slots
 
 // Placeholder large-jump threshold for the distance gate (#86). The real
@@ -180,6 +182,10 @@ function serializeTab(t) {
   const out = { key: t.key, kind: t.kind, id: t.id, label: t.label }
   if (t.agentSlug != null) out.agentSlug = t.agentSlug
   if (t.composerHeightPx != null) out.composerHeightPx = t.composerHeightPx
+  // Always written for a file tab, main included: toDoc() patch-preserves
+  // fields of the raw doc that the render model omits, so leaving `branch` out
+  // on main would let a previously saved branch survive the switch back.
+  if (t.kind === 'file') out.branch = t.branch || MAIN_BRANCH
   return out
 }
 
@@ -188,7 +194,13 @@ function deserializeTab(t) {
     key: t.key, kind: t.kind, id: t.id, label: t.label,
     agentSlug: t.agentSlug ?? null,
     composerHeightPx: t.composerHeightPx ?? null,
+    branch: t.kind === 'file' ? (t.branch || MAIN_BRANCH) : null,
   }
+}
+
+// The branch a file tab is on (main when unset).
+export function tabBranch(t) {
+  return (t && t.kind === 'file' && t.branch) || MAIN_BRANCH
 }
 
 export const useSessionStore = defineStore('session', () => {
@@ -377,13 +389,29 @@ export const useSessionStore = defineStore('session', () => {
     sessions.value        = []
   }
 
+  // Point the file tab for `fileId` (one tab per file across all panes) at
+  // `branch`. The tabs array is replaced, not mutated in place, so the emitter
+  // sees one whole-array patch (the only form the server can store).
+  function setFileTabBranch(fileId, branch) {
+    const key = `file:${fileId}`
+    const next = branch || MAIN_BRANCH
+    for (const pane of panes.value) {
+      const idx = (pane?.tabs || []).findIndex((t) => t.key === key)
+      if (idx === -1) continue
+      if (tabBranch(pane.tabs[idx]) === next) return true
+      pane.tabs = pane.tabs.map((t, i) => (i === idx ? { ...t, branch: next } : t))
+      return true
+    }
+    return false
+  }
+
   return {
     // identity
     sessionUuid, name, role, subscribed, rev,
     versionHistory, forkedFrom, rawDoc,
     isProducer, isWatcher,
     // layout state
-    layout, activePaneIndex, panes,
+    layout, activePaneIndex, panes, setFileTabBranch,
     // resume picker
     sessions,
     // (de)serialization + patch application

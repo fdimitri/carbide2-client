@@ -284,7 +284,7 @@ import { mintWorkspaceToken } from '../services/workspaceToken'
 import { storeToRefs } from 'pinia'
 import { usePanes, PANE_COUNTS } from '../composables/usePanes'
 import { useSessionSync } from '../composables/useSessionSync'
-import { useSessionStore, sessionGateInfo, SESSION_DOC_VERSION } from '../stores/sessionStore'
+import { useSessionStore, sessionGateInfo, SESSION_DOC_VERSION, tabBranch } from '../stores/sessionStore'
 import { CLIENT_SHA } from '../version'
 import { useTerminals } from '../composables/useTerminals'
 import { useChat } from '../composables/useChat'
@@ -367,20 +367,26 @@ const {
 // here — so no message is emitted and there is no ordering hazard. There is no
 // loopback and no per-socket refcount on the worker, so emitting a close for a
 // file that is still open would silently drop it.
-const openFilePaths = computed(() => {
-  const paths = new Set()
+//
+// A subscription is to a (path, branch): a tab that moves to another branch
+// closes the old pair and opens the new one, so cursors and edit frames from
+// the branch it left stop arriving.
+const openFileSubs = computed(() => {
+  const subs = new Map()   // "branch\0path" => { path, branch }
   for (const pane of panes.value) {
     for (const t of (pane?.tabs || [])) {
-      if (t.kind === 'file' && t.id) paths.add(String(t.id))
+      if (t.kind !== 'file' || !t.id) continue
+      const sub = { path: String(t.id), branch: tabBranch(t) }
+      subs.set(`${sub.branch}\0${sub.path}`, sub)
     }
   }
-  return paths
+  return subs
 })
 
-watch(openFilePaths, (next, prev) => {
+watch(openFileSubs, (next, prev) => {
   if (!wsConnected.value) return   // resent wholesale on connect, below
-  for (const p of next) if (!prev.has(p)) workerSocket.send('fs', 'open',  { path: p })
-  for (const p of prev) if (!next.has(p)) workerSocket.send('fs', 'close', { path: p })
+  for (const [k, s] of next) if (!prev.has(k)) workerSocket.send('fs', 'open',  s)
+  for (const [k, s] of prev) if (!next.has(k)) workerSocket.send('fs', 'close', s)
 })
 
 // Track agent conversations retained by hydrate/resume. Each hydrate releases
@@ -984,10 +990,10 @@ onMounted(async () => {
         // reconnect, resume-or-create on the first connect.
         sessionSync.ensureSession()
         // Re-open every file that currently has a tab. The worker forgets opens
-        // on disconnect, and the openFilePaths watcher only reports CHANGES, so
+        // on disconnect, and the openFileSubs watcher only reports CHANGES, so
         // a reconnect that leaves the layout untouched would otherwise never
         // re-establish these.
-        for (const p of openFilePaths.value) workerSocket.send('fs', 'open', { path: p })
+        for (const s of openFileSubs.value.values()) workerSocket.send('fs', 'open', s)
       }),
       // Reflect drops so panes can react (e.g. clear stuck spinners) instead of
       // appearing frozen.
