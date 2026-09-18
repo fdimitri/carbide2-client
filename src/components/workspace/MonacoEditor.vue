@@ -6,7 +6,7 @@
 <script setup>
 import { ref, watch, onMounted, onBeforeUnmount, shallowRef } from 'vue'
 import loader from '@monaco-editor/loader'
-import { minimalEdit } from '../../utils/textChanges'
+import { minimalEdit, parseChangeData, setContentsText } from '../../utils/textChanges'
 
 // Point loader at the locally installed monaco-editor so it works offline
 import * as monaco from 'monaco-editor'
@@ -165,20 +165,21 @@ function replaceContent(text) {
   return true
 }
 
-// Apply a change received from another client without re-emitting it.
+// Apply a change received from another client without re-emitting it. Same
+// change_data semantics as utils/textChanges.applyChange, which is the
+// fallback when there is no model yet.
 function applyRemoteChange(changeType, changeDataStr) {
   if (!editor.value) return
   const model = editor.value.getModel()
   if (!model) return
+  if (changeType === 'setContents') {
+    replaceContent(setContentsText(changeDataStr))
+    return
+  }
+  const data = parseChangeData(changeDataStr)
+  if (!data) return
   applyingRemote = true
   try {
-    if (changeType === 'setContents') {
-      model.setValue(String(changeDataStr ?? ''))
-      return
-    }
-    let data
-    if (changeDataStr && typeof changeDataStr === 'object') data = changeDataStr
-    else { try { data = JSON.parse(changeDataStr) } catch { return } }
     const startLineNumber = (data.startLine ?? 0) + 1
     const startColumn     = (data.startChar ?? 0) + 1
     const text = Array.isArray(data.data) ? data.data.join('\n') : String(data.data ?? '')
