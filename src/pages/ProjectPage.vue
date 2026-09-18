@@ -71,6 +71,7 @@
           :active-pane-index="activePaneIndex"
           :is-joined-channel="isJoinedChannel"
           @open-file="onExplorerOpenFile"
+          @open-project-merge="openProjectMergePane"
           @open-terminal="onExplorerOpenTerminal"
           @open-channel="onExplorerOpenChannel"
           @open-agent="onExplorerOpenAgent"
@@ -664,6 +665,13 @@ function openMergePane(path, { source, target = MAIN_BRANCH } = {}) {
   if (!path || !source) return
   const name = String(path).split('/').pop() || String(path)
   bindTabToActivePane('merge', `${source}|${target}|${path}`, `${name} · ${source} → ${target}`)
+}
+
+// From the explorer's branch bar: merge project branch `source` into `target`
+// (or the parent into the branch) in a project-merge tab.
+function openProjectMergePane({ source, target = MAIN_BRANCH } = {}) {
+  if (!source || !target || source === target) return
+  bindTabToActivePane('project-merge', `${source}|${target}`, `merge ${source} → ${target}`)
 }
 
 // From the history rail or a preview: open (or focus) the file's tab and, when
