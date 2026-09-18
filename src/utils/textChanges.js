@@ -6,9 +6,16 @@
 // A change spec is { change_type, change_data } where change_data is the JSON
 // string (or object) of { startLine, startChar, endLine?, endChar?, data? }.
 
-function parseData(changeData) {
+export function parseChangeData(changeData) {
   if (changeData && typeof changeData === 'object') return changeData
   try { return JSON.parse(changeData) } catch { return null }
+}
+
+// The full text a setContents spec carries: { data } like the server's Delta,
+// or — for a bare string that is not such a JSON object — the string itself.
+export function setContentsText(changeData) {
+  const d = parseChangeData(changeData)
+  return d && typeof d.data === 'string' ? d.data : String(changeData ?? '')
 }
 
 function offsetOf(lines, line, char) {
@@ -20,11 +27,8 @@ function offsetOf(lines, line, char) {
 }
 
 export function applyChange(text, changeType, changeData) {
-  if (changeType === 'setContents') {
-    const d = parseData(changeData)
-    return d && typeof d.data === 'string' ? d.data : String(changeData ?? '')
-  }
-  const d = parseData(changeData)
+  if (changeType === 'setContents') return setContentsText(changeData)
+  const d = parseChangeData(changeData)
   if (!d) return text
   const lines = text.split('\n')
   const single = /SingleLine$/.test(changeType)
