@@ -119,6 +119,7 @@
               @pane-drop="onPaneDrop"
               @set-active-pane="setActivePane($event)"
               @activate-tab="activatePaneTab"
+              @open-history="openHistoryPane"
               @close-tab="handleCloseTab"
               @tab-drag-start="onTabDragStart"
               @tab-drop="onTabDrop"
@@ -156,6 +157,7 @@
                   @pane-drop="onPaneDrop"
                   @set-active-pane="setActivePane($event)"
                   @activate-tab="activatePaneTab"
+                  @open-history="openHistoryPane"
                   @close-tab="handleCloseTab"
                   @tab-drag-start="onTabDragStart"
                   @tab-drop="onTabDrop"
@@ -631,6 +633,14 @@ function onExplorerDownloadEntry(path) {
 
 function openDebugPane() {
   bindTabToActivePane('debug', 0, 'Debug')
+}
+
+// The revision DAG of one file, as its own tab (persisted in the session doc
+// like any other). One per file client-wide; reopening focuses it.
+function openHistoryPane(path) {
+  if (!path) return
+  const name = String(path).split('/').pop() || String(path)
+  bindTabToActivePane('history', String(path), `${name} · history`)
 }
 
 async function confirmUpload() {

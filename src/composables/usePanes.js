@@ -75,10 +75,15 @@ export function usePanes({ activePane, pendingNavigation }) {
 
   function parseTabKey(key) {
     if (!key || typeof key !== 'string' || !key.includes(':')) return null
-    const [kind, rawId] = key.split(':')
-    // file paths, terminal UUIDs, and agent conversation UUIDs are string
-    // identities. channels use numeric id; agent-config/debug stay :0 singletons.
-    if (kind === 'file' || kind === 'terminal' || kind === 'agent') return { kind, id: rawId }
+    // Split at the FIRST colon only: a file path (and so a history id) may
+    // itself contain one.
+    const at = key.indexOf(':')
+    const kind = key.slice(0, at)
+    const rawId = key.slice(at + 1)
+    // file paths, history paths, terminal UUIDs, and agent conversation UUIDs
+    // are string identities. channels use numeric id; agent-config/debug stay
+    // :0 singletons.
+    if (kind === 'file' || kind === 'history' || kind === 'terminal' || kind === 'agent') return { kind, id: rawId }
     return { kind, id: Number(rawId) }
   }
 
@@ -116,13 +121,18 @@ export function usePanes({ activePane, pendingNavigation }) {
     // file id strips the leading slash (explorer keys, parseTabKey), and the
     // worker normalizes both forms to the same srcpath, so there is only ever
     // one form in play here.
+    return focusExistingOfKind('file', id)
+  }
+
+  // One tab per (kind, id) client-wide for kinds keyed by a path.
+  function focusExistingOfKind(kind, id) {
     if (id == null || id === '') return false
     const want = String(id)
     for (let p = 0; p < panes.value.length; p++) {
       const pane = panes.value[p]
       if (!pane) continue
       const found = (pane.tabs || []).find(
-        (t) => t.kind === 'file' && String(t.id) === want
+        (t) => t.kind === kind && String(t.id) === want
       )
       if (found) {
         activePaneIndex.value = p
@@ -136,6 +146,7 @@ export function usePanes({ activePane, pendingNavigation }) {
   function bindTabToActivePane(kind, id, label) {
     if (kind === 'terminal' && focusExistingTerminal(id)) return
     if (kind === 'file' && focusExistingFile(id)) return
+    if (kind === 'history' && focusExistingOfKind('history', id)) return
     const pane = panes.value[activePaneIndex.value]
     const key  = `${kind}:${id}`
     if (!pane.tabs.find((t) => t.key === key)) {
@@ -147,6 +158,7 @@ export function usePanes({ activePane, pendingNavigation }) {
   function bindTabToPane(targetPaneIndex, kind, id, label) {
     if (kind === 'terminal' && focusExistingTerminal(id)) return
     if (kind === 'file' && focusExistingFile(id)) return
+    if (kind === 'history' && focusExistingOfKind('history', id)) return
     const pane = panes.value[targetPaneIndex]
     if (!pane) return
     activePaneIndex.value = targetPaneIndex
