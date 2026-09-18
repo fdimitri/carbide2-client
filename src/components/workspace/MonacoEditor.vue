@@ -74,7 +74,8 @@ if (!document.getElementById('carbide-peer-cursors')) {
   s.textContent = [
     '#e06c75','#98c379','#61afef','#d19a66',
     '#c678dd','#56b6c2','#e5c07b','#abb2bf',
-  ].map((c, i) => `.peer-cursor-${i}{border-left:2px solid ${c};margin-left:-1px}`).join('')
+  ].map((c, i) => `.peer-cursor-${i}{border-left:2px solid ${c};margin-left:-1px}`).join('') +
+    '.merge-conflict-line{background:rgba(224,108,117,0.18)}'
   document.head.appendChild(s)
 }
 
@@ -237,7 +238,34 @@ function clearPeerCursors() {
   for (const userId of Object.keys(peerDecorations)) removePeerCursor(userId)
 }
 
-defineExpose({ applyRemoteChange, applyChanges, replaceContent, setPeerCursor, removePeerCursor, clearPeerCursors })
+// The merge tab reads its result pane's text rather than tracking edits.
+function getValue() {
+  return editor.value?.getModel()?.getValue() ?? ''
+}
+
+function revealLine(line0) {
+  if (!editor.value) return
+  const n = (line0 ?? 0) + 1
+  editor.value.revealLineInCenter(n)
+  editor.value.setPosition({ lineNumber: n, column: 1 })
+  editor.value.focus()
+}
+
+// Whole-line highlights (0-based, end exclusive), e.g. conflict blocks.
+// Replaces the previous set.
+let highlightIds = []
+function setHighlights(ranges, className = 'merge-conflict-line') {
+  if (!editor.value || !monacoNs) return
+  highlightIds = editor.value.deltaDecorations(highlightIds, (ranges || []).map(([from, to]) => ({
+    range: new monacoNs.Range(from + 1, 1, Math.max(from + 1, to), 1),
+    options: { isWholeLine: true, className },
+  })))
+}
+
+defineExpose({
+  applyRemoteChange, applyChanges, replaceContent, setPeerCursor, removePeerCursor, clearPeerCursors,
+  getValue, revealLine, setHighlights,
+})
 </script>
 
 

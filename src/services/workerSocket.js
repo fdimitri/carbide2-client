@@ -49,8 +49,11 @@ const getWorkerUrl = () => {
 // fs/merge; the rebase source in fs/written is auto_branch/auto_branch_head.
 // A worker below 8 ignores `branch` and would write branch edits to main, so
 // MIN_SERVER is 8.
-const PROTOCOL   = 8
-const MIN_SERVER = 8
+// PROTOCOL 9: human merge resolution — fs/merge_preview (three-way view +
+// diff3 start text) and fs/merge_resolve (commit pinned at both heads). The
+// merge tab needs both, so MIN_SERVER is 9.
+const PROTOCOL   = 9
+const MIN_SERVER = 9
 
 const RECONNECT_BASE_MS  = 1000
 const RECONNECT_MAX_MS   = 30000

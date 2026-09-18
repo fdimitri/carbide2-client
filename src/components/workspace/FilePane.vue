@@ -48,6 +48,15 @@
         <button
           v-if="branch !== MAIN_BRANCH"
           class="ui-btn ui-btn-ghost ui-btn-sm"
+          :class="{ 'ui-btn-warn': mergeRefused }"
+          :title="mergeRefused
+            ? `${branch} conflicts with ${MAIN_BRANCH}: resolve it by hand`
+            : `Review ${branch} against ${MAIN_BRANCH} three-way and commit the result`"
+          @click="emit('open-merge', { source: branch, target: MAIN_BRANCH })"
+        >{{ mergeRefused ? 'Resolve…' : 'Review merge…' }}</button>
+        <button
+          v-if="branch !== MAIN_BRANCH"
+          class="ui-btn ui-btn-ghost ui-btn-sm"
           :title="`Delete branch ${branch} of ${filename}`"
           @click="deleteBranch"
         >Delete branch</button>
@@ -127,7 +136,7 @@ const session  = useSessionStore()
 const route    = useRoute()
 const projectId = Number(route.params.id)
 
-const emit = defineEmits(['open-history', 'open-preview'])
+const emit = defineEmits(['open-history', 'open-preview', 'open-merge'])
 
 const props = defineProps({
   fileId: {
@@ -195,9 +204,12 @@ function unpin() {
   if (!session.setFileTabView(props.fileId, { revision: null })) requestFile(props.fileId, props.branch, null)
 }
 
+const mergeRefused = ref(false)   // the last fs/merge of this branch hit a conflict
+
 function mergeIntoMain() {
   if (props.branch === MAIN_BRANCH || merging.value) return
   merging.value = true
+  mergeRefused.value = false
   branchNotice.value = ''
   workerSocket.send('fs', 'merge', { path: props.fileId, source: props.branch, target: MAIN_BRANCH })
 }
@@ -249,12 +261,15 @@ function onFsMerged(payload) {
   if (normPath(payload.path) !== normPath(props.fileId)) return
   merging.value = false
   if (payload.merged) {
+    mergeRefused.value = false
     branchNotice.value = `Merged ${payload.source} into ${payload.target}.`
     syncLog('merged', `${payload.source} → ${payload.target}`, payload.head)
     requestBranches()
   } else {
-    const why = payload.reason === 'conflict'
-      ? `${payload.source} conflicts with ${payload.target}; not merged.`
+    const conflict = payload.reason === 'conflict'
+    mergeRefused.value = conflict && payload.source === props.branch
+    const why = conflict
+      ? `${payload.source} conflicts with ${payload.target}; not merged — use Resolve….`
       : `Not merged: ${payload.error || payload.reason || 'unknown reason'}.`
     branchNotice.value = why
     syncLog('merge refused', why)
@@ -336,6 +351,7 @@ function requestFile(path, branch = props.branch, revision = props.revision) {
   loadError.value = ''
   content.value   = ''
   conflictBranch.value = ''
+  mergeRefused.value = false
   editorRef.value?.clearPeerCursors()   // another file or branch: different viewers
   sync?.dispose()
   if (revision) {
