@@ -701,6 +701,13 @@ html.theme-green {
    stays, with the message, when the engine rejects it. */
 .md-diagram { margin: 0.8rem 0; overflow-x: auto; }
 .md-diagram[data-state="loading"] pre { opacity: 0.55; }
+.md-diagram[data-state="loading"]::before {
+  content: "rendering " attr(data-lang) "…";
+  display: block;
+  font-size: 0.75rem;
+  opacity: 0.6;
+  margin-bottom: 0.2rem;
+}
 .md-diagram[data-state="done"] { padding: 0.5rem 0; }
 .md-diagram[data-state="done"] > svg { display: block; max-width: 100%; height: auto; }
 .md-diagram-error {

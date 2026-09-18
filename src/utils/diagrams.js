@@ -40,29 +40,82 @@ function d2() {
   return d2P
 }
 
+// One D2 call at a time. The wrapper (0.1.x) does not correlate replies from
+// its worker: two calls in flight on one instance get each other's answers —
+// one resolves undefined, the others never resolve. Two fences in a document,
+// or one fence re-rendered while its last render is still running, is enough
+// to hit it. A job that times out releases the queue and the instance is
+// dropped, so the next call gets a fresh worker instead of a wedged one.
+let d2Queue = Promise.resolve()
+function withD2(fn) {
+  const job = d2Queue.then(() => d2()).then(fn)
+  d2Queue = Promise.race([job, sleep(TIMEOUT_MS)]).catch(() => {})
+  return job
+}
+
+function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)) }
+
 // Dark Mauve: d2's dark theme that reads on the editor background.
 const D2_DARK_THEME = 200
+
+// An engine that never answers (its worker or WASM blocked, its chunk stalled)
+// must end as an error the reader can see, not a dimmed source block forever.
+const TIMEOUT_MS = 45_000
 
 let seq = 0
 async function run(lang, src) {
   try {
-    if (lang === 'mermaid') {
-      const m = await mermaid()
-      const { svg } = await m.render(`md-diagram-${++seq}`, src)
-      return { svg }
-    }
-    if (lang === 'd2') {
-      const engine = await d2()
+    return await Promise.race([engineRun(lang, src), timeout(lang)])
+  } catch (e) {
+    if (lang === 'd2' && e?.timedOut) d2P = null   // next call boots a new worker
+    return { error: describeError(lang, e) }
+  }
+}
+
+async function engineRun(lang, src) {
+  if (lang === 'mermaid') {
+    const m = await mermaid()
+    const { svg } = await m.render(`md-diagram-${++seq}`, src)
+    return { svg }
+  }
+  if (lang === 'd2') {
+    return withD2(async (engine) => {
       // scale 1: natural size (the default fits the SVG to its container,
       // which balloons a small diagram to the column width); CSS caps wide ones.
       const r = await engine.compile(src, { themeID: D2_DARK_THEME, pad: 16, scale: 1 })
       const svg = await engine.render(r.diagram, { ...r.renderOptions, noXMLTag: true })
+      if (typeof svg !== 'string') throw new Error('engine returned no SVG')
       return { svg }
-    }
-    return { error: `unknown diagram language ${lang}` }
-  } catch (e) {
-    return { error: String(e?.message || e?.str || e || 'render failed').trim() }
+    })
   }
+  return { error: `unknown diagram language ${lang}` }
+}
+
+function timeout(lang) {
+  return sleep(TIMEOUT_MS).then(() => {
+    const e = new Error(
+      `no answer from the ${lang} engine after ${TIMEOUT_MS / 1000}s — its script chunk may not have loaded, ` +
+      'or a Content-Security-Policy is blocking blob: workers / WebAssembly'
+    )
+    e.timedOut = true
+    throw e
+  })
+}
+
+// d2 rejects with an Error whose message is a JSON list of
+// { range: "index,0:0:0-0:5:5", errmsg: "index:1:1: connection missing destination" };
+// show one "line:col: message" per line. Everything else: its message.
+function describeError(lang, e) {
+  const msg = String(e?.message || e?.str || e || 'render failed').trim()
+  if (lang === 'd2' && msg.startsWith('[')) {
+    try {
+      const list = JSON.parse(msg)
+      if (Array.isArray(list) && list.length) {
+        return list.map((x) => String(x.errmsg || x).replace(/^index:/, '')).join('\n')
+      }
+    } catch { /* not the JSON shape; fall through */ }
+  }
+  return msg
 }
 
 // The finished render for (lang, src), or undefined when it has not run yet.
