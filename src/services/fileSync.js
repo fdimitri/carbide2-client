@@ -17,7 +17,14 @@
 // when we hold no unacknowledged edits AND the frame's `parent` is our baseRev.
 // While we hold edits they are ignored: our next batch is rebased past them and
 // its ack brings them. A frame that doesn't follow baseRev means we missed something,
-// so we re-read the file.
+// so we re-read the file. While that read is outstanding further frames are
+// dropped, not re-requested: the reply covers them.
+//
+// A batch the worker never answers (its reply had no path, or it was lost) would
+// otherwise wedge the pane: nothing else is sent until the ack. So an inflight
+// batch is resent after ackTimeoutMs — same batch_id, the worker dedupes — and
+// after maxSends it is abandoned like a refused batch: queue dropped, view
+// re-read, `onAbandon` told so the user can be.
 //
 // Framework-free so it can be exercised without Vue or Monaco: the caller
 // supplies `send` and an `editor` adapter.
@@ -27,6 +34,12 @@
 //     changes: [{ change_type, change_data }] applied in order; change_data is
 //     the JSON string of { startLine, startChar, endLine?, endChar?, data? }
 //   send(cmd, payload): an 'fs' frame to the worker
+//   onAbandon({ batchId, changes }): an inflight batch was given up on
+//   ackTimeoutMs: 0 disables the resend timer (a driver that schedules every
+//     frame itself, like the worker's convergence harness, wants no wall clock)
+
+export const ACK_TIMEOUT_MS = 5000
+export const MAX_SENDS = 3
 
 let batchCounter = 0
 
@@ -40,17 +53,22 @@ function sameRev(a, b) {
   return (a ?? null) === (b ?? null)
 }
 
-export function createFileSync({ path, send, editor, log = () => {} }) {
+export function createFileSync({
+  path, send, editor, log = () => {}, onAbandon = () => {},
+  ackTimeoutMs = ACK_TIMEOUT_MS, maxSends = MAX_SENDS,
+}) {
   const state = {
     path,
     loaded: false,
     connected: true,
     baseRev: null,
-    inflight: null,   // { batchId, base, changes }
+    inflight: null,   // { batchId, base, changes, sends }
     pending: [],
-    resyncing: false,
+    resyncing: false,  // a re-read is out; frames until it lands are covered by it
     discarding: false, // a batch was refused: the view holds edits main never took
   }
+
+  let ackTimer = null
 
   const outstanding = () => !!state.inflight || state.pending.length > 0
 
@@ -61,17 +79,49 @@ export function createFileSync({ path, send, editor, log = () => {} }) {
 
   function resync(reason) {
     log('resync', reason)
+    if (state.resyncing) return
     load()
+  }
+
+  function clearAckTimer() {
+    if (ackTimer !== null) { clearTimeout(ackTimer); ackTimer = null }
   }
 
   function sendInflight() {
     const b = state.inflight
+    b.sends += 1
     send('write', { path: state.path, changes: b.changes, base_revision_id: b.base, batch_id: b.batchId })
+    clearAckTimer()
+    if (ackTimeoutMs > 0) ackTimer = setTimeout(onAckTimeout, ackTimeoutMs)
+  }
+
+  function onAckTimeout() {
+    ackTimer = null
+    const b = state.inflight
+    if (!b || !state.connected) return
+    if (b.sends < maxSends) {
+      log('resend', `batch ${b.batchId} unacknowledged after ${ackTimeoutMs}ms (send ${b.sends + 1}/${maxSends})`)
+      sendInflight()
+      return
+    }
+    log('write abandoned', `batch ${b.batchId} unacknowledged after ${maxSends} sends`)
+    discard()
+    onAbandon({ batchId: b.batchId, changes: b.changes })
+    resync('write abandoned')
+  }
+
+  // The queue is dropped and the view will be replaced by the next read: the
+  // server never took these edits (or we cannot tell whether it did).
+  function discard() {
+    clearAckTimer()
+    state.inflight = null
+    state.pending = []
+    state.discarding = true
   }
 
   function flush() {
     if (!state.loaded || !state.connected || state.inflight || state.pending.length === 0) return
-    state.inflight = { batchId: newBatchId(), base: state.baseRev, changes: state.pending }
+    state.inflight = { batchId: newBatchId(), base: state.baseRev, changes: state.pending, sends: 0 }
     state.pending = []
     sendInflight()
   }
@@ -125,6 +175,7 @@ export function createFileSync({ path, send, editor, log = () => {} }) {
   function onWritten(payload) {
     if (!state.inflight) return
     if (payload.batch_id && payload.batch_id !== state.inflight.batchId) return
+    clearAckTimer()
     state.inflight = null
 
     if (payload.mode === 'rebased') {
@@ -145,7 +196,7 @@ export function createFileSync({ path, send, editor, log = () => {} }) {
 
   // fs/change | fs/set_contents from someone else (or the watcher).
   function onRemote(kind, payload) {
-    if (!state.loaded || state.discarding || outstanding()) return false
+    if (!state.loaded || state.discarding || state.resyncing || outstanding()) return false
     if (!sameRev(payload.parent, state.baseRev)) {
       resync(`remote ${kind} parent ${payload.parent} != base ${state.baseRev}`)
       return false
@@ -167,23 +218,33 @@ export function createFileSync({ path, send, editor, log = () => {} }) {
     if (!payload.resync) return false
     if (payload.batch_id && state.inflight && payload.batch_id !== state.inflight.batchId) return false
     log('write refused', payload.error, payload.branch)
-    state.inflight = null
-    state.pending = []
-    state.discarding = true
+    discard()
     resync('write refused')
     return true
   }
 
   function onDisconnected() {
     state.connected = false
+    // A read out on the dead socket never answers; the reconnect issues its own.
+    state.resyncing = false
+    clearAckTimer()
   }
 
   function onConnected() {
     state.connected = true
     if (!state.loaded) return load()
-    if (state.inflight) return sendInflight()   // same batch_id: the server dedupes a batch it already applied
+    if (state.inflight) {
+      // Same batch_id: the server dedupes a batch it already applied. The send
+      // budget is per connection; a drop is not the worker ignoring us.
+      state.inflight.sends = 0
+      return sendInflight()
+    }
     if (state.pending.length > 0) return flush()
     resync('reconnected')
+  }
+
+  function dispose() {
+    clearAckTimer()
   }
 
   return {
@@ -196,6 +257,7 @@ export function createFileSync({ path, send, editor, log = () => {} }) {
     onError,
     onDisconnected,
     onConnected,
+    dispose,
     get outstanding() { return outstanding() },
   }
 }

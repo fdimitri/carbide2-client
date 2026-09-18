@@ -109,9 +109,17 @@ const editorAdapter = {
 
 let sync = null
 
+const WARN_ACTIONS = new Set(['write refused', 'write abandoned', 'resend'])
+
 function syncLog(action, detail, extra) {
-  debugLog.push({ severity: action === 'write refused' ? 'warn' : 'info', source: 'fs', action,
+  debugLog.push({ severity: WARN_ACTIONS.has(action) ? 'warn' : 'info', source: 'fs', action,
                   detail: [props.fileId, detail, extra].filter(Boolean).join(' — ') })
+}
+
+// The worker never answered a batch (see fileSync): it was dropped and the
+// file re-read, so say so — the view is about to change under the user.
+function onSyncAbandon() {
+  loadError.value = 'Your last edits were not acknowledged by the worker and have been dropped; the file was reloaded.'
 }
 
 function requestFile(path) {
@@ -121,11 +129,13 @@ function requestFile(path) {
   loading.value   = true
   loadError.value = ''
   content.value   = ''
+  sync?.dispose()
   sync = createFileSync({
     path,
     send: (cmd, payload) => workerSocket.send('fs', cmd, payload),
     editor: editorAdapter,
     log: syncLog,
+    onAbandon: onSyncAbandon,
   })
   sync.load()
 }
@@ -290,6 +300,7 @@ watch(() => props.fileId, (next) => {
 
 onBeforeUnmount(() => {
   clearTimeout(cursorTimer)
+  sync?.dispose()
   releaseBlob()
   offContent(); offError(); offChange(); offSetContents(); offWritten(); offCursor(); offOpened()
   offDisconnected(); offConnected()
