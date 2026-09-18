@@ -8,6 +8,7 @@
 //   <span v-html="renderMarkdown(message.text)"></span>
 import { marked, Marked } from 'marked'
 import DOMPurify from 'dompurify'
+import { DIAGRAM_LANGS } from './diagrams'
 
 // Sensible defaults: GFM-like, treat single newlines as <br> (matches what
 // users expect from chat), no auto-IDs on headings.
@@ -79,11 +80,23 @@ function slug(text) {
   return text.toLowerCase().trim().replace(/<[^>]+>/g, '').replace(/[^\w\s-]/g, '').replace(/\s+/g, '-')
 }
 
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
 docMarked.use({
   renderer: {
     heading({ tokens, depth }) {
       const inner = this.parser.parseInline(tokens)
       return `<h${depth} id="${slug(inner)}">${inner}</h${depth}>\n`
+    },
+    // ```mermaid / ```d2: a placeholder holding the source as a code block;
+    // hydrateDiagrams (utils/diagrams) swaps in the SVG once rendered. Rendering
+    // is async and needs the DOM, so it cannot happen inside this string pass.
+    code({ text, lang }) {
+      const l = (lang || '').trim().toLowerCase()
+      if (!DIAGRAM_LANGS.has(l)) return false   // marked's own renderer
+      return `<div class="md-diagram" data-lang="${l}"><pre><code>${escapeHtml(text)}</code></pre></div>\n`
     },
   },
 })

@@ -697,6 +697,22 @@ html.theme-green {
 .markdown-doc hr { border: 0; border-top: 1px solid rgb(127 127 127 / 0.3); margin: 1.5rem 0; }
 .markdown-doc img { max-width: 100%; height: auto; }
 
+/* Diagram fences (```mermaid, ```d2). Source shows until the SVG lands, and
+   stays, with the message, when the engine rejects it. */
+.md-diagram { margin: 0.8rem 0; overflow-x: auto; }
+.md-diagram[data-state="loading"] pre { opacity: 0.55; }
+.md-diagram[data-state="done"] { padding: 0.5rem 0; }
+.md-diagram[data-state="done"] > svg { display: block; max-width: 100%; height: auto; }
+.md-diagram-error {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  margin: 0.4rem 0 0.2rem;
+  padding: 0.3rem 0.6rem;
+  border-left: 3px solid rgb(220 120 80 / 0.8);
+  background: rgb(220 120 80 / 0.1);
+  white-space: pre-wrap;
+}
+
 /* ── Generic fade transition (Vue <Transition name="fade">) ───────────────── */
 .fade-enter-active, .fade-leave-active { transition: opacity 0.4s; }
 .fade-enter-from, .fade-leave-to       { opacity: 0; }
