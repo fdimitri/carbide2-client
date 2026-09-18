@@ -94,7 +94,9 @@ docMarked.use({
     // hydrateDiagrams (utils/diagrams) swaps in the SVG once rendered. Rendering
     // is async and needs the DOM, so it cannot happen inside this string pass.
     code({ text, lang }) {
-      const l = (lang || '').trim().toLowerCase()
+      // `lang` is the whole info string ("d2 layout=elk"); the language is its
+      // first word, as marked's own renderer reads it.
+      const l = ((lang || '').match(/^\S*/)?.[0] || '').toLowerCase()
       if (!DIAGRAM_LANGS.has(l)) return false   // marked's own renderer
       return `<div class="md-diagram" data-lang="${l}"><pre><code>${escapeHtml(text)}</code></pre></div>\n`
     },
