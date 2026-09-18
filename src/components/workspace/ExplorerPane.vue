@@ -2,6 +2,46 @@
   <aside id="pane-explorer" class="w-full border-r border-line flex flex-col min-h-0 min-w-0">
     <PaneHeader title="Explorer" />
 
+    <!-- Project branch (ADR-042): the tree below is this branch's; files open
+         on it. main is always there; others fork the whole tree. -->
+    <div class="flex items-center gap-1.5 px-2.5 pb-2 text-ui-sm">
+      <i class="pi pi-sitemap text-muted text-ui-xs" title="Project branch"></i>
+      <select
+        :value="branch"
+        class="flex-1 min-w-0 px-1.5 py-0.5 rounded-ui-xs border monaco-input-bg monaco-input-fg monaco-input-border outline-none"
+        title="Project branch shown in the explorer"
+        @change="switchBranch($event.target.value)"
+      >
+        <option v-if="!projectBranches.some(b => b.name === branch)" :value="branch">{{ branch }}</option>
+        <option v-for="b in projectBranches" :key="b.id || b.name" :value="b.name">{{ b.name }}</option>
+      </select>
+      <template v-if="creatingBranch">
+        <input
+          ref="newBranchInput"
+          v-model="newBranchName"
+          type="text"
+          spellcheck="false"
+          :placeholder="`new branch from ${branch}`"
+          class="w-28 px-1.5 py-0.5 rounded-ui-xs border monaco-input-bg monaco-input-fg monaco-input-border outline-none"
+          @keydown.enter.prevent="confirmCreateBranch"
+          @keydown.esc.prevent="creatingBranch = false"
+        />
+        <button class="ui-btn ui-btn-ghost ui-btn-sm" title="Create" @click="confirmCreateBranch"><i class="pi pi-check text-ui-xs"></i></button>
+      </template>
+      <button v-else class="ui-btn ui-btn-ghost ui-btn-sm" :title="`New project branch from ${branch}`" @click="startCreateBranch">
+        <i class="pi pi-plus text-ui-xs"></i>
+      </button>
+      <button
+        v-if="branch !== MAIN_BRANCH"
+        class="ui-btn ui-btn-ghost ui-btn-sm"
+        :title="`Delete project branch ${branch} (history kept)`"
+        @click="deleteBranch"
+      >
+        <i class="pi pi-trash text-ui-xs"></i>
+      </button>
+    </div>
+    <div v-if="branchNotice" class="px-2.5 pb-1 text-ui-xs text-muted truncate" :title="branchNotice">{{ branchNotice }}</div>
+
     <!-- Empty-project banner: project has no files yet -> offer git clone.
          Hidden as soon as the tree has any entry. -->
     <div v-if="fileTree.length === 0 && !gitImportRunning" class="mx-2.5 mb-2 p-2.5 border border-dashed border-dim rounded-ui-md bg-bg-1">
@@ -155,7 +195,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import Tree from 'primevue/tree'
 import ContextMenu from 'primevue/contextmenu'
 import Dialog from 'primevue/dialog'
@@ -164,7 +204,7 @@ import { PANE_COUNTS } from '../../composables/usePanes'
 import workerSocket from '../../services/workerSocket'
 import { useRoute } from 'vue-router'
 import { takePendingSeed, currentScope } from '../../services/pendingSeed'
-import { SESSION_DOC_VERSION } from '../../stores/sessionStore'
+import { SESSION_DOC_VERSION, MAIN_BRANCH, useSessionStore } from '../../stores/sessionStore'
 import { CLIENT_SHA } from '../../version'
 import PaneHeader from '../ui/PaneHeader.vue'
 import UiButton from '../ui/UiButton.vue'
@@ -190,6 +230,7 @@ const props = defineProps({
 
 const emit = defineEmits([
   'open-file',
+  'branch-changed',
   'open-preview',
   'open-terminal',
   'open-channel',
@@ -304,9 +345,81 @@ function serverNodeToInternal(node) {
   return result
 }
 
+// ── Project branch ──────────────────────────────────────────────────────────
+const session         = useSessionStore()
+const branch          = computed(() => session.workspaceBranch || MAIN_BRANCH)
+const projectBranches = ref([])       // [{ id, name, forked_from, ... }]
+const creatingBranch  = ref(false)
+const newBranchName   = ref('')
+const newBranchInput  = ref(null)
+const branchNotice    = ref('')
+
 function requestFileTree() {
-  workerSocket.send('fs', 'tree', {})
+  workerSocket.send('fs', 'tree', { branch: branch.value })
 }
+
+function requestProjectBranches() {
+  workerSocket.send('fs', 'project_branches', {})
+}
+
+// A frame about another branch's tree is not ours. Frames from a worker that
+// predates project branches carry no branch: main.
+function forThisBranch(payload) {
+  return (payload?.branch || MAIN_BRANCH) === branch.value
+}
+
+function switchBranch(name) {
+  if (!name || name === branch.value) return
+  branchNotice.value = ''
+  session.setWorkspaceBranch(name)
+  emit('branch-changed', name)
+}
+
+function startCreateBranch() {
+  creatingBranch.value = true
+  newBranchName.value = ''
+  nextTick(() => newBranchInput.value?.focus())
+}
+
+function confirmCreateBranch() {
+  const name = newBranchName.value.trim()
+  if (!name) return
+  creatingBranch.value = false
+  branchNotice.value = `Creating ${name}…`
+  workerSocket.send('fs', 'project_branch_create', { name, from: branch.value })
+}
+
+function deleteBranch() {
+  const name = branch.value
+  if (name === MAIN_BRANCH) return
+  if (!window.confirm(`Delete project branch "${name}"? Its history is kept; the name becomes free.`)) return
+  workerSocket.send('fs', 'project_branch_delete', { name })
+}
+
+function onProjectBranches(payload) {
+  projectBranches.value = Array.isArray(payload?.branches) ? payload.branches : []
+  // A session doc can name a branch that is gone: fall back to main.
+  if (!projectBranches.value.some((b) => b.name === branch.value)) switchBranch(MAIN_BRANCH)
+}
+
+function onProjectBranchCreated(payload) {
+  const b = payload?.branch
+  if (!b?.name) return
+  if (!projectBranches.value.some((x) => x.name === b.name)) projectBranches.value = [...projectBranches.value, b]
+  if (branchNotice.value === `Creating ${b.name}…`) {
+    branchNotice.value = ''
+    switchBranch(b.name)
+  }
+}
+
+function onProjectBranchDeleted(payload) {
+  const name = payload?.name
+  if (!name) return
+  projectBranches.value = projectBranches.value.filter((x) => x.name !== name)
+  if (branch.value === name) switchBranch(MAIN_BRANCH)
+}
+
+watch(branch, () => requestFileTree())
 
 const _offFsTree      = ref(null)
 const _offWsConnected = ref(null)
@@ -316,18 +429,28 @@ const _offFsDeleted   = ref(null)
 const _offFsStat      = ref(null)
 const _offFsStatErr   = ref(null)
 const _offFsImportDone = ref(null)
+const _offBranches     = []
 
 onMounted(() => {
   _offFsTree.value = workerSocket.on('fs', 'tree', (payload) => {
+    if (!forThisBranch(payload)) return
     const root = payload?.tree
     if (!root || Array.isArray(root)) { fileTree.value = []; return }
     fileTree.value = (root.children || []).map(serverNodeToInternal)
     maybeRunPendingSeed()
   })
-  _offWsConnected.value = workerSocket.on('system', 'connected', () => requestFileTree())
-  _offFsCreated.value   = workerSocket.on('fs', 'created', () => requestFileTree())
-  _offFsRenamed.value   = workerSocket.on('fs', 'renamed', () => requestFileTree())
-  _offFsDeleted.value   = workerSocket.on('fs', 'deleted', () => requestFileTree())
+  _offWsConnected.value = workerSocket.on('system', 'connected', () => { requestProjectBranches(); requestFileTree() })
+  _offFsCreated.value   = workerSocket.on('fs', 'created', (p) => { if (forThisBranch(p)) requestFileTree() })
+  _offFsRenamed.value   = workerSocket.on('fs', 'renamed', (p) => { if (forThisBranch(p)) requestFileTree() })
+  _offFsDeleted.value   = workerSocket.on('fs', 'deleted', (p) => { if (forThisBranch(p)) requestFileTree() })
+  _offBranches.push(
+    workerSocket.on('fs', 'project_branches',        onProjectBranches),
+    workerSocket.on('fs', 'project_branch_created',  onProjectBranchCreated),
+    workerSocket.on('fs', 'project_branch_deleted',  onProjectBranchDeleted),
+    workerSocket.on('fs', 'error', (p) => {
+      if (p?.error && /project branch|branch name/.test(String(p.error))) branchNotice.value = p.error
+    }),
+  )
   _offFsStat.value      = workerSocket.on('fs', 'stat', (payload) => {
     // Only consume the response if it matches the path we asked about; this
     // lets other panes also do fs/stat without us snatching their replies.
@@ -352,10 +475,12 @@ onMounted(() => {
     gitImportRunning.value = false
     requestFileTree()
   })
+  requestProjectBranches()
   requestFileTree()
 })
 
 onBeforeUnmount(() => {
+  for (const off of _offBranches) off()
   _offFsTree.value?.()
   _offWsConnected.value?.()
   _offFsCreated.value?.()
@@ -811,13 +936,13 @@ function renameFileById(fileId) {
   const current = parts[parts.length - 1] || String(fileId)
   const next = window.prompt('Rename to:', current)
   if (!next || !next.trim()) return
-  workerSocket.send('fs', 'rename', { path: fileId, new_name: next.trim() })
+  workerSocket.send('fs', 'rename', { path: fileId, new_name: next.trim(), branch: branch.value })
 }
 
 function deletePath(path) {
   const name = String(path).split('/').pop() || path
   if (!window.confirm(`Delete "${name}"? This cannot be undone.`)) return
-  workerSocket.send('fs', 'delete', { path })
+  workerSocket.send('fs', 'delete', { path, branch: branch.value })
 }
 
 function openCreateFileDialog(parentPath) {
@@ -837,7 +962,7 @@ function confirmCreateFile() {
   if (!name) return
   const parent = createDialogParentPath.value.replace(/\/$/, '')
   const path = `${parent}/${name}`
-  workerSocket.send('fs', 'create_file', { path, content: '' })
+  workerSocket.send('fs', 'create_file', { path, content: '', branch: branch.value })
   showCreateFileDialog.value = false
 }
 
@@ -846,7 +971,7 @@ function confirmCreateFolder() {
   if (!name) return
   const parent = createDialogParentPath.value.replace(/\/$/, '')
   const path = `${parent}/${name}`
-  workerSocket.send('fs', 'create_dir', { path })
+  workerSocket.send('fs', 'create_dir', { path, branch: branch.value })
   showCreateFolderDialog.value = false
 }
 

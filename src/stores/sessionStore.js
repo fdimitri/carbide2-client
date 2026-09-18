@@ -106,6 +106,8 @@ function emptyPanes() {
 // patches through these so the wire shape stays consistent and hash-navigable.
 export const ops = {
   layout:        (value) => ({ path: ['layout'], value }),
+  // The workspace's project branch: what the explorer shows and new file tabs open on.
+  branch:        (value) => ({ path: ['branch'], value }),
   activePane:    (value) => ({ path: ['activePaneIndex'], value }),
   paneActiveTab: (i, value) => ({ path: ['panes', String(i), 'activeTab'], value }),
   // Whole-array replacement — server stores it opaquely, never indexes into it.
@@ -125,6 +127,7 @@ export function diffSessionDoc(prev, next) {
   const patch = []
 
   if (a.layout !== b.layout) patch.push(ops.layout(b.layout))
+  if ((a.branch || MAIN_BRANCH) !== (b.branch || MAIN_BRANCH)) patch.push(ops.branch(b.branch || MAIN_BRANCH))
   if (a.activePaneIndex !== b.activePaneIndex) patch.push(ops.activePane(b.activePaneIndex))
 
   const ap = a.panes && typeof a.panes === 'object' ? a.panes : {}
@@ -223,6 +226,10 @@ export const useSessionStore = defineStore('session', () => {
   const layout          = ref('one')
   const activePaneIndex = ref(0)
   const panes           = ref(emptyPanes())
+  // The project branch this workspace is on (ADR-042): the explorer's tree,
+  // and the branch a file tab opens on from it. Per-tab branches still
+  // override for that tab.
+  const workspaceBranch = ref(MAIN_BRANCH)
 
   // ── Resume picker ───────────────────────────────────────────────────────────
   // This user's sessions as of the last session/list, newest first. Each entry:
@@ -246,6 +253,7 @@ export const useSessionStore = defineStore('session', () => {
     const known = {
       v: SESSION_DOC_VERSION,
       layout: layout.value,
+      branch: workspaceBranch.value || MAIN_BRANCH,
       activePaneIndex: activePaneIndex.value,
       panes: panesObj,
     }
@@ -259,6 +267,7 @@ export const useSessionStore = defineStore('session', () => {
   function loadDoc(doc, { sanitize = false } = {}) {
     const d = doc && typeof doc === 'object' ? doc : {}
     layout.value          = typeof d.layout === 'string' ? d.layout : 'one'
+    workspaceBranch.value = typeof d.branch === 'string' && d.branch ? d.branch : MAIN_BRANCH
     activePaneIndex.value = Number.isInteger(d.activePaneIndex) ? d.activePaneIndex : 0
     const src   = d.panes && typeof d.panes === 'object' ? d.panes : {}
     const fresh = emptyPanes()
@@ -298,13 +307,17 @@ export const useSessionStore = defineStore('session', () => {
       layout.value = isDelete ? 'one' : String(op.value)
       return
     }
+    if (head === 'branch') {
+      workspaceBranch.value = isDelete ? MAIN_BRANCH : (String(op.value || '') || MAIN_BRANCH)
+      return
+    }
     if (head === 'activePaneIndex') {
       activePaneIndex.value = isDelete ? 0 : Number(op.value) || 0
       return
     }
     if (head === 'panes') {
       // Whole-map replace: { path:['panes'], value:{...} }
-      if (rest.length === 0) { loadDoc({ layout: layout.value, activePaneIndex: activePaneIndex.value, panes: isDelete ? {} : op.value }); return }
+      if (rest.length === 0) { loadDoc({ layout: layout.value, branch: workspaceBranch.value, activePaneIndex: activePaneIndex.value, panes: isDelete ? {} : op.value }); return }
       const idx = Number(rest[0])
       if (!Number.isInteger(idx) || idx < 0 || idx >= PANE_SLOTS) return
       const pane  = panes.value[idx] || emptyPane()
@@ -346,7 +359,7 @@ export const useSessionStore = defineStore('session', () => {
   // effort — not permanent API.
   function listUnknown() {
     const d = rawDoc.value && typeof rawDoc.value === 'object' ? rawDoc.value : {}
-    const TOP_KNOWN  = new Set(['v', 'layout', 'activePaneIndex', 'panes'])
+    const TOP_KNOWN  = new Set(['v', 'layout', 'branch', 'activePaneIndex', 'panes'])
     const PANE_KNOWN = new Set(['activeTab', 'tabs'])
     const TAB_KNOWN  = new Set(['key', 'kind', 'id', 'label', 'agentSlug', 'composerHeightPx'])
     const unknownTop        = Object.keys(d).filter((k) => !TOP_KNOWN.has(k))
@@ -389,6 +402,7 @@ export const useSessionStore = defineStore('session', () => {
     forkedFrom.value     = null
     rawDoc.value         = null
     layout.value          = 'one'
+    workspaceBranch.value = MAIN_BRANCH
     activePaneIndex.value = 0
     panes.value           = emptyPanes()
     sessions.value        = []
@@ -399,6 +413,10 @@ export const useSessionStore = defineStore('session', () => {
   // `branch` is then the branch to return to). The tabs array is replaced, not
   // mutated in place, so the emitter sees one whole-array patch (the only form
   // the server can store). Returns false when no tab has the file open.
+  function setWorkspaceBranch(name) {
+    workspaceBranch.value = String(name || '') || MAIN_BRANCH
+  }
+
   function setFileTabView(fileId, { branch, revision } = {}) {
     const key = `file:${fileId}`
     for (const pane of panes.value) {
@@ -440,7 +458,7 @@ export const useSessionStore = defineStore('session', () => {
     versionHistory, forkedFrom, rawDoc,
     isProducer, isWatcher,
     // layout state
-    layout, activePaneIndex, panes, setFileTabBranch, setFileTabView, fileTabView,
+    layout, activePaneIndex, panes, workspaceBranch, setWorkspaceBranch, setFileTabBranch, setFileTabView, fileTabView,
     // resume picker
     sessions,
     // (de)serialization + patch application

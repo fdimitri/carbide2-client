@@ -918,8 +918,12 @@ watch(pendingNavigation, async (pending) => {
 })
 
 // ── ExplorerPane event handlers ───────────────────────────────────────────────
+// From the explorer: the file's tab follows the workspace's project branch
+// (a per-tab pin or branch set from history is dropped; the explorer is the
+// workspace view).
 function onExplorerOpenFile(fileId) {
   selectFileNode(fileId)
+  sessionStore.setFileTabView(String(fileId), { branch: sessionStore.workspaceBranch || MAIN_BRANCH, revision: null })
 }
 
 async function onExplorerOpenTerminal(tid) {

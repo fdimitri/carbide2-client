@@ -52,8 +52,12 @@ const getWorkerUrl = () => {
 // PROTOCOL 9: human merge resolution — fs/merge_preview (three-way view +
 // diff3 start text) and fs/merge_resolve (commit pinned at both heads). The
 // merge tab needs both, so MIN_SERVER is 9.
-const PROTOCOL   = 9
-const MIN_SERVER = 9
+// PROTOCOL 10: project branches. fs/project_branches / _create / _delete;
+// `branch` on tree/create_file/create_dir/rename/delete selects the project
+// branch's tree; tree/created/renamed/deleted frames carry `branch`. The
+// explorer's branch bar needs all of it, so MIN_SERVER is 10.
+const PROTOCOL   = 10
+const MIN_SERVER = 10
 
 const RECONNECT_BASE_MS  = 1000
 const RECONNECT_MAX_MS   = 30000
