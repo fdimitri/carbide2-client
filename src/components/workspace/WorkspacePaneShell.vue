@@ -63,6 +63,16 @@
       </div>
     </template>
 
+    <!-- Project history: the project's branches as a rail (one per pane). -->
+    <template v-for="tab in projectHistoryTabs" :key="tab.key">
+      <div
+        class="flex flex-col flex-1 overflow-hidden"
+        v-show="activeTabKind === 'project-history' && effectiveActiveKey === tab.key"
+      >
+        <ProjectHistoryPane @open-project-merge="(m) => emit('open-project-merge', m)" />
+      </div>
+    </template>
+
     <!-- Project merge tabs: a whole-tree merge of one project branch into another. -->
     <template v-for="tab in projectMergeTabs" :key="tab.key">
       <div
@@ -246,6 +256,7 @@ import { tabBranch, useSessionStore } from '../../stores/sessionStore'
 import MarkdownPreviewPane from './MarkdownPreviewPane.vue'
 import MergePane from './MergePane.vue'
 import ProjectMergePane from './ProjectMergePane.vue'
+import ProjectHistoryPane from './ProjectHistoryPane.vue'
 
 const store = useWorkspaceStore()
 
@@ -340,6 +351,9 @@ const historyTabs = computed(() =>
 const mergeTabs = computed(() =>
   (props.pane?.tabs || []).filter((t) => t.kind === 'merge')
 )
+const projectHistoryTabs = computed(() =>
+  (props.pane?.tabs || []).filter((t) => t.kind === 'project-history')
+)
 const projectMergeTabs = computed(() =>
   (props.pane?.tabs || []).filter((t) => t.kind === 'project-merge')
 )
@@ -432,6 +446,7 @@ const emit = defineEmits([
   'open-history',
   'open-preview',
   'open-merge',
+  'open-project-merge',
   'open-file-at',
   'activate-tab',
   'close-tab',
