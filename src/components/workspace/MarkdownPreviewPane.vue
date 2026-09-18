@@ -25,18 +25,19 @@
 
     <div class="flex-1 min-h-0 overflow-auto bg-bg-1 px-8 py-6">
       <div v-if="!loading && !text.trim()" class="text-muted italic text-ui-sm">(empty file)</div>
-      <div v-else class="markdown-body markdown-doc text-ui-lg break-words" v-html="html"></div>
+      <div v-else ref="docEl" class="markdown-body markdown-doc text-ui-lg break-words" v-html="html"></div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import workerSocket from '../../services/workerSocket'
 import { MAIN_BRANCH } from '../../stores/sessionStore'
 import { createFileSync } from '../../services/fileSync'
 import { applyChanges } from '../../utils/textChanges'
 import { renderMarkdownDocument } from '../../utils/markdown'
+import { hydrateDiagrams } from '../../utils/diagrams'
 
 const props = defineProps({
   fileId:   { type: String, required: true },
@@ -46,6 +47,7 @@ const props = defineProps({
 const emit = defineEmits(['open-file'])
 
 const filename  = computed(() => props.fileId.split('/').pop() || props.fileId)
+const docEl     = ref(null)
 const text      = ref('')
 const html      = ref('')
 const loading   = ref(false)
@@ -58,6 +60,9 @@ watch(text, (t) => {
   clearTimeout(renderTimer)
   renderTimer = setTimeout(() => { html.value = renderMarkdownDocument(t) }, 120)
 })
+// v-html has replaced the DOM by the next tick; diagram fences are then filled
+// in (cached ones at once, edited ones when their render lands).
+watch(html, () => nextTick(() => hydrateDiagrams(docEl.value)))
 
 // ── Sync: a string in place of Monaco ────────────────────────────────────────
 let sync = null
