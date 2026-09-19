@@ -8,7 +8,7 @@
   <div class="flex flex-col h-full overflow-hidden">
     <div class="flex items-center gap-2 px-3 py-1 bg-bg-2 border-b border-line text-ui-sm shrink-0">
       <i class="pi pi-eye text-muted text-ui-xs"></i>
-      <span class="font-medium truncate" :title="fileId">{{ filename }}</span>
+      <span class="font-medium truncate" :title="locPath || fileId">{{ filename }}</span>
       <span class="text-muted">preview</span>
       <span class="px-1.5 rounded-ui-xs border border-line text-ui-xs text-muted font-mono" :title="`Branch of ${filename}`">{{ branch }}</span>
       <span
@@ -64,7 +64,8 @@ function followWorkspace() {
   session.setFileTabBranch(props.fileId, workspaceBranch.value, props.branch)
 }
 
-const filename  = computed(() => props.fileId.split('/').pop() || props.fileId)
+const locPath   = computed(() => session.fileTabView(props.fileId).path || '')
+const filename  = computed(() => (locPath.value || props.fileId).split('/').pop() || props.fileId)
 const isMdx     = computed(() => /\.mdx$/i.test(filename.value))
 const docEl     = ref(null)
 const text      = ref('')
@@ -90,9 +91,10 @@ const stringEditor = {
   applyChanges(changes) { text.value = applyChanges(text.value, changes) },
 }
 
-function normPath(p) { return (p || '').replace(/^\//, '') }
 function forThisView(payload) {
-  return normPath(payload.path) === normPath(props.fileId) && (payload.branch || MAIN_BRANCH) === props.branch
+  const ok = payload.id != null && String(payload.id) === String(props.fileId) && (payload.branch || MAIN_BRANCH) === props.branch
+  if (ok && payload.path) session.setFileTabLocation(props.fileId, payload.path, { branch: props.branch })
+  return ok
 }
 
 function request() {
@@ -102,11 +104,11 @@ function request() {
   loadError.value = ''
   text.value = ''
   if (props.revision) {
-    workerSocket.send('fs', 'read', { path: props.fileId, branch: props.branch, revision_id: props.revision })
+    workerSocket.send('fs', 'read', { id: props.fileId, branch: props.branch, revision_id: props.revision })
     return
   }
   sync = createFileSync({
-    path: props.fileId, branch: props.branch, send: (cmd, payload) => workerSocket.send('fs', cmd, payload),
+    id: props.fileId, branch: props.branch, send: (cmd, payload) => workerSocket.send('fs', cmd, payload),
     editor: stringEditor,
     onAbandon: () => { loadError.value = 'Lost the file; reload to retry.' },
   })
@@ -129,7 +131,7 @@ function onFsContent(payload) {
 function onFsChange(payload)      { if (forThisView(payload)) sync?.onRemote('change', payload) }
 function onFsSetContents(payload) { if (forThisView(payload)) sync?.onRemote('set_contents', payload) }
 function onFsError(payload) {
-  if (normPath(payload.path) !== normPath(props.fileId)) return
+  if (payload.id !== props.fileId) return
   if (payload.branch && payload.branch !== props.branch) return
   loading.value = false
   loadError.value = payload.error || 'error'

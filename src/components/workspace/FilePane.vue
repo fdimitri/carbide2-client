@@ -118,7 +118,7 @@
         class="flex-1 min-h-0"
         :content="content"
         :language="language"
-        :path="wirePath"
+        :path="locPath"
         :read-only="!!revision"
         @change="onEditorChange"
         @cursor-change="onCursorChange"
@@ -152,7 +152,8 @@ const props = defineProps({
     default: '',
   },
   // Current path of this node on `branch`. Identity is fileId (UUID) + branch;
-  // path is only the wire location, and follows a rename.
+  // path is location (tree, labels, Monaco URI). A rename updates this, not
+  // the open document.
   path: {
     type: String,
     default: '',
@@ -182,10 +183,10 @@ const branchNotice   = ref('')
 const conflictBranch = ref('')      // auto-branch holding a refused batch; offered as "Open …"
 let   pendingCreate  = ''           // name we asked for; switch to it when branch_created lands
 
-const wirePath = computed(() => props.path || props.fileId)
+const locPath = computed(() => props.path || '')
 
 function requestBranches() {
-  if (wirePath.value) workerSocket.send('fs', 'branches', { path: wirePath.value })
+  if (props.fileId) workerSocket.send('fs', 'branches', { id: props.fileId, branch: props.branch })
 }
 
 function switchBranch(name) {
@@ -194,7 +195,7 @@ function switchBranch(name) {
   loadError.value = ''
   if (!session.setFileTabBranch(props.fileId, name, props.branch)) {
     // No tab owns this view (should not happen); keep the editor usable anyway.
-    requestFile(wirePath.value, name)
+    requestFile(name)
   }
 }
 
@@ -216,14 +217,14 @@ function createBranch() {
   if (!name) return
   pendingCreate = name
   creatingBranch.value = false
-  const req = { path: wirePath.value, name, from: props.branch }
+  const req = { id: props.fileId, name, from: props.branch }
   if (props.revision) req.at_revision = props.revision   // pinned: fork where we are looking
   workerSocket.send('fs', 'branch_create', req)
 }
 
 function unpin() {
   loadError.value = ''
-  if (!session.setFileTabView(props.fileId, { revision: null, fromBranch: props.branch })) requestFile(wirePath.value, props.branch, null)
+  if (!session.setFileTabView(props.fileId, { revision: null, fromBranch: props.branch })) requestFile()
 }
 
 const mergeRefused = ref(false)   // the last fs/merge of this branch hit a conflict
@@ -233,16 +234,16 @@ function mergeIntoMain() {
   merging.value = true
   mergeRefused.value = false
   branchNotice.value = ''
-  workerSocket.send('fs', 'merge', { path: wirePath.value, source: props.branch, target: MAIN_BRANCH })
+  workerSocket.send('fs', 'merge', { id: props.fileId, source: props.branch, target: MAIN_BRANCH })
 }
 
 function onFsBranches(payload) {
-  if (normPath(payload.path) !== normPath(wirePath.value)) return
+  if (!forThisFile(payload)) return
   branches.value = Array.isArray(payload.branches) ? payload.branches : []
 }
 
 function onFsBranchCreated(payload) {
-  if (normPath(payload.path) !== normPath(wirePath.value)) return
+  if (!forThisFile(payload)) return
   if (!branches.value.some(b => b.name === payload.name)) {
     branches.value = [...branches.value, { name: payload.name, head: payload.head }].sort((a, b) => a.name.localeCompare(b.name))
   }
@@ -260,11 +261,11 @@ function deleteBranch() {
     `that was not merged into ${MAIN_BRANCH} will no longer be reachable from a branch.`
   if (!window.confirm(msg)) return
   branchNotice.value = ''
-  workerSocket.send('fs', 'branch_delete', { path: wirePath.value, name })
+  workerSocket.send('fs', 'branch_delete', { id: props.fileId, name })
 }
 
 function onFsBranchDeleted(payload) {
-  if (normPath(payload.path) !== normPath(wirePath.value)) return
+  if (!forThisFile(payload)) return
   branches.value = branches.value.filter(b => b.name !== payload.name)
   // Our own branch is gone (the worker only lets the sole viewer delete it, so
   // that was us — or a viewer whose open had not registered yet): back to main.
@@ -280,7 +281,7 @@ function onFsViewerLeft(payload) {
 }
 
 function onFsMerged(payload) {
-  if (normPath(payload.path) !== normPath(wirePath.value)) return
+  if (!forThisFile(payload)) return
   merging.value = false
   if (payload.merged) {
     mergeRefused.value = false
@@ -299,8 +300,15 @@ function onFsMerged(payload) {
 }
 
 // Frames for this file but another branch belong to another view.
+function forThisFile(payload) {
+  const ok = !!(props.fileId && payload.id && String(payload.id) === String(props.fileId))
+  if (ok && payload.path) {
+    session.setFileTabLocation(props.fileId, payload.path, { branch: payload.branch || props.branch })
+  }
+  return ok
+}
 function forThisView(payload) {
-  return normPath(payload.path) === normPath(wirePath.value) && (payload.branch || MAIN_BRANCH) === props.branch
+  return forThisFile(payload) && (payload.branch || MAIN_BRANCH) === props.branch
 }
 
 const content    = ref('')
@@ -312,7 +320,7 @@ const blobUrl    = ref('')
 const blobLoading = ref(false)
 const blobError   = ref('')
 
-const filename = computed(() => (wirePath.value || '').split('/').pop() || wirePath.value)
+const filename = computed(() => (locPath.value || '').split('/').pop() || locPath.value || props.fileId)
 const language = computed(() => extensionToLanguage(filename.value))
 const isImage  = computed(() => /\.(png|jpe?g|gif|webp|bmp|svg|ico|avif)$/i.test(filename.value))
 const isMarkdown = computed(() => /\.(md|mdx|markdown)$/i.test(filename.value))
@@ -335,7 +343,7 @@ async function loadBinaryPreview(path) {
 }
 
 // ── DBFS sync ─────────────────────────────────────────────────────────────────
-// One fileSync per open path (services/fileSync.js): it owns the base revision,
+// One fileSync per (FileNode UUID, branch): it owns the base revision,
 // the in-flight/pending edit queue and the decision of which remote frames to
 // apply. The editor adapter falls back to the `content` prop while Monaco is
 // still mounting, so nothing that arrives in that window is lost.
@@ -356,7 +364,7 @@ const WARN_ACTIONS = new Set(['write refused', 'write abandoned', 'resend', 'mer
 
 function syncLog(action, detail, extra) {
   debugLog.push({ severity: WARN_ACTIONS.has(action) ? 'warn' : 'info', source: 'fs', action,
-                  detail: [wirePath.value, detail, extra].filter(Boolean).join(' — ') })
+                  detail: [locPath.value || props.fileId, detail, extra].filter(Boolean).join(' — ') })
 }
 
 // The worker never answered a batch (see fileSync): it was dropped and the
@@ -365,8 +373,8 @@ function onSyncAbandon() {
   loadError.value = 'Your last edits were not acknowledged by the worker and have been dropped; the file was reloaded.'
 }
 
-function requestFile(path, branch = props.branch, revision = props.revision) {
-  if (!path) return
+function requestFile(branch = props.branch, revision = props.revision) {
+  if (!props.fileId) return
   releaseBlob()
   isBinary.value  = false
   loading.value   = true
@@ -380,12 +388,12 @@ function requestFile(path, branch = props.branch, revision = props.revision) {
     // Pinned: one read of the content at that revision, no sync — nothing here
     // is a branch head to base edits on, and Monaco is read-only.
     sync = null
-    workerSocket.send('fs', 'read', { path, branch, revision_id: revision })
+    workerSocket.send('fs', 'read', { id: props.fileId, branch, revision_id: revision })
     requestBranches()
     return
   }
   sync = createFileSync({
-    path,
+    id: props.fileId,
     branch,
     send: (cmd, payload) => workerSocket.send('fs', cmd, payload),
     editor: editorAdapter,
@@ -395,8 +403,6 @@ function requestFile(path, branch = props.branch, revision = props.revision) {
   sync.load()
   requestBranches()
 }
-
-function normPath(p) { return (p || '').replace(/^\//, '') }
 
 // ── Send local edits to server ────────────────────────────────────────────────
 function monacoChangesToWsPayload(changes) {
@@ -420,17 +426,17 @@ function monacoChangesToWsPayload(changes) {
 }
 
 function onEditorChange(monacoChanges) {
-  if (!wirePath.value || !sync) return
+  if (!props.fileId || !sync) return
   sync.localChanges(monacoChangesToWsPayload(monacoChanges))
 }
 
 // ── Cursor tracking ───────────────────────────────────────────────────────────
 let cursorTimer = null
 function onCursorChange({ line, char }) {
-  if (!wirePath.value) return
+  if (!props.fileId) return
   clearTimeout(cursorTimer)
   cursorTimer = setTimeout(() => {
-    workerSocket.send('fs', 'cursor', { path: wirePath.value, branch: props.branch, line, char })
+    workerSocket.send('fs', 'cursor', { id: props.fileId, branch: props.branch, line, char })
   }, 50)
 }
 
@@ -490,7 +496,7 @@ function onFsContent(payload) {
 function onFsError(payload) {
   // Errors for a command that named no branch (branch_create, a bad path)
   // still concern this file's view.
-  if (normPath(payload.path) !== normPath(wirePath.value)) return
+  if (!forThisFile(payload)) return
   if (payload.branch && payload.branch !== props.branch) return
   loading.value = false
   // A refused batch (conflicting merge, bad coordinates, unknown base): nothing
@@ -510,7 +516,7 @@ function onFsError(payload) {
   if (typeof payload.error === 'string' && payload.error.includes('binary')) {
     isBinary.value = true
     loadError.value = ''
-    loadBinaryPreview(wirePath.value)
+    loadBinaryPreview(locPath.value)
     return
   }
   loadError.value = payload.error || 'unknown error'
@@ -554,31 +560,28 @@ function onWsDisconnected() {
   }
 }
 function onWsConnected() {
-  if (!wirePath.value) return
+  if (!props.fileId) return
   loadError.value = ''
-  if (sync && sync.state.path === wirePath.value && sync.state.branch === props.branch && sync.state.loaded) {
+  if (sync && sync.state.id === props.fileId && sync.state.branch === props.branch && sync.state.loaded) {
     sync.onConnected()
   } else {
-    requestFile(wirePath.value)
+    requestFile()
   }
 }
 const offDisconnected = workerSocket.on('system', 'disconnected', onWsDisconnected)
 const offConnected    = workerSocket.on('system', 'connected',    onWsConnected)
 
 onMounted(() => {
-  if (wirePath.value) requestFile(wirePath.value)
+  if (props.fileId) requestFile()
 })
 
 // fileId is the node; path is where it currently sits. A branch/revision
-// change re-reads. A rename only relocates the sync's wire path — open/close
-// of the (path, branch) pair is ProjectPage's, from the tab.
-watch(() => [props.fileId, props.branch, props.revision, wirePath.value], (next, prev) => {
-  if (!next[0] && !next[3]) return
+// change re-reads. A rename only updates the location (label, Monaco URI).
+watch(() => [props.fileId, props.branch, props.revision], (next, prev) => {
+  if (!next[0]) return
   if (!prev || next[0] !== prev[0] || next[1] !== prev[1] || next[2] !== prev[2]) {
-    requestFile(next[3] || next[0])
-    return
+    requestFile()
   }
-  if (next[3] !== prev[3] && sync) sync.relocate(next[3])
 })
 
 onBeforeUnmount(() => {

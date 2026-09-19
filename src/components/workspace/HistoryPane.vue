@@ -3,7 +3,7 @@
     <!-- Toolbar -->
     <div class="flex items-center gap-3 px-3 py-1 bg-bg-2 border-b border-line text-ui-sm shrink-0">
       <i class="pi pi-history text-muted text-ui-xs"></i>
-      <span class="font-medium truncate" :title="fileId">{{ filename }}</span>
+      <span class="font-medium truncate" :title="path || fileId">{{ filename }}</span>
       <span class="text-muted">history</span>
 
       <label class="flex items-center gap-1 text-muted" title="Split one author's run at a pause longer than this">
@@ -114,12 +114,13 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import ContextMenu from 'primevue/contextmenu'
 import workerSocket from '../../services/workerSocket'
-import { MAIN_BRANCH } from '../../stores/sessionStore'
+import { MAIN_BRANCH, useSessionStore } from '../../stores/sessionStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { layoutRail, segmentPath } from '../../utils/railLayout'
 
 const props = defineProps({
   fileId: { type: String, required: true },
+  path:   { type: String, default: '' },
 })
 
 // open-file-at(view): ProjectPage opens (or focuses) the file's tab and points
@@ -127,6 +128,8 @@ const props = defineProps({
 const emit = defineEmits(['open-file-at'])
 
 const store   = useWorkspaceStore()
+const session = useSessionStore()
+const docBranch = () => session.fileTabView(props.fileId).branch || MAIN_BRANCH
 
 const GAPS = [
   { ms: 0,      label: 'off' },
@@ -142,7 +145,7 @@ const PAD_Y  = ROW_H / 2
 const PALETTE = ['#4f8ef7', '#f79a4f', '#5fc37a', '#d96ed9', '#e05c5c', '#3cb8c4', '#c9b23a', '#9b7bff']
 
 const mainBranchName = MAIN_BRANCH
-const filename = computed(() => (props.fileId || '').split('/').pop() || props.fileId)
+const filename = computed(() => (props.path || props.fileId).split('/').pop() || props.fileId)
 
 const gapMs    = ref(3000)
 const showAuto = ref(false)
@@ -246,7 +249,7 @@ function branchFromHere(node) {
   if (!trimmed) return
   pendingBranch = trimmed
   notice.value = ''
-  workerSocket.send('fs', 'branch_create', { path: props.fileId, name: trimmed, at_revision: node.id })
+  workerSocket.send('fs', 'branch_create', { id: props.fileId, branch: docBranch(), name: trimmed, at_revision: node.id })
 }
 
 function onFsBranchCreated(payload) {
@@ -279,11 +282,16 @@ function fetchDag() {
   if (!props.fileId || !store.wsConnected) return
   loading.value = true
   error.value = ''
-  workerSocket.send('fs', 'dag', { path: props.fileId, gap_ms: gapMs.value, auto: showAuto.value })
+  workerSocket.send('fs', 'dag', { id: props.fileId, branch: docBranch(), gap_ms: gapMs.value, auto: showAuto.value })
 }
 
-function normPath(p) { return (p || '').replace(/^\//, '') }
-function forThisFile(payload) { return normPath(payload?.path) === normPath(props.fileId) }
+function forThisFile(payload) {
+  const ok = payload?.id != null && String(payload.id) === String(props.fileId)
+  if (ok && payload.path) {
+    session.setFileTabLocation(props.fileId, payload.path, { branch: payload.branch || docBranch() })
+  }
+  return ok
+}
 
 function onFsDag(payload) {
   if (!forThisFile(payload)) return

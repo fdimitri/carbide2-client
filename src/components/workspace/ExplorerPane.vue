@@ -970,7 +970,7 @@ function buildContextMenuItems(node) {
     return [
       ...buildOpenItems(node),
       ...(isMarkdownPath(filePath)
-        ? [{ label: 'Open Preview', icon: 'pi pi-eye', command: () => emit('open-preview', filePath.replace(/^\//, '')) }]
+        ? [{ label: 'Open Preview', icon: 'pi pi-eye', command: () => emit('open-preview', fileOpenPayload(node)) }]
         : []),
       { separator: true },
       { label: 'Download', icon: 'pi pi-download', command: () => emit('download-entry', filePath) },

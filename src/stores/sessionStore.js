@@ -42,8 +42,9 @@ export const SESSION_DOC_VERSION = 4          // v2: agent tabs carry agent:<uui
                                               // v3: file tabs carry `branch` (per-file DBFS branch; main by default)
                                               //     and `revision` (null, or a revision the view is pinned at, read-only)
                                               // v4: a file tab is one (FileNode UUID, branch). `id` is the node
-                                              //     UUID (path only on a resumed v3 tab), `path` is where that
-                                              //     node currently sits on the branch, key is `file:<id>::<branch>`.
+                                              //     UUID, `path` is a location cache for the tab title (document
+                                              //     ops use id; a missed rename is healed by the next frame
+                                              //     that names the path). key is `file:<id>::<branch>`.
 export const MAIN_BRANCH         = 'main'
 export const PANE_SLOTS          = 4          // usePanes keeps 4 fixed pane slots
 
@@ -69,6 +70,41 @@ export function fileTabPath(t) {
   if (t.path) return stripFilePath(t.path)
   if (!isFileNodeId(t.id)) return stripFilePath(t.id)
   return ''
+}
+
+export function basenameOfPath(path) {
+  const p = stripFilePath(path)
+  return p.split('/').pop() || p
+}
+
+// Display only: the tab's location (path, label) follows a move. Identity
+// (id, key, branch) does not. A missed rename does not break the document;
+// the next frame that names the node's path heals the label.
+export function withTabLocation(t, path) {
+  if (!t || !path) return t
+  const p = stripFilePath(path)
+  if (!p) return t
+  if (t.kind === 'file') {
+    const label = basenameOfPath(p)
+    if (fileTabPath(t) === p && t.label === label) return t
+    return { ...t, path: p, label }
+  }
+  if (t.kind === 'history' || t.kind === 'preview') {
+    const suffix = t.label && t.label.includes('·') ? t.label.split(' · ').slice(1).join(' · ') : t.kind
+    const label = `${basenameOfPath(p)} · ${suffix}`
+    if (fileTabPath(t) === p && t.label === label) return t
+    return { ...t, path: p, label }
+  }
+  return t
+}
+
+export function withTabLocationUnderPrefix(t, oldPrefix, newPrefix) {
+  if (!t || (t.kind !== 'file' && t.kind !== 'history' && t.kind !== 'preview')) return t
+  const p = fileTabPath(t)
+  const oldN = stripFilePath(oldPrefix)
+  const newN = stripFilePath(newPrefix)
+  if (!p || !oldN || !newN || !p.startsWith(`${oldN}/`)) return t
+  return withTabLocation(t, `${newN}${p.slice(oldN.length)}`)
 }
 
 // The branch a file tab is on (main when unset).
@@ -234,9 +270,9 @@ function serializeTab(t) {
   if (t.kind === 'file') {
     out.branch = t.branch || MAIN_BRANCH
     out.revision = t.revision || null
-    const path = fileTabPath(t)
-    if (path) out.path = path
   }
+  const path = fileTabPath(t)
+  if (path && (t.kind === 'file' || t.kind === 'history' || t.kind === 'preview')) out.path = path
   return out
 }
 
@@ -255,6 +291,9 @@ function deserializeTab(t) {
     out.id = nodeId || path || t.id
     out._wasKey = t.key
     out.key = fileTabKey(out.id, out.branch)
+  } else if (t.kind === 'history' || t.kind === 'preview') {
+    const path = stripFilePath(t.path)
+    if (path) out.path = path
   }
   return out
 }
@@ -525,44 +564,50 @@ export const useSessionStore = defineStore('session', () => {
     return setFileTabView(fileId, { branch, revision: null, fromBranch })
   }
 
-  // After a rename/move: the node id is unchanged; only the path on this
-  // branch (and descendant paths, for a folder) moves. Tabs follow.
+  // Display only. Identity is (id, branch); a rename must not rekey the tab.
+  // `fs/renamed` is one source of the new path. Document frames that carry
+  // path (opened, content, written, …) are another — the tab does not rely
+  // on the rename event.
+  function patchTabLocation(rewrite) {
+    let changed = false
+    for (const pane of panes.value) {
+      const next = (pane.tabs || []).map(rewrite)
+      if (next.some((t, i) => t !== pane.tabs[i])) {
+        pane.tabs = next
+        changed = true
+      }
+    }
+    return changed
+  }
+
+  function setFileTabLocation(fileId, path, { branch } = {}) {
+    if (!fileId || !path) return false
+    const want = String(fileId)
+    return patchTabLocation((t) => {
+      if (t.kind === 'file' && String(t.id) === want && (branch == null || tabBranch(t) === branch)) {
+        return withTabLocation(t, path)
+      }
+      if ((t.kind === 'history' || t.kind === 'preview') && String(t.id) === want) {
+        return withTabLocation(t, path)
+      }
+      return t
+    })
+  }
+
   function applyFileRename({ oldPath, newPath, nodeId, branch }) {
     const b = branch || MAIN_BRANCH
     const oldN = stripFilePath(oldPath)
     const newN = stripFilePath(newPath)
     if (!oldN || !newN || oldN === newN) return false
     let changed = false
-    for (const pane of panes.value) {
-      const prevKeys = (pane.tabs || []).map((t) => t.key)
-      const next = (pane.tabs || []).map((t) => {
-        if (t.kind === 'file' && tabBranch(t) === b) {
-          const p = fileTabPath(t)
-          let np = null
-          if (nodeId && String(t.id) === String(nodeId)) np = newN
-          else if (p === oldN) np = newN
-          else if (p && p.startsWith(`${oldN}/`)) np = `${newN}${p.slice(oldN.length)}`
-          if (!np) return t
-          const id = isFileNodeId(t.id) ? t.id : np
-          return { ...t, path: np, id, label: np.split('/').pop() || t.label, key: fileTabKey(id, b) }
-        }
-        if ((t.kind === 'history' || t.kind === 'preview') && t.id) {
-          const p = stripFilePath(t.id)
-          let np = null
-          if (p === oldN) np = newN
-          else if (p.startsWith(`${oldN}/`)) np = `${newN}${p.slice(oldN.length)}`
-          if (!np) return t
-          return { ...t, id: np, label: t.label && t.label.includes('·') ? `${np.split('/').pop()} · ${t.label.split(' · ').slice(1).join(' · ')}` : (np.split('/').pop() || t.label), key: `${t.kind}:${np}` }
-        }
-        return t
-      })
-      if (next.some((t, i) => t !== pane.tabs[i])) {
-        const remap = new Map(prevKeys.map((k, i) => [k, next[i].key]))
-        pane.tabs = next
-        if (pane.activeTab && remap.has(pane.activeTab)) pane.activeTab = remap.get(pane.activeTab)
-        changed = true
-      }
-    }
+    if (nodeId) changed = setFileTabLocation(nodeId, newN, { branch: b }) || changed
+    // A folder move: descendant tabs still have the old prefix in their
+    // location cache. Heal the label; do not touch id/key.
+    changed = patchTabLocation((t) => {
+      if (nodeId && String(t.id) === String(nodeId)) return t
+      if (t.kind === 'file' && tabBranch(t) !== b) return t
+      return withTabLocationUnderPrefix(t, oldN, newN)
+    }) || changed
     return changed
   }
 
@@ -572,7 +617,7 @@ export const useSessionStore = defineStore('session', () => {
     versionHistory, forkedFrom, rawDoc,
     isProducer, isWatcher,
     // layout state
-    layout, activePaneIndex, panes, workspaceBranch, setWorkspaceBranch, setFileTabBranch, setFileTabView, fileTabView, applyFileRename,
+    layout, activePaneIndex, panes, workspaceBranch, setWorkspaceBranch, setFileTabBranch, setFileTabView, fileTabView, setFileTabLocation, applyFileRename,
     // resume picker
     sessions,
     // (de)serialization + patch application
