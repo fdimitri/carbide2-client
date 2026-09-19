@@ -234,6 +234,7 @@ import workerSocket from '../../services/workerSocket'
 import { useRoute } from 'vue-router'
 import { takePendingSeed, currentScope } from '../../services/pendingSeed'
 import { SESSION_DOC_VERSION, MAIN_BRANCH, useSessionStore } from '../../stores/sessionStore'
+import { applyCreated, applyRenamed, applyDeleted } from '../../utils/fileTree'
 import { CLIENT_SHA } from '../../version'
 import PaneHeader from '../ui/PaneHeader.vue'
 import UiButton from '../ui/UiButton.vue'
@@ -317,9 +318,8 @@ const propertiesLoading    = ref(false)
 const propertiesError      = ref('')
 
 // Git-import dialog state — only meaningful while the project is empty.
-// gitImportRunning stays true from successful POST until the first fs/created
-// event arrives (fileTree becomes non-empty); the watcher takes care of the
-// rest automatically.
+// gitImportRunning stays true until the tree has entries (import_done and
+// the bulk created at `/` both ask for a snapshot).
 const showGitImportDialog = ref(false)
 const gitImportUrl        = ref('')
 const gitImportRef        = ref('')
@@ -363,9 +363,7 @@ async function maybeRunPendingSeed() {
 
 const fileTree = ref([])
 
-// Clear the "Cloning…" banner the moment files start showing up. The
-// VfsWatcher's fs/created event triggers requestFileTree, which sets
-// fileTree to a non-empty array; that's our cue.
+// Clear the "Cloning…" banner the moment files start showing up.
 watch(() => fileTree.value.length, (n) => { if (n > 0) gitImportRunning.value = false })
 
 // ── File tree from WebSocket ─────────────────────────────────────────────────
@@ -395,6 +393,16 @@ const materializing   = ref(false)
 
 function requestFileTree() {
   workerSocket.send('fs', 'tree', { branch: branch.value })
+}
+
+// created/renamed/deleted patch the snapshot. A bulk created (root, git
+// import, watcher reconcile) or a rename of a node we do not have still
+// asks for fs/tree.
+function patchTree(apply, payload) {
+  if (!forThisBranch(payload)) return
+  const next = apply(fileTree.value, payload)
+  if (next == null) requestFileTree()
+  else fileTree.value = next
 }
 
 function requestProjectBranches() {
@@ -501,9 +509,9 @@ onMounted(() => {
     maybeRunPendingSeed()
   })
   _offWsConnected.value = workerSocket.on('system', 'connected', () => { requestProjectBranches(); requestFileTree() })
-  _offFsCreated.value   = workerSocket.on('fs', 'created', (p) => { if (forThisBranch(p)) requestFileTree() })
-  _offFsRenamed.value   = workerSocket.on('fs', 'renamed', (p) => { if (forThisBranch(p)) requestFileTree() })
-  _offFsDeleted.value   = workerSocket.on('fs', 'deleted', (p) => { if (forThisBranch(p)) requestFileTree() })
+  _offFsCreated.value   = workerSocket.on('fs', 'created', (p) => patchTree(applyCreated, p))
+  _offFsRenamed.value   = workerSocket.on('fs', 'renamed', (p) => patchTree(applyRenamed, p))
+  _offFsDeleted.value   = workerSocket.on('fs', 'deleted', (p) => patchTree(applyDeleted, p))
   _offBranches.push(
     workerSocket.on('fs', 'project_branches',        onProjectBranches),
     workerSocket.on('fs', 'project_branch_created',  onProjectBranchCreated),
