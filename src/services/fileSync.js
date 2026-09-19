@@ -253,9 +253,15 @@ export function createFileSync({
     clearAckTimer()
   }
 
+  function relocate(path) {
+    if (!path || path === state.path) return
+    state.path = path
+  }
+
   return {
     state,
     load,
+    relocate,
     onContent,
     localChanges,
     onWritten,

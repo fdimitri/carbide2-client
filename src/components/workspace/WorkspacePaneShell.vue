@@ -44,11 +44,12 @@
       >
         <FilePane
           :file-id="fileIdOf(tab)"
+          :path="pathOf(tab)"
           :branch="tabBranch(tab)"
           :revision="tab.revision || null"
-          @open-history="emit('open-history', fileIdOf(tab))"
-          @open-preview="emit('open-preview', fileIdOf(tab))"
-          @open-merge="(m) => emit('open-merge', fileIdOf(tab), m)"
+          @open-history="emit('open-history', pathOf(tab))"
+          @open-preview="emit('open-preview', pathOf(tab))"
+          @open-merge="(m) => emit('open-merge', pathOf(tab), m)"
         />
       </div>
     </template>
@@ -257,7 +258,7 @@ import ProjectSettingsPane from './ProjectSettingsPane.vue'
 import DebugPane from './DebugPane.vue'
 import AgentPane from './AgentPane.vue'
 import AgentConfigPane from './AgentConfigPane.vue'
-import { tabBranch, MAIN_BRANCH, useSessionStore } from '../../stores/sessionStore'
+import { tabBranch, MAIN_BRANCH, useSessionStore, fileTabPath } from '../../stores/sessionStore'
 import MarkdownPreviewPane from './MarkdownPreviewPane.vue'
 import MergePane from './MergePane.vue'
 import ProjectMergePane from './ProjectMergePane.vue'
@@ -333,7 +334,10 @@ const fileTabs = computed(() =>
   (props.pane?.tabs || []).filter((t) => t.kind === 'file')
 )
 function fileIdOf(tab) {
-  return (tab?.key || '').split(':').slice(1).join(':')
+  return String(tab?.id || '')
+}
+function pathOf(tab) {
+  return fileTabPath(tab) || String(tab?.id || '')
 }
 
 const workspaceBranch = computed(() => session.workspaceBranch || MAIN_BRANCH)
