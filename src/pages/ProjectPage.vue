@@ -1077,6 +1077,15 @@ onMounted(async () => {
 
     // Server-side debug events → debugLogStore
     offHandlers.push(
+      workerSocket.on('debug', 'db_pool', (payload) => {
+        const s = payload?.stat || {}
+        debugLog.push({
+          severity: payload?.error ? 'error' : 'info',
+          source:   'srv:db_pool',
+          action:   payload?.error || `size=${s.size} busy=${s.busy} idle=${s.idle} waiting=${s.waiting}`,
+          detail:   JSON.stringify(payload?.holders || payload, null, 2),
+        })
+      }),
       workerSocket.on('debug', 'event', (payload) => {
         const sev = payload?.level === 'error' ? 'error'
                   : payload?.level === 'warn'  ? 'warn'
