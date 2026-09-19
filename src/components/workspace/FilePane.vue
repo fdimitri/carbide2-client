@@ -61,6 +61,14 @@
           @click="deleteBranch"
         >Delete branch</button>
         <span v-if="branchNotice" class="text-muted italic truncate">{{ branchNotice }}</span>
+        <template v-if="offWorkspace">
+          <span class="text-amber truncate" :title="`This editor is still on ${branch}; the workspace (explorer) is on ${workspaceBranch}`">
+            not the workspace branch
+          </span>
+          <button class="ui-btn ui-btn-ghost ui-btn-sm" :title="`Switch this tab to ${workspaceBranch}`" @click="followWorkspace">
+            Open on {{ workspaceBranch }}
+          </button>
+        </template>
         <button
           v-if="isMarkdown"
           class="ui-btn ui-btn-ghost ui-btn-sm ml-auto"
@@ -180,6 +188,12 @@ function switchBranch(name) {
     // No tab owns this view (should not happen); keep the editor usable anyway.
     requestFile(props.fileId, name)
   }
+}
+
+const workspaceBranch = computed(() => session.workspaceBranch || MAIN_BRANCH)
+const offWorkspace    = computed(() => props.branch !== workspaceBranch.value)
+function followWorkspace() {
+  switchBranch(workspaceBranch.value)
 }
 
 function startCreateBranch() {

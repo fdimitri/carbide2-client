@@ -11,6 +11,17 @@
       <span class="font-medium truncate" :title="fileId">{{ filename }}</span>
       <span class="text-muted">preview</span>
       <span class="px-1.5 rounded-ui-xs border border-line text-ui-xs text-muted font-mono" :title="`Branch of ${filename}`">{{ branch }}</span>
+      <span
+        v-if="offWorkspace"
+        class="text-amber text-ui-xs truncate"
+        :title="`This preview is still on ${branch}; the workspace is on ${workspaceBranch}`"
+      >not the workspace branch</span>
+      <button
+        v-if="offWorkspace"
+        class="ui-btn ui-btn-ghost ui-btn-sm"
+        :title="`Switch the editor (and this preview) to ${workspaceBranch}`"
+        @click="followWorkspace"
+      >Open on {{ workspaceBranch }}</button>
       <span v-if="revision" class="text-muted text-ui-xs" :title="revision">
         at <span class="font-mono">{{ revision.slice(0, 8) }}</span>
       </span>
@@ -33,7 +44,7 @@
 <script setup>
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import workerSocket from '../../services/workerSocket'
-import { MAIN_BRANCH } from '../../stores/sessionStore'
+import { MAIN_BRANCH, useSessionStore } from '../../stores/sessionStore'
 import { createFileSync } from '../../services/fileSync'
 import { applyChanges } from '../../utils/textChanges'
 import { renderMarkdownDocument } from '../../utils/markdown'
@@ -45,6 +56,13 @@ const props = defineProps({
   revision: { type: String, default: null },   // pinned, like the editor tab
 })
 const emit = defineEmits(['open-file'])
+
+const session         = useSessionStore()
+const workspaceBranch = computed(() => session.workspaceBranch || MAIN_BRANCH)
+const offWorkspace    = computed(() => props.branch !== workspaceBranch.value)
+function followWorkspace() {
+  session.setFileTabBranch(props.fileId, workspaceBranch.value)
+}
 
 const filename  = computed(() => props.fileId.split('/').pop() || props.fileId)
 const isMdx     = computed(() => /\.mdx$/i.test(filename.value))

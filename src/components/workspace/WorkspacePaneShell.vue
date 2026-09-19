@@ -23,6 +23,11 @@
       >
         <span class="pane-tab-body"></span>
         <span>{{ tab.label }}</span>
+        <i
+          v-if="offWorkspace(tab)"
+          class="pi pi-sitemap text-amber text-ui-xs"
+          :title="`${tab.label} is still open on ${docBranchOf(tab)}; the workspace is on ${workspaceBranch}`"
+        ></i>
         <span class="pane-tab-close" @click.stop="emit('close-tab', paneIndex, tab.key)">
           <svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7" /></svg>
         </span>
@@ -252,7 +257,7 @@ import ProjectSettingsPane from './ProjectSettingsPane.vue'
 import DebugPane from './DebugPane.vue'
 import AgentPane from './AgentPane.vue'
 import AgentConfigPane from './AgentConfigPane.vue'
-import { tabBranch, useSessionStore } from '../../stores/sessionStore'
+import { tabBranch, MAIN_BRANCH, useSessionStore } from '../../stores/sessionStore'
 import MarkdownPreviewPane from './MarkdownPreviewPane.vue'
 import MergePane from './MergePane.vue'
 import ProjectMergePane from './ProjectMergePane.vue'
@@ -329,6 +334,17 @@ const fileTabs = computed(() =>
 )
 function fileIdOf(tab) {
   return (tab?.key || '').split(':').slice(1).join(':')
+}
+
+const workspaceBranch = computed(() => session.workspaceBranch || MAIN_BRANCH)
+function docBranchOf(tab) {
+  if (tab?.kind === 'file') return tabBranch(tab)
+  if (tab?.kind === 'preview') return session.fileTabView(tab.id).branch
+  return null
+}
+function offWorkspace(tab) {
+  const b = docBranchOf(tab)
+  return !!b && b !== workspaceBranch.value
 }
 
 const channelTabs = computed(() =>
