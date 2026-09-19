@@ -3,6 +3,7 @@
     <PaneHeader title="Debug Channel" size="sm">
       <template #actions>
         <span class="text-muted">{{ events.length }} event{{ events.length === 1 ? '' : 's' }}</span>
+        <PaneToolbarButton title="Who is holding the worker's DB connections" @click="dumpPool">DB pool</PaneToolbarButton>
         <PaneToolbarButton @click="debugLog.clear()">Clear</PaneToolbarButton>
       </template>
     </PaneHeader>
@@ -27,8 +28,13 @@
 import { nextTick, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useDebugLogStore } from '../../stores/debugLogStore'
+import workerSocket from '../../services/workerSocket'
 import PaneHeader from '../ui/PaneHeader.vue'
 import PaneToolbarButton from '../ui/PaneToolbarButton.vue'
+
+function dumpPool() {
+  workerSocket.send('debug', 'db_pool', {})
+}
 
 const debugLog = useDebugLogStore()
 const { events } = storeToRefs(debugLog)
