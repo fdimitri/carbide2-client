@@ -57,7 +57,7 @@
               <span class="text-muted">
                 <span class="font-mono">{{ target }}</span> and <span class="font-mono">{{ source }}</span> both changed the text.
               </span>
-              <button class="ui-btn ui-btn-ghost ui-btn-sm" @click="emit('open-merge', c.ours.path, { source: c.theirs.branch, target: c.ours.branch })">
+              <button class="ui-btn ui-btn-ghost ui-btn-sm" @click="emit('open-merge', c.id, { source: c.theirs.branch, target: c.ours.branch })">
                 <i class="pi pi-code text-ui-xs"></i> Resolve…
               </button>
             </div>

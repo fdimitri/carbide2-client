@@ -155,7 +155,12 @@ export function usePanes({ activePane, pendingNavigation }) {
 
   function bindFileTab(pane, id, label, extra = {}) {
     const branch = extra.branch || MAIN_BRANCH
-    if (focusExistingFile(id, branch)) return
+    // Explorer/open knows the current path. Heal the label even when the
+    // tab is already open — do not wait for (or require) fs/renamed.
+    if (focusExistingFile(id, branch)) {
+      if (extra.path) store.setFileTabLocation(id, extra.path, { branch })
+      return
+    }
     const path = extra.path != null ? stripFilePath(extra.path) : stripFilePath(id)
     const key  = fileTabKey(id, branch)
     if (!pane.tabs.find((t) => t.key === key)) {
@@ -166,17 +171,30 @@ export function usePanes({ activePane, pendingNavigation }) {
     pane.activeTab = key
   }
 
+  function bindAuxFileTab(kind, id, extra = {}) {
+    if (focusExistingOfKind(kind, id)) {
+      if (extra.path) store.setFileTabLocation(id, extra.path)
+      return true
+    }
+    return false
+  }
+
+  function auxFileTab(kind, id, label, extra = {}) {
+    const tab = { key: `${kind}:${id}`, kind, id, label }
+    if (extra.path) tab.path = stripFilePath(extra.path)
+    return tab
+  }
+
   function bindTabToActivePane(kind, id, label, extra = {}) {
     if (kind === 'terminal' && focusExistingTerminal(id)) return
     if (kind === 'file') return bindFileTab(panes.value[activePaneIndex.value], id, label, extra)
-    if (kind === 'history' && focusExistingOfKind('history', id)) return
-    if (kind === 'preview' && focusExistingOfKind('preview', id)) return
+    if ((kind === 'history' || kind === 'preview') && bindAuxFileTab(kind, id, extra)) return
     if (kind === 'merge' && focusExistingOfKind('merge', id)) return
     if (kind === 'project-merge' && focusExistingOfKind('project-merge', id)) return
     const pane = panes.value[activePaneIndex.value]
     const key  = `${kind}:${id}`
     if (!pane.tabs.find((t) => t.key === key)) {
-      pane.tabs.push({ key, kind, id, label })
+      pane.tabs.push((kind === 'history' || kind === 'preview') ? auxFileTab(kind, id, label, extra) : { key, kind, id, label })
     }
     pane.activeTab = key
   }
@@ -189,8 +207,7 @@ export function usePanes({ activePane, pendingNavigation }) {
       activePaneIndex.value = targetPaneIndex
       return bindFileTab(pane, id, label, extra)
     }
-    if (kind === 'history' && focusExistingOfKind('history', id)) return
-    if (kind === 'preview' && focusExistingOfKind('preview', id)) return
+    if ((kind === 'history' || kind === 'preview') && bindAuxFileTab(kind, id, extra)) return
     if (kind === 'merge' && focusExistingOfKind('merge', id)) return
     if (kind === 'project-merge' && focusExistingOfKind('project-merge', id)) return
     const pane = panes.value[targetPaneIndex]
@@ -198,7 +215,7 @@ export function usePanes({ activePane, pendingNavigation }) {
     activePaneIndex.value = targetPaneIndex
     const key = `${kind}:${id}`
     if (!pane.tabs.find((t) => t.key === key)) {
-      pane.tabs.push({ key, kind, id, label })
+      pane.tabs.push((kind === 'history' || kind === 'preview') ? auxFileTab(kind, id, label, extra) : { key, kind, id, label })
     }
     pane.activeTab = key
   }

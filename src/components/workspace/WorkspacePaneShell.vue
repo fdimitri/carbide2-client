@@ -47,9 +47,9 @@
           :path="pathOf(tab)"
           :branch="tabBranch(tab)"
           :revision="tab.revision || null"
-          @open-history="emit('open-history', pathOf(tab))"
-          @open-preview="emit('open-preview', pathOf(tab))"
-          @open-merge="(m) => emit('open-merge', pathOf(tab), m)"
+          @open-history="emit('open-history', fileIdOf(tab))"
+          @open-preview="emit('open-preview', fileIdOf(tab))"
+          @open-merge="(m) => emit('open-merge', fileIdOf(tab), m)"
         />
       </div>
     </template>
@@ -62,9 +62,10 @@
       >
         <MergePane
           :path="mergeIdOf(tab).path"
+          :file-id="mergeIdOf(tab).id"
           :source="mergeIdOf(tab).source"
           :target="mergeIdOf(tab).target"
-          @done="() => { emit('open-file-at', mergeIdOf(tab).path, { branch: mergeIdOf(tab).target, revision: null }); emit('close-tab', paneIndex, tab.key) }"
+          @done="() => { emit('open-file-at', mergeIdOf(tab).id, { branch: mergeIdOf(tab).target, revision: null }); emit('close-tab', paneIndex, tab.key) }"
         />
       </div>
     </template>
@@ -100,7 +101,7 @@
         class="flex flex-col flex-1 overflow-hidden"
         v-show="activeTabKind === 'history' && effectiveActiveKey === tab.key"
       >
-        <HistoryPane :file-id="String(tab.id)" @open-file-at="(view) => emit('open-file-at', String(tab.id), view)" />
+        <HistoryPane :file-id="String(tab.id)" :path="session.fileTabView(String(tab.id)).path" @open-file-at="(view) => emit('open-file-at', String(tab.id), view)" />
       </div>
     </template>
 
@@ -383,12 +384,13 @@ function projectMergeIdOf(tab) {
   const a = id.indexOf('|')
   return { source: id.slice(0, a), target: id.slice(a + 1) }
 }
-// A merge tab's id is "source|target|path" (see ProjectPage.openMergePane).
+// A merge tab's id is "source|target|fileNodeId" (see ProjectPage.openMergePane).
 function mergeIdOf(tab) {
   const id = String(tab.id)
   const a = id.indexOf('|')
   const b = id.indexOf('|', a + 1)
-  return { source: id.slice(0, a), target: id.slice(a + 1, b), path: id.slice(b + 1) }
+  const nodeId = id.slice(b + 1)
+  return { source: id.slice(0, a), target: id.slice(a + 1, b), id: nodeId, path: session.fileTabView(nodeId).path || nodeId }
 }
 const previewTabs = computed(() =>
   (props.pane?.tabs || []).filter((t) => t.kind === 'preview')

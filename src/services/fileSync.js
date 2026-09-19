@@ -1,5 +1,8 @@
 // fileSync — keeps one open text file, on one branch, in step with DBFS v2
-// (worker PROTOCOL 8).
+// (worker PROTOCOL 12).
+//
+// Identity is FileNode UUID (`id`) plus `branch`. Path is location (tree,
+// create/rename/delete, labels) and is not sent on document commands.
 //
 // The client holds no revision DAG and does no OT. It tracks:
 //
@@ -21,7 +24,7 @@
 // so we re-read the file. While that read is outstanding further frames are
 // dropped, not re-requested: the reply covers them.
 //
-// A batch the worker never answers (its reply had no path, or it was lost) would
+// A batch the worker never answers (its reply had no id, or it was lost) would
 // otherwise wedge the pane: nothing else is sent until the ack. So an inflight
 // batch is resent after ackTimeoutMs — same batch_id, the worker dedupes — and
 // after maxSends it is abandoned like a refused batch: queue dropped, view
@@ -30,7 +33,8 @@
 // Framework-free so it can be exercised without Vue or Monaco: the caller
 // supplies `send` and an `editor` adapter.
 //
-//   const sync = createFileSync({ path, branch, send, editor })
+//   const sync = createFileSync({ id, branch, send, editor })
+//   id: FileNode UUID; every read and write names it
 //   branch: the file's branch this view is on (default main); every read and
 //     write names it, and the caller only feeds this sync frames for it
 //   editor: { applyChanges(changes), replaceContent(text) }
@@ -59,11 +63,12 @@ function sameRev(a, b) {
 export const MAIN_BRANCH = 'main'
 
 export function createFileSync({
-  path, branch = MAIN_BRANCH, send, editor, log = () => {}, onAbandon = () => {},
+  id, branch = MAIN_BRANCH, send, editor, log = () => {}, onAbandon = () => {},
   ackTimeoutMs = ACK_TIMEOUT_MS, maxSends = MAX_SENDS,
 }) {
+  if (!id) throw new Error('createFileSync: id is required')
   const state = {
-    path,
+    id,
     branch,
     loaded: false,
     connected: true,
@@ -78,9 +83,13 @@ export function createFileSync({
 
   const outstanding = () => !!state.inflight || state.pending.length > 0
 
+  function named(extra = {}) {
+    return { id: state.id, branch: state.branch, ...extra }
+  }
+
   function load() {
     state.resyncing = state.loaded
-    send('read', { path: state.path, branch: state.branch })
+    send('read', named())
   }
 
   function resync(reason) {
@@ -96,7 +105,7 @@ export function createFileSync({
   function sendInflight() {
     const b = state.inflight
     b.sends += 1
-    send('write', { path: state.path, branch: state.branch, changes: b.changes, base_revision_id: b.base, batch_id: b.batchId })
+    send('write', named({ changes: b.changes, base_revision_id: b.base, batch_id: b.batchId }))
     clearAckTimer()
     if (ackTimeoutMs > 0) ackTimer = setTimeout(onAckTimeout, ackTimeoutMs)
   }
@@ -177,7 +186,7 @@ export function createFileSync({
     return true
   }
 
-  // fs/written for this path.
+  // fs/written for this document.
   function onWritten(payload) {
     if (!state.inflight) return
     if (payload.batch_id && payload.batch_id !== state.inflight.batchId) return
@@ -218,8 +227,8 @@ export function createFileSync({
     return true
   }
 
-  // fs/error for this path. Returns true when it was a sync error handled here
-  // (the batch was not applied to main; the view is re-read).
+  // fs/error for this document. Returns true when it was a sync error handled
+  // here (the batch was not applied to main; the view is re-read).
   function onError(payload) {
     if (!payload.resync) return false
     if (payload.batch_id && state.inflight && payload.batch_id !== state.inflight.batchId) return false
@@ -253,15 +262,9 @@ export function createFileSync({
     clearAckTimer()
   }
 
-  function relocate(path) {
-    if (!path || path === state.path) return
-    state.path = path
-  }
-
   return {
     state,
     load,
-    relocate,
     onContent,
     localChanges,
     onWritten,

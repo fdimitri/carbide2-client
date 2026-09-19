@@ -14,11 +14,11 @@ function harness(opts = {}) {
     applyChanges: (cs) => { view.text = applyChanges(view.text, cs) },
     replaceContent: (t) => { view.text = t },
   }
-  const sync = createFileSync({ path: '/f', send: (cmd, p) => sent.push({ cmd, ...p }), editor,
+  const sync = createFileSync({ id: 'nid', send: (cmd, p) => sent.push({ cmd, ...p }), editor,
                                 onAbandon: (b) => abandoned.push(b), ...opts })
   const loaded = (content, revision) => {
     sync.load()
-    const r = sync.onContent({ path: '/f', content, revision })
+    const r = sync.onContent({ id: 'nid', content, revision })
     view.text = r.content
   }
   const type = (...changes) => { view.text = applyChanges(view.text, changes); sync.localChanges(changes) }
@@ -27,19 +27,15 @@ function harness(opts = {}) {
   return { sent, view, sync, loaded, type, writes, reads, abandoned }
 }
 
-test('relocate updates the path later writes name', () => {
+test('every read and write names the FileNode id and branch; main by default', () => {
   const h = harness()
   h.loaded('abc', 'r0')
-  h.sync.relocate('/g')
-  h.type(ins(0, 3, 'd'))
-  assert.equal(h.writes()[0].path, '/g')
-})
-
-test('every read and write names the branch; main by default', () => {
-  const h = harness()
-  h.loaded('abc', 'r0')
+  assert.equal(h.reads()[0].id, 'nid')
+  assert.equal(h.reads()[0].path, undefined)
   assert.equal(h.reads()[0].branch, 'main')
   h.type(ins(0, 3, 'd'))
+  assert.equal(h.writes()[0].id, 'nid')
+  assert.equal(h.writes()[0].path, undefined)
   assert.equal(h.writes()[0].branch, 'main')
 
   const t = harness({ branch: 'topic' })
@@ -48,6 +44,7 @@ test('every read and write names the branch; main by default', () => {
   t.type(ins(0, 3, 'd'))
   assert.equal(t.writes()[0].branch, 'topic')
   assert.equal(t.sync.state.branch, 'topic')
+  assert.equal(t.sync.state.id, 'nid')
 })
 
 test('one batch in flight; later edits queue and go out on the ack, based on its head', () => {
@@ -58,7 +55,7 @@ test('one batch in flight; later edits queue and go out on the ack, based on its
   const writes = h.sent.filter(s => s.cmd === 'write')
   assert.equal(writes.length, 1)
   assert.equal(writes[0].base_revision_id, 'r0')
-  h.sync.onWritten({ path: '/f', mode: 'append', head: 'r1', batch_id: writes[0].batch_id })
+  h.sync.onWritten({ id: 'nid', mode: 'append', head: 'r1', batch_id: writes[0].batch_id })
   const second = h.sent.filter(s => s.cmd === 'write')[1]
   assert.equal(second.base_revision_id, 'r1')
   assert.deepEqual(second.changes, [ins(0, 4, 'e')])
@@ -70,7 +67,7 @@ test('rebased ack with nothing pending applies the changes to the view', () => {
   h.type(ins(1, 3, '!'))
   const w = h.sent.at(-1)
   // server: someone put X at the start; merge commit m1
-  h.sync.onWritten({ path: '/f', mode: 'rebased', head: 'm1', auto_branch_head: 'b1', batch_id: w.batch_id,
+  h.sync.onWritten({ id: 'nid', mode: 'rebased', head: 'm1', auto_branch_head: 'b1', batch_id: w.batch_id,
                      changes: [ins(0, 0, 'X')] })
   assert.equal(h.view.text, 'Xone\ntwo!')
   assert.equal(h.sync.state.baseRev, 'm1')
@@ -82,7 +79,7 @@ test('rebased ack while more is pending: next batch is based on our branch head,
   h.type(ins(0, 2, 'c'))
   const w = h.sent.at(-1)
   h.type(ins(0, 3, 'd'))
-  h.sync.onWritten({ path: '/f', mode: 'rebased', head: 'm1', auto_branch_head: 'b1', batch_id: w.batch_id,
+  h.sync.onWritten({ id: 'nid', mode: 'rebased', head: 'm1', auto_branch_head: 'b1', batch_id: w.batch_id,
                      changes: [ins(0, 0, 'X')] })
   assert.equal(h.view.text, 'abcd')
   const next = h.sent.at(-1)
@@ -122,7 +119,7 @@ test('offline edits queue; reconnect sends them on the old base; an in-flight ba
   const resent = h.sent.at(-1)
   assert.equal(resent.batch_id, inflight.batch_id)
   assert.deepEqual(resent.changes, inflight.changes)
-  h.sync.onWritten({ path: '/f', mode: 'append', head: 'r1', batch_id: inflight.batch_id })
+  h.sync.onWritten({ id: 'nid', mode: 'append', head: 'r1', batch_id: inflight.batch_id })
   const queued = h.sent.at(-1)
   assert.equal(queued.base_revision_id, 'r1')
   assert.deepEqual(queued.changes, [ins(0, 4, 'e')])
@@ -133,10 +130,10 @@ test('a refused batch drops local state and re-reads', () => {
   h.loaded('abc', 'r0')
   h.type(ins(0, 3, 'd'))
   const w = h.sent.at(-1)
-  assert.equal(h.sync.onError({ path: '/f', branch: 'main', error: 'conflict', conflict: true, resync: true, auto_branch: 'auto/1/x', batch_id: w.batch_id }), true)
+  assert.equal(h.sync.onError({ id: 'nid', branch: 'main', error: 'conflict', conflict: true, resync: true, auto_branch: 'auto/1/x', batch_id: w.batch_id }), true)
   assert.equal(h.sync.outstanding, false)
   assert.equal(h.sent.at(-1).cmd, 'read')
-  h.sync.onContent({ path: '/f', content: 'XYZ', revision: 'r2' })
+  h.sync.onContent({ id: 'nid', content: 'XYZ', revision: 'r2' })
   assert.equal(h.view.text, 'XYZ')
   assert.equal(h.sync.state.baseRev, 'r2')
 })
@@ -166,7 +163,7 @@ test('an unacknowledged batch is resent with its batch_id, then abandoned: queue
     assert.equal(h.abandoned[0].batchId, first.batch_id)
 
     assert.equal(h.sync.localChanges([ins(0, 5, 'f')]), false, 'typing before the re-read is dropped')
-    h.sync.onContent({ path: '/f', content: 'abc', revision: 'r0' })
+    h.sync.onContent({ id: 'nid', content: 'abc', revision: 'r0' })
     assert.equal(h.view.text, 'abc')
     h.type(ins(0, 3, 'g'))
     assert.equal(h.writes().length, MAX_SENDS + 1, 'editing resumes after the reload')
@@ -182,7 +179,7 @@ test('an ack cancels the resend timer; a disconnect pauses it and the reconnect 
     h.loaded('abc', 'r0')
     h.type(ins(0, 3, 'd'))
     const w = h.writes()[0]
-    h.sync.onWritten({ path: '/f', mode: 'append', head: 'r1', batch_id: w.batch_id })
+    h.sync.onWritten({ id: 'nid', mode: 'append', head: 'r1', batch_id: w.batch_id })
     mock.timers.tick(ACK_TIMEOUT_MS * MAX_SENDS * 2)
     assert.equal(h.writes().length, 1, 'acked batch is never resent')
     assert.equal(h.abandoned.length, 0)
@@ -233,7 +230,7 @@ test('while a re-read is out, further gap frames are dropped instead of each req
   // A frame chained to the current base is also not applied mid-read: the
   // reply reflects it already.
   assert.equal(h.sync.onRemote('change', { ...ins(0, 0, 'Z'), revision: 'r1', parent: 'r0' }), false)
-  h.sync.onContent({ path: '/f', content: 'SRQabc', revision: 'r11' })
+  h.sync.onContent({ id: 'nid', content: 'SRQabc', revision: 'r11' })
   assert.equal(h.view.text, 'SRQabc')
   assert.equal(h.sync.state.baseRev, 'r11')
   assert.equal(h.sync.onRemote('change', { ...ins(0, 0, 'T'), revision: 'r12', parent: 'r11' }), true)
@@ -247,9 +244,9 @@ test('a refusal while a re-read is already out does not request a second read; t
   const before = h.reads().length
   h.type(ins(0, 3, 'd'))
   const w = h.writes().at(-1)
-  assert.equal(h.sync.onError({ path: '/f', error: 'conflict', resync: true, batch_id: w.batch_id }), true)
+  assert.equal(h.sync.onError({ id: 'nid', error: 'conflict', resync: true, batch_id: w.batch_id }), true)
   assert.equal(h.reads().length, before, 'no duplicate read')
-  h.sync.onContent({ path: '/f', content: 'Qabc', revision: 'r9' })
+  h.sync.onContent({ id: 'nid', content: 'Qabc', revision: 'r9' })
   assert.equal(h.view.text, 'Qabc')
   assert.equal(h.sync.state.discarding, false)
   assert.equal(h.sync.state.baseRev, 'r9')

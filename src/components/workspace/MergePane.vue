@@ -110,6 +110,7 @@ import { extensionToLanguage } from '../../utils/monacoLanguage'
 // pinned at the heads shown. If either head moves meanwhile the commit is
 // refused as stale and the result is kept for re-review.
 const props = defineProps({
+  fileId: { type: String, default: '' },
   path:   { type: String, required: true },
   source: { type: String, required: true },
   target: { type: String, required: true },
@@ -139,7 +140,7 @@ const short = (id) => (id ? String(id).slice(0, 8) : '—')
 function fetchPreview() {
   loading.value = true
   notice.value = ''
-  workerSocket.send('fs', 'merge_preview', { path: props.path, source: props.source, target: props.target })
+  workerSocket.send('fs', 'merge_preview', { id: props.fileId, source: props.source, target: props.target })
 }
 
 function seed(text) {
@@ -193,13 +194,18 @@ function commit() {
   committing.value = true
   stale.value = ''
   workerSocket.send('fs', 'merge_resolve', {
-    path: props.path, source: props.source, target: props.target, content,
+    id: props.fileId, source: props.source, target: props.target, content,
     expected_head: preview.value.target_head, expected_source_head: preview.value.source_head,
   })
 }
 
+function forThisMerge(payload) {
+  return props.fileId && payload.id && String(payload.id) === String(props.fileId) &&
+    payload.source === props.source && payload.target === props.target
+}
+
 function onPreview(payload) {
-  if (payload.path !== props.path || payload.source !== props.source || payload.target !== props.target) return
+  if (!forThisMerge(payload)) return
   loading.value = false
   const first = !preview.value
   preview.value = payload
@@ -210,7 +216,7 @@ function onPreview(payload) {
 }
 
 function onMerged(payload) {
-  if (payload.path !== props.path || payload.source !== props.source || payload.target !== props.target) return
+  if (!forThisMerge(payload)) return
   if (!committing.value) return
   committing.value = false
   if (payload.merged) {
@@ -225,7 +231,7 @@ function onMerged(payload) {
 }
 
 function onError(payload) {
-  if (payload?.path && payload.path !== props.path) return
+  if (payload?.id && String(payload.id) !== String(props.fileId)) return
   if (!loading.value && !committing.value) return
   loading.value = false
   committing.value = false
@@ -239,7 +245,7 @@ const offs = [
   workerSocket.on('system', 'connected', fetchPreview),
 ]
 
-watch(() => [props.path, props.source, props.target], () => { preview.value = null; currentText.value = ''; fetchPreview() })
+watch(() => [props.fileId, props.path, props.source, props.target], () => { preview.value = null; currentText.value = ''; fetchPreview() })
 onMounted(fetchPreview)
 onBeforeUnmount(() => {
   clearTimeout(changeTimer)

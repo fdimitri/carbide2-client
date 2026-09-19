@@ -61,8 +61,11 @@ const getWorkerUrl = () => {
 // directory under the project root when materialized). Additive on the wire
 // but the tree/created/... frames of a materialized branch are new — a worker
 // at 10 cannot serve the toggle, so MIN_SERVER moves.
-const PROTOCOL   = 11
-const MIN_SERVER = 11
+// PROTOCOL 12: document identity is FileNode UUID. fs/open, close, read,
+// write, cursor and fileSync send `id` (not path). A worker below 12 keys
+// OPEN_DOCUMENTS by path, so MIN_SERVER is 12.
+const PROTOCOL   = 12
+const MIN_SERVER = 12
 
 const RECONNECT_BASE_MS  = 1000
 const RECONNECT_MAX_MS   = 30000

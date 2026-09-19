@@ -297,7 +297,7 @@ import { mintWorkspaceToken } from '../services/workspaceToken'
 import { storeToRefs } from 'pinia'
 import { usePanes, PANE_COUNTS } from '../composables/usePanes'
 import { useSessionSync } from '../composables/useSessionSync'
-import { useSessionStore, sessionGateInfo, SESSION_DOC_VERSION, MAIN_BRANCH, tabBranch, fileTabPath } from '../stores/sessionStore'
+import { useSessionStore, sessionGateInfo, SESSION_DOC_VERSION, MAIN_BRANCH, tabBranch, isFileNodeId } from '../stores/sessionStore'
 import { CLIENT_SHA } from '../version'
 import { useTerminals } from '../composables/useTerminals'
 import { useChat } from '../composables/useChat'
@@ -381,21 +381,21 @@ const {
 // loopback and no per-socket refcount on the worker, so emitting a close for a
 // file that is still open would silently drop it.
 //
-// A subscription is to a (path, branch): a tab that moves to another branch
-// closes the old pair and opens the new one, so cursors and edit frames from
-// the branch it left stop arriving.
+// A subscription is to a (FileNode UUID, branch): a tab that moves to another
+// branch closes the old pair and opens the new one, so cursors and edit frames
+// from the branch it left stop arriving.
 const openFileSubs = computed(() => {
-  const subs = new Map()   // "branch\0path" => { path, branch }
-  const add = (sub) => subs.set(`${sub.branch}\0${sub.path}`, sub)
+  const subs = new Map()   // "branch\0id" => { id, branch }
+  const add = (sub) => {
+    if (!sub.id || !isFileNodeId(sub.id)) return
+    subs.set(`${sub.branch}\0${sub.id}`, sub)
+  }
   const tabs = panes.value.flatMap((p) => p?.tabs || [])
   for (const t of tabs) {
     if (!t.id) continue
-    if (t.kind === 'file') {
-      const path = fileTabPath(t)
-      if (path) add({ path, branch: tabBranch(t) })
-    }
+    if (t.kind === 'file') add({ id: String(t.id), branch: tabBranch(t) })
     // A preview is a viewer on the file's view: its editor tab's branch, or main.
-    if (t.kind === 'preview') add({ path: String(t.id), branch: sessionStore.fileTabView(String(t.id)).branch })
+    if (t.kind === 'preview') add({ id: String(t.id), branch: sessionStore.fileTabView(String(t.id)).branch })
   }
   return subs
 })
@@ -652,25 +652,30 @@ function openDebugPane() {
 
 // The revision DAG of one file, as its own tab (persisted in the session doc
 // like any other). One per file client-wide; reopening focuses it.
-function openHistoryPane(path) {
-  if (!path) return
-  const name = String(path).split('/').pop() || String(path)
-  bindTabToActivePane('history', String(path), `${name} · history`)
+function openHistoryPane(fileId) {
+  if (!fileId) return
+  const path = sessionStore.fileTabView(fileId).path || fileId
+  const name = String(path).split('/').pop() || String(fileId)
+  bindTabToActivePane('history', String(fileId), `${name} · history`, { path })
 }
 
 // Rendered markdown, in a tab beside the editor.
-function openPreviewPane(path) {
-  if (!path) return
-  const name = String(path).split('/').pop() || String(path)
-  bindTabToActivePane('preview', String(path), `${name} · preview`)
+function openPreviewPane(payload) {
+  const rec = typeof payload === 'string' ? { id: payload } : (payload || {})
+  const id = rec.id
+  if (!id) return
+  const path = rec.path || sessionStore.fileTabView(id).path || id
+  const name = String(path).split('/').pop() || String(id)
+  bindTabToActivePane('preview', String(id), `${name} · preview`, { path })
 }
 
 // A three-way merge tab for one file: resolve `source` into `target` by hand.
 // Keyed by all three so the same merge is one tab client-wide.
-function openMergePane(path, { source, target = MAIN_BRANCH } = {}) {
-  if (!path || !source) return
-  const name = String(path).split('/').pop() || String(path)
-  bindTabToActivePane('merge', `${source}|${target}|${path}`, `${name} · ${source} → ${target}`)
+function openMergePane(fileId, { source, target = MAIN_BRANCH } = {}) {
+  if (!fileId || !source) return
+  const path = sessionStore.fileTabView(fileId).path || fileId
+  const name = String(path).split('/').pop() || String(fileId)
+  bindTabToActivePane('merge', `${source}|${target}|${fileId}`, `${name} · ${source} → ${target}`)
 }
 
 // The project's branch graph, one tab per pane.
@@ -688,13 +693,14 @@ function openProjectMergePane({ source, target = MAIN_BRANCH } = {}) {
 // From the history rail or a preview: open (or focus) the file's tab and, when
 // a view is given, point it there — pinned at a revision (read-only), or on a
 // branch head. With no view the tab keeps whatever it is on.
-function openFileAt(path, view = {}) {
-  if (!path) return
+function openFileAt(fileId, view = {}) {
+  if (!fileId) return
+  const path = sessionStore.fileTabView(fileId).path || fileId
   const branch = view.branch || sessionStore.workspaceBranch || MAIN_BRANCH
-  selectFileNode(String(path), { path, branch })
+  selectFileNode(String(fileId), { path, branch })
   if (!('revision' in view) && !('branch' in view)) return
   const { revision = null, branch: toBranch } = view
-  sessionStore.setFileTabView(String(path), toBranch === undefined ? { revision, fromBranch: branch } : { branch: toBranch, revision, fromBranch: branch })
+  sessionStore.setFileTabView(String(fileId), toBranch === undefined ? { revision, fromBranch: branch } : { branch: toBranch, revision, fromBranch: branch })
 }
 
 async function confirmUpload() {
