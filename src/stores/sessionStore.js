@@ -20,7 +20,7 @@
 //     layout: "one",
 //     activePaneIndex: 0,
 //     panes: {
-//       "0": { activeTab: "file:src/x", tabs: [ { key, kind, id, label, branch?, revision? } ] },
+//       "0": { activeTab: "file:<uuid>::main", tabs: [ { key, kind, id, path?, label, branch?, revision? } ] },
 //       "1": { activeTab: null, tabs: [] },
 //       "2": { activeTab: null, tabs: [] },
 //       "3": { activeTab: null, tabs: [] }
@@ -38,11 +38,53 @@ import { ref } from 'vue'
 
 // ── Wire-protocol constants ──────────────────────────────────────────────────
 export const SESSION_CS          = 'session' // commandSet name (worker ROUTES)
-export const SESSION_DOC_VERSION = 3          // v2: agent tabs carry agent:<uuid> + agentSlug/composerHeightPx
+export const SESSION_DOC_VERSION = 4          // v2: agent tabs carry agent:<uuid> + agentSlug/composerHeightPx
                                               // v3: file tabs carry `branch` (per-file DBFS branch; main by default)
                                               //     and `revision` (null, or a revision the view is pinned at, read-only)
+                                              // v4: a file tab is one (FileNode UUID, branch). `id` is the node
+                                              //     UUID (path only on a resumed v3 tab), `path` is where that
+                                              //     node currently sits on the branch, key is `file:<id>::<branch>`.
 export const MAIN_BRANCH         = 'main'
 export const PANE_SLOTS          = 4          // usePanes keeps 4 fixed pane slots
+
+// FileNode.id is SecureRandom.uuid. Stable across rename/move on a branch
+// (only branch_entries.path / file_nodes.path change). Tab identity is
+// (this id, branch); path is the current location on that branch.
+export const FILE_NODE_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+export function isFileNodeId(id) {
+  return typeof id === 'string' && FILE_NODE_ID_RE.test(id)
+}
+
+export function stripFilePath(p) {
+  return String(p || '').replace(/^\//, '')
+}
+
+export function fileTabKey(id, branch = MAIN_BRANCH) {
+  return `file:${id}::${branch || MAIN_BRANCH}`
+}
+
+export function fileTabPath(t) {
+  if (!t) return ''
+  if (t.path) return stripFilePath(t.path)
+  if (!isFileNodeId(t.id)) return stripFilePath(t.id)
+  return ''
+}
+
+// The branch a file tab is on (main when unset).
+export function tabBranch(t) {
+  return (t && t.kind === 'file' && t.branch) || MAIN_BRANCH
+}
+
+export function fileTabMatches(t, id, branch) {
+  if (!t || t.kind !== 'file' || id == null || id === '') return false
+  if (branch != null && tabBranch(t) !== (branch || MAIN_BRANCH)) return false
+  const want = String(id)
+  if (String(t.id) === want) return true
+  const wantPath = stripFilePath(want)
+  const have = fileTabPath(t)
+  return !!(wantPath && have && wantPath === have)
+}
 
 // Placeholder large-jump threshold for the distance gate (#86). The real
 // threshold is deliberately undefined until we have the facts of a real problem.
@@ -192,23 +234,29 @@ function serializeTab(t) {
   if (t.kind === 'file') {
     out.branch = t.branch || MAIN_BRANCH
     out.revision = t.revision || null
+    const path = fileTabPath(t)
+    if (path) out.path = path
   }
   return out
 }
 
 function deserializeTab(t) {
-  return {
+  const out = {
     key: t.key, kind: t.kind, id: t.id, label: t.label,
     agentSlug: t.agentSlug ?? null,
     composerHeightPx: t.composerHeightPx ?? null,
     branch: t.kind === 'file' ? (t.branch || MAIN_BRANCH) : null,
     revision: t.kind === 'file' ? (t.revision || null) : null,
   }
-}
-
-// The branch a file tab is on (main when unset).
-export function tabBranch(t) {
-  return (t && t.kind === 'file' && t.branch) || MAIN_BRANCH
+  if (t.kind === 'file') {
+    const nodeId = isFileNodeId(t.id) ? t.id : null
+    const path = stripFilePath(t.path) || (nodeId ? '' : stripFilePath(t.id))
+    if (path) out.path = path
+    out.id = nodeId || path || t.id
+    out._wasKey = t.key
+    out.key = fileTabKey(out.id, out.branch)
+  }
+  return out
 }
 
 export const useSessionStore = defineStore('session', () => {
@@ -278,6 +326,12 @@ export const useSessionStore = defineStore('session', () => {
           activeTab: p.activeTab ?? null,
           tabs: Array.isArray(p.tabs) ? p.tabs.map(deserializeTab) : [],
         }
+        const tabs = fresh[i].tabs
+        if (fresh[i].activeTab && !tabs.some((t) => t.key === fresh[i].activeTab)) {
+          const hit = tabs.find((t) => t._wasKey === fresh[i].activeTab)
+          if (hit) fresh[i].activeTab = hit.key
+        }
+        for (const t of tabs) delete t._wasKey
       }
     }
     panes.value = fresh
@@ -408,48 +462,108 @@ export const useSessionStore = defineStore('session', () => {
     sessions.value        = []
   }
 
-  // Point the file tab for `fileId` (one tab per file across all panes) at a
-  // view: a branch (live, editable) or a revision it is pinned at (read-only;
-  // `branch` is then the branch to return to). The tabs array is replaced, not
-  // mutated in place, so the emitter sees one whole-array patch (the only form
-  // the server can store). Returns false when no tab has the file open.
+  // Point one file tab (the (node, fromBranch) view, else the first matching
+  // node) at a branch head or a pinned revision. Identity is (FileNode UUID,
+  // branch): switching branch rewrites the tab key, and a (node, branch) that
+  // is already open is focused instead of duplicated. Returns false when no
+  // tab has this file open.
   function setWorkspaceBranch(name) {
     workspaceBranch.value = String(name || '') || MAIN_BRANCH
   }
 
-  function setFileTabView(fileId, { branch, revision } = {}) {
-    const key = `file:${fileId}`
-    for (const pane of panes.value) {
-      const idx = (pane?.tabs || []).findIndex((t) => t.key === key)
-      if (idx === -1) continue
-      const cur = pane.tabs[idx]
-      const next = {
-        branch:   branch === undefined ? tabBranch(cur) : (branch || MAIN_BRANCH),
-        revision: revision === undefined ? (cur.revision || null) : (revision || null),
-      }
-      if (tabBranch(cur) === next.branch && (cur.revision || null) === next.revision) return true
-      pane.tabs = pane.tabs.map((t, i) => (i === idx ? { ...t, ...next } : t))
-      return true
+  function findFileTab(fileId, branch) {
+    for (let p = 0; p < panes.value.length; p++) {
+      const pane = panes.value[p]
+      const idx = (pane?.tabs || []).findIndex((t) => fileTabMatches(t, fileId, branch))
+      if (idx !== -1) return { pane, idx, tab: pane.tabs[idx], paneIndex: p }
     }
-    return false
+    return null
   }
 
-  // The view the file's tab (in any pane) is on; main, unpinned, when the file
-  // is not open. A preview tab follows this, so previewing a branch is just
-  // having the editor on it.
-  function fileTabView(fileId) {
-    const key = `file:${fileId}`
-    for (const pane of panes.value) {
-      const t = (pane?.tabs || []).find((x) => x.key === key)
-      if (t) return { branch: tabBranch(t), revision: t.revision || null }
+  function setFileTabView(fileId, { branch, revision, fromBranch } = {}) {
+    const found = findFileTab(fileId, fromBranch !== undefined ? fromBranch : undefined)
+    if (!found) return false
+    const cur = found.tab
+    const next = {
+      branch:   branch === undefined ? tabBranch(cur) : (branch || MAIN_BRANCH),
+      revision: revision === undefined ? (cur.revision || null) : (revision || null),
     }
-    return { branch: MAIN_BRANCH, revision: null }
+    if (tabBranch(cur) === next.branch && (cur.revision || null) === next.revision) return true
+
+    const collision = next.branch !== tabBranch(cur) ? findFileTab(cur.id, next.branch) : null
+    if (collision && collision.tab !== cur) {
+      collision.pane.activeTab = collision.tab.key
+      activePaneIndex.value = collision.paneIndex
+      return true
+    }
+
+    const key = fileTabKey(cur.id, next.branch)
+    const rewritten = { ...cur, ...next, key }
+    found.pane.tabs = found.pane.tabs.map((t, i) => (i === found.idx ? rewritten : t))
+    if (found.pane.activeTab === cur.key) found.pane.activeTab = key
+    return true
+  }
+
+  // The view a file tab is on; when several (same node, different branches)
+  // are open, `branch` picks one, else the workspace branch, else the first.
+  function fileTabView(fileId, branch) {
+    if (branch) {
+      const found = findFileTab(fileId, branch)
+      if (found) return { branch: tabBranch(found.tab), revision: found.tab.revision || null, path: fileTabPath(found.tab) }
+    }
+    const foundWs = findFileTab(fileId, workspaceBranch.value)
+    if (foundWs) return { branch: tabBranch(foundWs.tab), revision: foundWs.tab.revision || null, path: fileTabPath(foundWs.tab) }
+    const found = findFileTab(fileId)
+    if (found) return { branch: tabBranch(found.tab), revision: found.tab.revision || null, path: fileTabPath(found.tab) }
+    return { branch: MAIN_BRANCH, revision: null, path: stripFilePath(fileId) }
   }
 
   // Switch the file's tab to a branch head. Un-pins: a pinned view is a
-  // revision, not a branch head to edit on.
-  function setFileTabBranch(fileId, branch) {
-    return setFileTabView(fileId, { branch, revision: null })
+  // revision, not a branch head to edit on. `fromBranch` is the tab being
+  // switched (required once two branches of the same node can be open).
+  function setFileTabBranch(fileId, branch, fromBranch) {
+    return setFileTabView(fileId, { branch, revision: null, fromBranch })
+  }
+
+  // After a rename/move: the node id is unchanged; only the path on this
+  // branch (and descendant paths, for a folder) moves. Tabs follow.
+  function applyFileRename({ oldPath, newPath, nodeId, branch }) {
+    const b = branch || MAIN_BRANCH
+    const oldN = stripFilePath(oldPath)
+    const newN = stripFilePath(newPath)
+    if (!oldN || !newN || oldN === newN) return false
+    let changed = false
+    for (const pane of panes.value) {
+      const prevKeys = (pane.tabs || []).map((t) => t.key)
+      const next = (pane.tabs || []).map((t) => {
+        if (t.kind === 'file' && tabBranch(t) === b) {
+          const p = fileTabPath(t)
+          let np = null
+          if (nodeId && String(t.id) === String(nodeId)) np = newN
+          else if (p === oldN) np = newN
+          else if (p && p.startsWith(`${oldN}/`)) np = `${newN}${p.slice(oldN.length)}`
+          if (!np) return t
+          const id = isFileNodeId(t.id) ? t.id : np
+          return { ...t, path: np, id, label: np.split('/').pop() || t.label, key: fileTabKey(id, b) }
+        }
+        if ((t.kind === 'history' || t.kind === 'preview') && t.id) {
+          const p = stripFilePath(t.id)
+          let np = null
+          if (p === oldN) np = newN
+          else if (p.startsWith(`${oldN}/`)) np = `${newN}${p.slice(oldN.length)}`
+          if (!np) return t
+          return { ...t, id: np, label: t.label && t.label.includes('·') ? `${np.split('/').pop()} · ${t.label.split(' · ').slice(1).join(' · ')}` : (np.split('/').pop() || t.label), key: `${t.kind}:${np}` }
+        }
+        return t
+      })
+      if (next.some((t, i) => t !== pane.tabs[i])) {
+        const remap = new Map(prevKeys.map((k, i) => [k, next[i].key]))
+        pane.tabs = next
+        if (pane.activeTab && remap.has(pane.activeTab)) pane.activeTab = remap.get(pane.activeTab)
+        changed = true
+      }
+    }
+    return changed
   }
 
   return {
@@ -458,7 +572,7 @@ export const useSessionStore = defineStore('session', () => {
     versionHistory, forkedFrom, rawDoc,
     isProducer, isWatcher,
     // layout state
-    layout, activePaneIndex, panes, workspaceBranch, setWorkspaceBranch, setFileTabBranch, setFileTabView, fileTabView,
+    layout, activePaneIndex, panes, workspaceBranch, setWorkspaceBranch, setFileTabBranch, setFileTabView, fileTabView, applyFileRename,
     // resume picker
     sessions,
     // (de)serialization + patch application

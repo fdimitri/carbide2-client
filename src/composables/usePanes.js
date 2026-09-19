@@ -8,7 +8,7 @@
 // emitted to the server automatically — no per-method instrumentation needed.
 import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore, MAIN_BRANCH, fileTabKey, fileTabMatches, stripFilePath } from '../stores/sessionStore'
 import { logEntry, logInfo, logWarn } from '../services/log'
 
 export const PANE_COUNTS = {
@@ -112,18 +112,26 @@ export function usePanes({ activePane, pendingNavigation }) {
     return false
   }
 
-  function focusExistingFile(id) {
-    // A file is limited to ONE open tab client-wide. There is no loopback and
-    // no per-socket refcount on the worker, so a second view of the same file
-    // would go silently stale after an edit, and a close from one view would
-    // drop the other. Rather than allow that, opening a file that is already
-    // open anywhere focuses the existing tab — exactly the terminal rule above.
-    //
-    // The compare is a plain string compare: every client path that produces a
-    // file id strips the leading slash (explorer keys, parseTabKey), and the
-    // worker normalizes both forms to the same srcpath, so there is only ever
-    // one form in play here.
-    return focusExistingOfKind('file', id)
+  function focusExistingFile(id, branch) {
+    // One tab per (FileNode UUID, branch). Path-only single-open was the
+    // pre-branch rule; after project branches the same node on two branches
+    // is two documents (and two OPEN_DOCUMENTS keys). A second view of the
+    // same (node, branch) would still go stale — no loopback, no per-socket
+    // refcount — so that pair stays unique. `id` is the node UUID from the
+    // explorer, or a path on a resumed tab that never learned its UUID.
+    if (id == null || id === '') return false
+    const wantBranch = branch || MAIN_BRANCH
+    for (let p = 0; p < panes.value.length; p++) {
+      const pane = panes.value[p]
+      if (!pane) continue
+      const found = (pane.tabs || []).find((t) => fileTabMatches(t, id, wantBranch))
+      if (found) {
+        activePaneIndex.value = p
+        pane.activeTab = found.key
+        return true
+      }
+    }
+    return false
   }
 
   // One tab per (kind, id) client-wide for kinds keyed by a path.
@@ -145,9 +153,22 @@ export function usePanes({ activePane, pendingNavigation }) {
     return false
   }
 
-  function bindTabToActivePane(kind, id, label) {
+  function bindFileTab(pane, id, label, extra = {}) {
+    const branch = extra.branch || MAIN_BRANCH
+    if (focusExistingFile(id, branch)) return
+    const path = extra.path != null ? stripFilePath(extra.path) : stripFilePath(id)
+    const key  = fileTabKey(id, branch)
+    if (!pane.tabs.find((t) => t.key === key)) {
+      const tab = { key, kind: 'file', id, label, branch, revision: null }
+      if (path) tab.path = path
+      pane.tabs.push(tab)
+    }
+    pane.activeTab = key
+  }
+
+  function bindTabToActivePane(kind, id, label, extra = {}) {
     if (kind === 'terminal' && focusExistingTerminal(id)) return
-    if (kind === 'file' && focusExistingFile(id)) return
+    if (kind === 'file') return bindFileTab(panes.value[activePaneIndex.value], id, label, extra)
     if (kind === 'history' && focusExistingOfKind('history', id)) return
     if (kind === 'preview' && focusExistingOfKind('preview', id)) return
     if (kind === 'merge' && focusExistingOfKind('merge', id)) return
@@ -160,9 +181,14 @@ export function usePanes({ activePane, pendingNavigation }) {
     pane.activeTab = key
   }
 
-  function bindTabToPane(targetPaneIndex, kind, id, label) {
+  function bindTabToPane(targetPaneIndex, kind, id, label, extra = {}) {
     if (kind === 'terminal' && focusExistingTerminal(id)) return
-    if (kind === 'file' && focusExistingFile(id)) return
+    if (kind === 'file') {
+      const pane = panes.value[targetPaneIndex]
+      if (!pane) return
+      activePaneIndex.value = targetPaneIndex
+      return bindFileTab(pane, id, label, extra)
+    }
     if (kind === 'history' && focusExistingOfKind('history', id)) return
     if (kind === 'preview' && focusExistingOfKind('preview', id)) return
     if (kind === 'merge' && focusExistingOfKind('merge', id)) return
@@ -276,7 +302,11 @@ export function usePanes({ activePane, pendingNavigation }) {
       return
     }
     if (payload.kind === 'file') {
-      pendingNavigation.value = { kind: 'file', id: String(payload.id), opts: {} }
+      pendingNavigation.value = {
+        kind: 'file',
+        id: String(payload.id),
+        opts: { path: payload.path, label: payload.label },
+      }
     }
   }
 

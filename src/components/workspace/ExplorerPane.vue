@@ -370,8 +370,13 @@ watch(() => fileTree.value.length, (n) => { if (n > 0) gitImportRunning.value = 
 
 // ── File tree from WebSocket ─────────────────────────────────────────────────
 function serverNodeToInternal(node) {
-  const id = node.path === '/' ? '' : node.path.replace(/^\//, '')
-  const result = { id: id || node.name, name: node.name, type: node.type === 'folder' ? 'dir' : 'file' }
+  const path = node.path === '/' ? '' : String(node.path || '').replace(/^\//, '')
+  const result = {
+    id: node.id,
+    path: path || node.name,
+    name: node.name,
+    type: node.type === 'folder' ? 'dir' : 'file',
+  }
   if (node.type === 'folder') result.children = (node.children || []).map(serverNodeToInternal)
   return result
 }
@@ -564,6 +569,7 @@ const primeFileNodes = computed(() => {
       kind: node.type === 'file' ? 'file' : 'dir',
       type: node.type,
       id: node.id,
+      path: node.path,
       isOpen: node.type === 'file' && openedFileIds.value.has(node.id),
     },
     children: node.children?.map(mapNode) || [],
@@ -765,6 +771,16 @@ function treeIconClass(data) {
   }
 }
 
+function nodePath(node) {
+  const p = node?.data?.path
+  if (p == null || p === '') return '/'
+  return String(p).startsWith('/') ? String(p) : `/${p}`
+}
+
+function fileOpenPayload(node) {
+  return { id: String(node.data?.id || node.key), path: node.data?.path || '', label: node.label }
+}
+
 function markFileOpen(fileId) {
   const next = new Set(openedFileIds.value)
   next.add(String(fileId))
@@ -784,8 +800,8 @@ function onExplorerNodeSelect(event) {
   if (node.data.kind === 'file') {
     selectedFileId.value = node.key
     selectionKeys.value = { [node.key]: true }
-    markFileOpen(node.key)
-    emit('open-file', node.key)
+    markFileOpen(node.data.id)
+    emit('open-file', fileOpenPayload(node))
     return
   }
   if (node.data.kind === 'terminal') {
@@ -819,8 +835,8 @@ function onExplorerNodeDblClick(node) {
 function openNodeInPane(node, paneIndex) {
   const kind = node?.data?.kind
   if (kind === 'file') {
-    markFileOpen(node.key)
-    emit('open-in-pane', { kind: 'file',     id: node.key,      label: node.label, paneIndex })
+    markFileOpen(node.data.id)
+    emit('open-in-pane', { kind: 'file', id: String(node.data.id), path: node.data.path, label: node.label, paneIndex })
   } else if (kind === 'terminal') {
     markTerminalOpen(node.data.id)
     emit('open-in-pane', { kind: 'terminal', id: node.data.id,  label: node.label, paneIndex })
@@ -887,7 +903,7 @@ function buildContextMenuItems(node) {
     ]
   }
   if (kind === 'dir') {
-    const dirPath = '/' + node.key.replace(/^\//, '')
+    const dirPath = nodePath(node)
     return [
       { label: 'New File...',                   icon: 'pi pi-file-plus', command: () => openCreateFileDialog(dirPath) },
       { label: 'New Folder...',                 icon: 'pi pi-folder',    command: () => openCreateFolderDialog(dirPath) },
@@ -897,7 +913,7 @@ function buildContextMenuItems(node) {
       { separator: true },
       { label: 'Download', icon: 'pi pi-download', command: () => emit('download-entry', dirPath) },
       { label: 'Properties...', icon: 'pi pi-info-circle', command: () => openPropertiesDialog(dirPath) },
-      { label: 'Delete', icon: 'pi pi-trash', command: () => deletePath(node.key) },
+      { label: 'Delete', icon: 'pi pi-trash', command: () => deletePath(dirPath) },
     ]
   }
   if (kind === 'channel') {
@@ -950,17 +966,17 @@ function buildContextMenuItems(node) {
     ]
   }
   if (kind === 'file') {
-    const filePath = '/' + node.key.replace(/^\//, '')
+    const filePath = nodePath(node)
     return [
       ...buildOpenItems(node),
       ...(isMarkdownPath(filePath)
-        ? [{ label: 'Open Preview', icon: 'pi pi-eye', command: () => emit('open-preview', String(node.data.id)) }]
+        ? [{ label: 'Open Preview', icon: 'pi pi-eye', command: () => emit('open-preview', filePath.replace(/^\//, '')) }]
         : []),
       { separator: true },
       { label: 'Download', icon: 'pi pi-download', command: () => emit('download-entry', filePath) },
       { label: 'Properties...', icon: 'pi pi-info-circle', command: () => openPropertiesDialog(filePath) },
-      { label: 'Rename', icon: 'pi pi-pencil', command: () => renameFileById(node.key) },
-      { label: 'Delete', icon: 'pi pi-trash',  command: () => deletePath(node.key) },
+      { label: 'Rename', icon: 'pi pi-pencil', command: () => renameFileById(filePath) },
+      { label: 'Delete', icon: 'pi pi-trash',  command: () => deletePath(filePath) },
     ]
   }
   return []
@@ -989,7 +1005,9 @@ function onExplorerNodeDragStart(event, node) {
   logInfo('ExplorerPane', 'dragstart node', kind, id)
   event.dataTransfer.clearData()
   event.dataTransfer.effectAllowed = 'copy'
-  event.dataTransfer.setData('application/x-carbide-node', JSON.stringify({ kind, id, label: node.label }))
+  event.dataTransfer.setData('application/x-carbide-node', JSON.stringify({
+    kind, id, path: node.data.path, label: node.label,
+  }))
 }
 
 function renameFileById(fileId) {

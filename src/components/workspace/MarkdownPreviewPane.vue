@@ -61,7 +61,7 @@ const session         = useSessionStore()
 const workspaceBranch = computed(() => session.workspaceBranch || MAIN_BRANCH)
 const offWorkspace    = computed(() => props.branch !== workspaceBranch.value)
 function followWorkspace() {
-  session.setFileTabBranch(props.fileId, workspaceBranch.value)
+  session.setFileTabBranch(props.fileId, workspaceBranch.value, props.branch)
 }
 
 const filename  = computed(() => props.fileId.split('/').pop() || props.fileId)

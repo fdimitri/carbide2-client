@@ -297,7 +297,7 @@ import { mintWorkspaceToken } from '../services/workspaceToken'
 import { storeToRefs } from 'pinia'
 import { usePanes, PANE_COUNTS } from '../composables/usePanes'
 import { useSessionSync } from '../composables/useSessionSync'
-import { useSessionStore, sessionGateInfo, SESSION_DOC_VERSION, MAIN_BRANCH, tabBranch } from '../stores/sessionStore'
+import { useSessionStore, sessionGateInfo, SESSION_DOC_VERSION, MAIN_BRANCH, tabBranch, fileTabPath } from '../stores/sessionStore'
 import { CLIENT_SHA } from '../version'
 import { useTerminals } from '../composables/useTerminals'
 import { useChat } from '../composables/useChat'
@@ -390,9 +390,12 @@ const openFileSubs = computed(() => {
   const tabs = panes.value.flatMap((p) => p?.tabs || [])
   for (const t of tabs) {
     if (!t.id) continue
-    if (t.kind === 'file') add({ path: String(t.id), branch: tabBranch(t) })
+    if (t.kind === 'file') {
+      const path = fileTabPath(t)
+      if (path) add({ path, branch: tabBranch(t) })
+    }
     // A preview is a viewer on the file's view: its editor tab's branch, or main.
-    if (t.kind === 'preview') add({ path: String(t.id), branch: tabBranch(tabs.find((f) => f.key === `file:${t.id}`)) })
+    if (t.kind === 'preview') add({ path: String(t.id), branch: sessionStore.fileTabView(String(t.id)).branch })
   }
   return subs
 })
@@ -687,10 +690,11 @@ function openProjectMergePane({ source, target = MAIN_BRANCH } = {}) {
 // branch head. With no view the tab keeps whatever it is on.
 function openFileAt(path, view = {}) {
   if (!path) return
-  selectFileNode(String(path))
+  const branch = view.branch || sessionStore.workspaceBranch || MAIN_BRANCH
+  selectFileNode(String(path), { path, branch })
   if (!('revision' in view) && !('branch' in view)) return
-  const { revision = null, branch } = view
-  sessionStore.setFileTabView(String(path), branch === undefined ? { revision } : { branch, revision })
+  const { revision = null, branch: toBranch } = view
+  sessionStore.setFileTabView(String(path), toBranch === undefined ? { revision, fromBranch: branch } : { branch: toBranch, revision, fromBranch: branch })
 }
 
 async function confirmUpload() {
@@ -911,12 +915,15 @@ async function selectChannelNode(channelId, options = {}) {
 }
 
 function selectFileNode(fileId, options = {}) {
+  const branch = options.branch || sessionStore.workspaceBranch || MAIN_BRANCH
+  const path = options.path != null ? options.path : fileId
   if (!options.skipPaneTab) {
-    const label = String(fileId).split('/').pop() || String(fileId)
+    const label = options.label || String(path).split('/').pop() || String(fileId)
+    const extra = { branch, path }
     if (options.paneIndex != null) {
-      bindTabToPane(options.paneIndex, 'file', fileId, label)
+      bindTabToPane(options.paneIndex, 'file', fileId, label, extra)
     } else {
-      bindTabToActivePane('file', fileId, label)
+      bindTabToActivePane('file', fileId, label, extra)
     }
   }
   activePane.value = 'file'
@@ -929,17 +936,21 @@ watch(pendingNavigation, async (pending) => {
   const { kind, id, opts = {} } = pending
   if (kind === 'terminal')      await selectTerminalNode(id, opts)
   else if (kind === 'channel')  await selectChannelNode(id, opts)
-  else if (kind === 'file')     selectFileNode(id, opts)
+  else if (kind === 'file')     selectFileNode(id, { ...opts, branch: opts.branch || sessionStore.workspaceBranch || MAIN_BRANCH })
   else if (kind === 'agent')    selectAgentNode(id)
 })
 
 // ── ExplorerPane event handlers ───────────────────────────────────────────────
-// From the explorer: the file's tab follows the workspace's project branch
-// (a per-tab pin or branch set from history is dropped; the explorer is the
-// workspace view).
-function onExplorerOpenFile(fileId) {
-  selectFileNode(fileId)
-  sessionStore.setFileTabView(String(fileId), { branch: sessionStore.workspaceBranch || MAIN_BRANCH, revision: null })
+// From the explorer: open this node on the workspace project branch. A tab
+// already on that (node, branch) is focused (and un-pinned); a tab of the
+// same node on another branch is left alone.
+function onExplorerOpenFile(payload) {
+  const rec = typeof payload === 'string' ? { id: payload, path: payload } : (payload || {})
+  const id = rec.id
+  if (!id) return
+  const branch = sessionStore.workspaceBranch || MAIN_BRANCH
+  selectFileNode(id, { path: rec.path ?? id, label: rec.label, branch })
+  sessionStore.setFileTabView(String(id), { revision: null, fromBranch: branch })
 }
 
 async function onExplorerOpenTerminal(tid) {
@@ -988,9 +999,9 @@ function onAgentRename(id) {
   agents.renameConversation(id, next.trim())
 }
 
-async function onExplorerOpenInPane({ kind, id, paneIndex }) {
+async function onExplorerOpenInPane({ kind, id, paneIndex, path, label }) {
   activePaneIndex.value = paneIndex
-  if (kind === 'file')          selectFileNode(id, { paneIndex })
+  if (kind === 'file')          selectFileNode(id, { paneIndex, path, label, branch: sessionStore.workspaceBranch || MAIN_BRANCH })
   else if (kind === 'terminal') await selectTerminalNode(id, { paneIndex })
   else if (kind === 'channel')  await selectChannelNode(id, { paneIndex })
   else if (kind === 'agent')    onExplorerOpenAgent(id)
@@ -1058,6 +1069,12 @@ onMounted(async () => {
         // a reconnect that leaves the layout untouched would otherwise never
         // re-establish these.
         for (const s of openFileSubs.value.values()) workerSocket.send('fs', 'open', s)
+      }),
+      workerSocket.on('fs', 'renamed', (payload) => {
+        sessionStore.applyFileRename({
+          oldPath: payload?.old_path, newPath: payload?.new_path,
+          nodeId: payload?.id, branch: payload?.branch || MAIN_BRANCH,
+        })
       }),
       // Reflect drops so panes can react (e.g. clear stuck spinners) instead of
       // appearing frozen.

@@ -27,6 +27,14 @@ function harness(opts = {}) {
   return { sent, view, sync, loaded, type, writes, reads, abandoned }
 }
 
+test('relocate updates the path later writes name', () => {
+  const h = harness()
+  h.loaded('abc', 'r0')
+  h.sync.relocate('/g')
+  h.type(ins(0, 3, 'd'))
+  assert.equal(h.writes()[0].path, '/g')
+})
+
 test('every read and write names the branch; main by default', () => {
   const h = harness()
   h.loaded('abc', 'r0')
