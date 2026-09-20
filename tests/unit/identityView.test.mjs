@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   chipId, eventKindLabel, eventLine, collapseEvents, folderMoveRoot,
-  indexEntriesById, ghostEntries, identityRows,
+  indexEntriesById, ghostEntries, identityRows, visibleAxis,
 } from '../../src/utils/identityView.js'
 
 const DIR  = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
@@ -104,4 +104,46 @@ test('nested indent follows dirname', () => {
   assert.equal(rows[0].depth, 0)
   assert.equal(rows[1].id, FILE)
   assert.equal(rows[1].depth, 1)
+})
+
+const AXIS = {
+  branch: 'feature',
+  segments: [
+    {
+      branch: 'main',
+      ticks: [{ seq: 1, node_id: 'n1' }, { seq: 2, node_id: 'n2' }],
+      marks: [{ seq: 2, node_id: 'n2', kind: 'snapshot', name: 'cut' }],
+    },
+    {
+      branch: 'feature',
+      ticks: [{ seq: 5, node_id: 'n5' }],
+      marks: [{ seq: 5, node_id: 'n5', kind: 'fork', from: 'main' }],
+    },
+  ],
+}
+
+test('this branch only is the last segment', () => {
+  const vis = visibleAxis(AXIS, false)
+  assert.deepEqual(vis.ticks.map((t) => t.seq), [5])
+  assert.equal(vis.ticks[0].branch, 'feature')
+  assert.equal(vis.marks.length, 1)
+  assert.equal(vis.marks[0].kind, 'fork')
+  assert.equal(vis.segments.length, 1)
+})
+
+test('include ancestry is every segment', () => {
+  const vis = visibleAxis(AXIS, true)
+  assert.deepEqual(vis.ticks.map((t) => [t.branch, t.seq]), [['main', 1], ['main', 2], ['feature', 5]])
+  assert.equal(vis.marks.find((m) => m.kind === 'snapshot').branch, 'main')
+  assert.equal(vis.segments.length, 2)
+})
+
+test('a PROTOCOL 13 axis with no segments is one segment', () => {
+  const vis = visibleAxis({
+    branch: 'feature',
+    ticks: [{ seq: 5, node_id: 'n5' }],
+    marks: [{ seq: 5, name: 'cut' }],
+  }, true)
+  assert.equal(vis.ticks[0].branch, 'feature')
+  assert.equal(vis.ticks.length, 1)
 })

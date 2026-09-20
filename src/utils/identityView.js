@@ -170,3 +170,41 @@ export function identityRows(entries, prevById) {
   walk('', 0)
   return out
 }
+
+function stampBranch(seg) {
+  const branch = seg?.branch
+  const ticks = (seg?.ticks || []).map((t) => ({ ...t, branch }))
+  const marks = (seg?.marks || []).map((m) => ({ ...m, branch }))
+  return { branch, ticks, marks }
+}
+
+function fallbackSegments(axis) {
+  if (Array.isArray(axis?.segments) && axis.segments.length) return axis.segments
+  if (Array.isArray(axis?.ticks) || Array.isArray(axis?.marks)) {
+    return [{ branch: axis.branch, ticks: axis.ticks || [], marks: axis.marks || [] }]
+  }
+  return []
+}
+
+function lastSegment(segments, asked) {
+  if (!segments.length) return []
+  if (asked) {
+    for (let i = segments.length - 1; i >= 0; i--) {
+      if (segments[i].branch === asked) return [segments[i]]
+    }
+  }
+  return [segments[segments.length - 1]]
+}
+
+// `includeAncestry` is all first-parent segments; otherwise the last segment
+// (the branch the axis was asked about).
+export function visibleAxis(axis, includeAncestry) {
+  const segments = fallbackSegments(axis)
+  const chosen = includeAncestry ? segments : lastSegment(segments, axis?.branch)
+  const stamped = chosen.map(stampBranch)
+  return {
+    ticks: stamped.flatMap((s) => s.ticks),
+    marks: stamped.flatMap((s) => s.marks),
+    segments: stamped,
+  }
+}

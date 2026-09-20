@@ -5,6 +5,20 @@
       <i class="pi pi-id-card text-muted text-ui-xs"></i>
       <span class="font-medium">Identity</span>
       <span class="px-1.5 rounded-ui-xs border border-line text-ui-xs text-muted font-mono" :title="`Workspace branch`">{{ branch }}</span>
+      <span
+        v-if="current && current.branch && current.branch !== branch"
+        class="px-1.5 rounded-ui-xs border border-line text-ui-xs font-mono"
+        :title="`This tick is on ${current.branch}`"
+      >{{ current.branch }}</span>
+
+      <label
+        v-if="hasAncestry"
+        class="flex items-center gap-1 text-muted text-ui-xs whitespace-nowrap"
+        title="Slider includes first-parent history before this branch was forked"
+      >
+        <input v-model="includeAncestry" type="checkbox" class="accent-current" />
+        include history before fork
+      </label>
 
       <input
         type="range"
@@ -25,12 +39,12 @@
 
       <button
         v-for="m in marks"
-        :key="m.node_id || m.seq"
+        :key="(m.kind || 'mark') + ':' + (m.node_id || m.seq)"
         class="px-1.5 rounded-ui-xs text-ui-xs border border-line leading-5"
-        :class="current && Number(current.seq) === Number(m.seq) ? 'text-text bg-bg-1' : 'text-muted'"
-        :title="`Named snapshot ${m.name} at seq ${m.seq}`"
-        @click="fetchAt(m.seq)"
-      >{{ m.name }}</button>
+        :class="current && Number(current.seq) === Number(m.seq) && current.branch === m.branch ? 'text-text bg-bg-1' : 'text-muted'"
+        :title="markTitle(m)"
+        @click="fetchAt(m.seq, m.branch)"
+      >{{ markLabel(m) }}</button>
 
       <button class="ui-btn ui-btn-ghost ui-btn-sm ml-auto" :disabled="loading" title="Reload" @click="fetchAxis">
         <i class="pi pi-refresh text-ui-xs"></i>
@@ -128,7 +142,7 @@ import { MAIN_BRANCH, useSessionStore } from '../../stores/sessionStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import {
   chipId, eventKindLabel, eventLine, collapseEvents,
-  indexEntriesById, identityRows,
+  indexEntriesById, identityRows, visibleAxis,
 } from '../../utils/identityView'
 
 const emit = defineEmits(['open-history'])
@@ -138,6 +152,8 @@ const session = useSessionStore()
 
 const branch = computed(() => session.workspaceBranch || MAIN_BRANCH)
 
+const includeAncestry = ref(false)
+const rawAxis    = ref(null)
 const ticks      = ref([])
 const marks      = ref([])
 const tickIndex  = ref(0)
@@ -147,12 +163,14 @@ const loading    = ref(false)
 const error      = ref('')
 const expanded   = ref(new Set())
 
-const requestedBranch = ref('')
-const requestedSeq    = ref(null)
+const requestedAxisBranch = ref('')
+const requestedAtBranch   = ref('')
+const requestedSeq        = ref(null)
 
 const sliderMax = computed(() => Math.max(0, ticks.value.length - 1))
 const eventRows = computed(() => collapseEvents(current.value?.events || []))
 const treeRows  = computed(() => identityRows(current.value?.entries || [], prevById.value))
+const hasAncestry = computed(() => (rawAxis.value?.segments || []).length > 1)
 
 function eventKey(row) {
   return `${row.kind}:${row.from_path || ''}:${row.path || ''}:${row.file_node_id || ''}`
@@ -171,20 +189,57 @@ function openHistory(fileNodeId) {
   emit('open-history', fileNodeId)
 }
 
+function markLabel(m) {
+  if (m.kind === 'fork') return `forked from ${m.from}`
+  if (m.kind === 'merge') return `merged ${m.from}`
+  return m.name || m.kind || ''
+}
+
+function markTitle(m) {
+  if (m.kind === 'fork') return `Forked from ${m.from} at seq ${m.seq}`
+  if (m.kind === 'merge') return `Merged ${m.from} at seq ${m.seq}`
+  return `Named snapshot ${m.name} at seq ${m.seq}`
+}
+
+function applyVisible({ jump } = {}) {
+  const vis = visibleAxis(rawAxis.value, includeAncestry.value)
+  ticks.value = vis.ticks
+  marks.value = vis.marks
+  if (!ticks.value.length) {
+    tickIndex.value = 0
+    if (jump) {
+      current.value = null
+      prevById.value = Object.create(null)
+      requestedSeq.value = null
+      requestedAtBranch.value = ''
+    }
+    return
+  }
+  if (jump) {
+    jumpToLastTick()
+    return
+  }
+  const cur = current.value
+  const i = ticks.value.findIndex((t) =>
+    cur && Number(t.seq) === Number(cur.seq) && t.branch === cur.branch)
+  if (i >= 0) tickIndex.value = i
+  else jumpToLastTick()
+}
+
 function fetchAxis() {
   if (!store.wsConnected) return
   const b = branch.value
-  requestedBranch.value = b
+  requestedAxisBranch.value = b
   loading.value = true
   error.value = ''
   workerSocket.send('fs', 'identity_axis', { branch: b })
 }
 
-function fetchAt(seq) {
+function fetchAt(seq, tickBranch) {
   if (!store.wsConnected) return
   if (seq == null) return
-  const b = requestedBranch.value || branch.value
-  requestedBranch.value = b
+  const b = tickBranch || requestedAtBranch.value || branch.value
+  requestedAtBranch.value = b
   requestedSeq.value = Number(seq)
   loading.value = true
   error.value = ''
@@ -196,32 +251,33 @@ function jumpToLastTick() {
     current.value = null
     prevById.value = Object.create(null)
     requestedSeq.value = null
+    requestedAtBranch.value = ''
     return
   }
   tickIndex.value = ticks.value.length - 1
-  fetchAt(ticks.value[tickIndex.value].seq)
+  const t = ticks.value[tickIndex.value]
+  fetchAt(t.seq, t.branch)
 }
 
 function onSlider(e) {
   const i = Number(e.target.value)
   tickIndex.value = i
   const t = ticks.value[i]
-  if (t) fetchAt(t.seq)
+  if (t) fetchAt(t.seq, t.branch)
 }
 
 function onAxis(p) {
-  if (!p || p.branch !== requestedBranch.value) return
-  ticks.value = Array.isArray(p.ticks) ? p.ticks : []
-  marks.value = Array.isArray(p.marks) ? p.marks : []
+  if (!p || p.branch !== requestedAxisBranch.value) return
+  rawAxis.value = p
   loading.value = false
-  jumpToLastTick()
+  applyVisible({ jump: true })
 }
 
 function onAt(p) {
-  if (!p || p.branch !== requestedBranch.value) return
+  if (!p || p.branch !== requestedAtBranch.value) return
   if (requestedSeq.value != null && Number(p.seq) !== Number(requestedSeq.value)) return
   const prev = current.value
-  if (prev && Number(prev.seq) !== Number(p.seq)) {
+  if (prev && (Number(prev.seq) !== Number(p.seq) || prev.branch !== p.branch)) {
     prevById.value = indexEntriesById(prev.entries)
   } else if (!prev) {
     prevById.value = Object.create(null)
@@ -254,7 +310,11 @@ watch(branch, () => {
   prevById.value = Object.create(null)
   ticks.value = []
   marks.value = []
+  rawAxis.value = null
   tickIndex.value = 0
+  includeAncestry.value = false
   fetchAxis()
 })
+
+watch(includeAncestry, () => applyVisible())
 </script>
