@@ -80,6 +80,16 @@
       </div>
     </template>
 
+    <!-- Identity: one branch's trees over time (slider over running nodes). -->
+    <template v-for="tab in identityTabs" :key="tab.key">
+      <div
+        class="flex flex-col flex-1 overflow-hidden"
+        v-show="activeTabKind === 'identity' && effectiveActiveKey === tab.key"
+      >
+        <IdentityPane @open-history="(id) => emit('open-history', id)" />
+      </div>
+    </template>
+
     <!-- Project merge tabs: a whole-tree merge of one project branch into another. -->
     <template v-for="tab in projectMergeTabs" :key="tab.key">
       <div
@@ -264,6 +274,7 @@ import MarkdownPreviewPane from './MarkdownPreviewPane.vue'
 import MergePane from './MergePane.vue'
 import ProjectMergePane from './ProjectMergePane.vue'
 import ProjectHistoryPane from './ProjectHistoryPane.vue'
+import IdentityPane from './IdentityPane.vue'
 
 const store = useWorkspaceStore()
 
@@ -374,6 +385,9 @@ const mergeTabs = computed(() =>
 )
 const projectHistoryTabs = computed(() =>
   (props.pane?.tabs || []).filter((t) => t.kind === 'project-history')
+)
+const identityTabs = computed(() =>
+  (props.pane?.tabs || []).filter((t) => t.kind === 'identity')
 )
 const projectMergeTabs = computed(() =>
   (props.pane?.tabs || []).filter((t) => t.kind === 'project-merge')

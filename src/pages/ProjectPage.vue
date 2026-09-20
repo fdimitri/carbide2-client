@@ -73,6 +73,7 @@
           @open-file="onExplorerOpenFile"
           @open-project-merge="openProjectMergePane"
           @open-project-history="openProjectHistoryPane"
+          @open-identity="openIdentityPane"
           @open-terminal="onExplorerOpenTerminal"
           @open-channel="onExplorerOpenChannel"
           @open-agent="onExplorerOpenAgent"
@@ -681,6 +682,11 @@ function openMergePane(fileId, { source, target = MAIN_BRANCH } = {}) {
 // The project's branch graph, one tab per pane.
 function openProjectHistoryPane() {
   bindTabToActivePane('project-history', 0, 'Branches')
+}
+
+// One branch's trees over time (Identity visualizer). One tab client-wide.
+function openIdentityPane() {
+  bindTabToActivePane('identity', 0, 'Identity')
 }
 
 // From the explorer's branch bar: merge project branch `source` into `target`
