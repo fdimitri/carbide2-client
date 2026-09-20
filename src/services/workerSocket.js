@@ -71,7 +71,12 @@ const getWorkerUrl = () => {
 // ftype }], entries: [{ id, path, ftype, revision_id }] }. ticks are
 // running nodes (slider domain); marks are named snapshots (not ticks;
 // HEAD does not land on them). Additive — MIN_SERVER stays 12.
-const PROTOCOL   = 13
+// PROTOCOL 14: identity_axis returns first-parent segments
+// [{ branch, ticks, marks }] instead of a flat tick list. A tick on an
+// ancestral segment is identity_at { branch: that segment, seq }. Additive
+// — MIN_SERVER stays 12 (a worker at 13 still serves identity_at; the
+// pane falls back to a single segment from ticks).
+const PROTOCOL   = 14
 const MIN_SERVER = 12
 
 const RECONNECT_BASE_MS  = 1000
