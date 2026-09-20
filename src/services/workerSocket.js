@@ -64,7 +64,14 @@ const getWorkerUrl = () => {
 // PROTOCOL 12: document identity is FileNode UUID. fs/open, close, read,
 // write, cursor and fileSync send `id` (not path). A worker below 12 keys
 // OPEN_DOCUMENTS by path, so MIN_SERVER is 12.
-const PROTOCOL   = 12
+// PROTOCOL 13: identity visualizer. fs/identity_axis { branch } →
+// fs/identity_axis { branch, ticks: [{ seq, node_id }], marks: [{ seq,
+// node_id, name }] }; fs/identity_at { branch, seq } → fs/identity_at
+// { branch, seq, node, events: [{ kind, path, from_path, file_node_id,
+// ftype }], entries: [{ id, path, ftype, revision_id }] }. ticks are
+// running nodes (slider domain); marks are named snapshots (not ticks;
+// HEAD does not land on them). Additive — MIN_SERVER stays 12.
+const PROTOCOL   = 13
 const MIN_SERVER = 12
 
 const RECONNECT_BASE_MS  = 1000

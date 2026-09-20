@@ -34,6 +34,9 @@
       <button class="ui-btn ui-btn-ghost ui-btn-sm" title="Project branches graph" @click="emit('open-project-history')">
         <i class="pi pi-history text-ui-xs"></i>
       </button>
+      <button class="ui-btn ui-btn-ghost ui-btn-sm" title="Identity" @click="emit('open-identity')">
+        <i class="pi pi-id-card text-ui-xs"></i>
+      </button>
       <template v-if="branch !== MAIN_BRANCH && parentBranch">
         <button
           class="ui-btn ui-btn-ghost ui-btn-sm"
@@ -263,6 +266,7 @@ const emit = defineEmits([
   'branch-changed',
   'open-project-merge',
   'open-project-history',
+  'open-identity',
   'open-preview',
   'open-terminal',
   'open-channel',

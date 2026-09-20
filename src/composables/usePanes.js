@@ -191,6 +191,7 @@ export function usePanes({ activePane, pendingNavigation }) {
     if ((kind === 'history' || kind === 'preview') && bindAuxFileTab(kind, id, extra)) return
     if (kind === 'merge' && focusExistingOfKind('merge', id)) return
     if (kind === 'project-merge' && focusExistingOfKind('project-merge', id)) return
+    if (kind === 'identity' && focusExistingOfKind('identity', id)) return
     const pane = panes.value[activePaneIndex.value]
     const key  = `${kind}:${id}`
     if (!pane.tabs.find((t) => t.key === key)) {
@@ -210,6 +211,7 @@ export function usePanes({ activePane, pendingNavigation }) {
     if ((kind === 'history' || kind === 'preview') && bindAuxFileTab(kind, id, extra)) return
     if (kind === 'merge' && focusExistingOfKind('merge', id)) return
     if (kind === 'project-merge' && focusExistingOfKind('project-merge', id)) return
+    if (kind === 'identity' && focusExistingOfKind('identity', id)) return
     const pane = panes.value[targetPaneIndex]
     if (!pane) return
     activePaneIndex.value = targetPaneIndex
