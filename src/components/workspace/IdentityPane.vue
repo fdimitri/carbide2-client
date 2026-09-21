@@ -20,6 +20,15 @@
         include history before fork
       </label>
 
+      <button
+        class="ui-btn ui-btn-ghost ui-btn-sm"
+        :disabled="ticks.length < 2"
+        :title="playDir === -1 ? 'Pause' : 'Play reverse'"
+        @click="togglePlay(-1)"
+      >
+        <i class="pi text-ui-xs" :class="playDir === -1 ? 'pi-pause' : 'pi-backward'"></i>
+      </button>
+
       <input
         type="range"
         class="flex-1 min-w-[8rem] accent-current"
@@ -30,6 +39,15 @@
         :title="ticks.length ? `tick ${tickIndex + 1} of ${ticks.length}` : 'No ticks'"
         @input="onSlider"
       />
+
+      <button
+        class="ui-btn ui-btn-ghost ui-btn-sm"
+        :disabled="ticks.length < 2"
+        :title="playDir === 1 ? 'Pause' : 'Play'"
+        @click="togglePlay(1)"
+      >
+        <i class="pi text-ui-xs" :class="playDir === 1 ? 'pi-pause' : 'pi-play'"></i>
+      </button>
 
       <span class="text-muted text-ui-xs whitespace-nowrap font-mono">
         <template v-if="ticks.length">{{ tickIndex + 1 }} / {{ ticks.length }}</template>
@@ -43,15 +61,15 @@
         class="px-1.5 rounded-ui-xs text-ui-xs border border-line leading-5"
         :class="current && Number(current.seq) === Number(m.seq) && current.branch === m.branch ? 'text-text bg-bg-1' : 'text-muted'"
         :title="markTitle(m)"
-        @click="fetchMark(m)"
+        @click="stopPlay(); fetchMark(m)"
       >{{ markLabel(m) }}</button>
 
-      <button class="ui-btn ui-btn-ghost ui-btn-sm ml-auto" :disabled="loading" title="Reload" @click="fetchAxis">
+      <button class="ui-btn ui-btn-ghost ui-btn-sm ml-auto" :disabled="loading && !playDir" title="Reload" @click="fetchAxis">
         <i class="pi pi-refresh text-ui-xs"></i>
       </button>
 
       <span class="text-muted text-ui-xs whitespace-nowrap">
-        <template v-if="loading">loading…</template>
+        <template v-if="loading && !playDir">loading…</template>
       </span>
     </div>
 
@@ -136,6 +154,8 @@
 // IdentityPane — one branch's trees over time (fs/identity_axis + fs/identity_at).
 // Not the Branches rail (ProjectHistoryPane). A tree is a state; a move is a
 // transition: ghost at the old path, same UUID chip live at the new path.
+// Play/reverse walks running-node ticks; dwells PLAY_DWELL_MS after each
+// identity_at, stops at the ends (play at last tick restarts at 0).
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import workerSocket from '../../services/workerSocket'
 import { MAIN_BRANCH, useSessionStore } from '../../stores/sessionStore'
@@ -143,6 +163,7 @@ import { useWorkspaceStore } from '../../stores/workspaceStore'
 import {
   chipId, eventKindLabel, eventLine, collapseEvents,
   indexEntriesById, identityRows, visibleAxis, tickIndexFor,
+  PLAY_DWELL_MS, PLAY_STALL_MS, playNextIndex, playStartIndex,
 } from '../../utils/identityView'
 
 const emit = defineEmits(['open-history'])
@@ -162,6 +183,7 @@ const prevById   = ref(Object.create(null))
 const loading    = ref(false)
 const error      = ref('')
 const expanded   = ref(new Set())
+const playDir    = ref(0) // +1 forward, -1 reverse, 0 stopped
 
 const requestedAxisBranch = ref('')
 const requestedAtBranch   = ref('')
@@ -227,6 +249,7 @@ function applyVisible({ jump } = {}) {
 }
 
 function fetchAxis() {
+  stopPlay()
   if (!store.wsConnected) return
   const b = branch.value
   requestedAxisBranch.value = b
@@ -240,15 +263,17 @@ function syncTick(seq, tickBranch) {
   tickIndex.value = tickIndexFor(ticks.value, seq, tickBranch)
 }
 
-function fetchAt(seq, tickBranch) {
+function fetchAt(seq, tickBranch, { silent } = {}) {
   if (!store.wsConnected) return
   if (seq == null) return
   const b = tickBranch || requestedAtBranch.value || branch.value
   requestedAtBranch.value = b
   requestedSeq.value = Number(seq)
   syncTick(seq, b)
-  loading.value = true
-  error.value = ''
+  if (!silent) {
+    loading.value = true
+    error.value = ''
+  }
   workerSocket.send('fs', 'identity_at', { branch: b, seq: Number(seq) })
 }
 
@@ -270,10 +295,85 @@ function jumpToLastTick() {
 }
 
 function onSlider(e) {
+  stopPlay()
   const i = Number(e.target.value)
   tickIndex.value = i
   const t = ticks.value[i]
   if (t) fetchAt(t.seq, t.branch)
+}
+
+let playTimer = null
+let playStallTimer = null
+let playGen = 0
+
+function clearPlayTimers() {
+  if (playTimer) { clearTimeout(playTimer); playTimer = null }
+  if (playStallTimer) { clearTimeout(playStallTimer); playStallTimer = null }
+}
+
+function stopPlay() {
+  playGen += 1
+  playDir.value = 0
+  clearPlayTimers()
+}
+
+function tickMatches(i) {
+  const t = ticks.value[i]
+  const cur = current.value
+  return !!(t && cur && Number(cur.seq) === Number(t.seq) && cur.branch === t.branch)
+}
+
+function goToTick(i, { silent } = {}) {
+  if (i < 0 || i >= ticks.value.length) return
+  tickIndex.value = i
+  const t = ticks.value[i]
+  if (t) fetchAt(t.seq, t.branch, { silent })
+}
+
+function armPlayStall(gen) {
+  if (playStallTimer) { clearTimeout(playStallTimer); playStallTimer = null }
+  playStallTimer = setTimeout(() => {
+    playStallTimer = null
+    if (playGen !== gen) return
+    stopPlay()
+  }, PLAY_STALL_MS)
+}
+
+function schedulePlayAdvance() {
+  clearPlayTimers()
+  if (!playDir.value) return
+  const gen = playGen
+  const dir = playDir.value
+  playTimer = setTimeout(() => {
+    playTimer = null
+    if (playGen !== gen || playDir.value !== dir) return
+    const next = playNextIndex(tickIndex.value, ticks.value.length, dir)
+    if (next == null) {
+      stopPlay()
+      return
+    }
+    goToTick(next, { silent: true })
+    armPlayStall(gen)
+  }, PLAY_DWELL_MS)
+}
+
+function togglePlay(dir) {
+  if (playDir.value === dir) {
+    stopPlay()
+    return
+  }
+  const start = playStartIndex(tickIndex.value, ticks.value.length, dir)
+  if (start == null) return
+  playGen += 1
+  clearPlayTimers()
+  playDir.value = dir
+  loading.value = false
+  if (start !== tickIndex.value || !tickMatches(start)) {
+    goToTick(start, { silent: true })
+    armPlayStall(playGen)
+  } else {
+    schedulePlayAdvance()
+  }
 }
 
 function onAxis(p) {
@@ -295,13 +395,16 @@ function onAt(p) {
   current.value = p
   loading.value = false
   error.value = ''
+  if (playDir.value) schedulePlayAdvance()
 }
 
 function onError(p) {
-  if (!loading.value) return
+  const playing = !!playDir.value
   const op = p?.op
   if (op && op !== 'identity_axis' && op !== 'identity_at') return
   if (!op && (p?.path || p?.id || p?.source || p?.target)) return
+  if (!loading.value && !playing) return
+  stopPlay()
   loading.value = false
   error.value = p.error || p.message || 'unknown error'
 }
@@ -316,9 +419,13 @@ onMounted(() => {
   )
   fetchAxis()
 })
-onBeforeUnmount(() => { for (const off of offs) off() })
+onBeforeUnmount(() => {
+  stopPlay()
+  for (const off of offs) off()
+})
 
 watch(branch, () => {
+  stopPlay()
   current.value = null
   prevById.value = Object.create(null)
   ticks.value = []
@@ -329,5 +436,8 @@ watch(branch, () => {
   fetchAxis()
 })
 
-watch(includeAncestry, () => applyVisible())
+watch(includeAncestry, () => {
+  stopPlay()
+  applyVisible()
+})
 </script>

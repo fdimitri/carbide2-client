@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   chipId, eventKindLabel, eventLine, collapseEvents, folderMoveRoot,
   indexEntriesById, ghostEntries, identityRows, visibleAxis, tickIndexFor,
+  playNextIndex, playStartIndex,
 } from '../../src/utils/identityView.js'
 
 const DIR  = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
@@ -154,4 +155,22 @@ test('tickIndexFor hits the exact tick, else the last seq at or before', () => {
   assert.equal(tickIndexFor(vis.ticks, 2, 'main'), 1)
   assert.equal(tickIndexFor(vis.ticks, 3, 'main'), 1, 'snapshot seq between running nodes')
   assert.equal(tickIndexFor(vis.ticks, 1, 'main'), 0)
+})
+
+test('playNextIndex walks forward and reverse and stops at the ends', () => {
+  assert.equal(playNextIndex(0, 4, 1), 1)
+  assert.equal(playNextIndex(2, 4, 1), 3)
+  assert.equal(playNextIndex(3, 4, 1), null)
+  assert.equal(playNextIndex(3, 4, -1), 2)
+  assert.equal(playNextIndex(0, 4, -1), null)
+  assert.equal(playNextIndex(0, 1, 1), null)
+  assert.equal(playNextIndex(0, 4, 0), null)
+})
+
+test('playStartIndex restarts from the other end when already at the stop', () => {
+  assert.equal(playStartIndex(2, 4, 1), 2)
+  assert.equal(playStartIndex(3, 4, 1), 0)
+  assert.equal(playStartIndex(0, 4, -1), 3)
+  assert.equal(playStartIndex(1, 4, -1), 1)
+  assert.equal(playStartIndex(0, 1, 1), null)
 })
