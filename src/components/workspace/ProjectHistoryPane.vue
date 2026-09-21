@@ -254,9 +254,11 @@ onMounted(() => {
   offs.push(
     workerSocket.on('fs', 'project_dag', (p) => { loading.value = false; graph.value = p }),
     workerSocket.on('fs', 'error', (p) => {
-      if (!loading.value || p?.path) return
+      if (!loading.value) return
+      if (p?.op && p.op !== 'project_dag') return
+      if (!p?.op && (p?.path || p?.id || p?.source || p?.target)) return
       loading.value = false
-      error.value = p.error || 'unknown error'
+      error.value = p.error || p.message || 'unknown error'
     }),
     workerSocket.on('fs', 'project_branch_created', scheduleRefresh),
     workerSocket.on('fs', 'project_branch_deleted', scheduleRefresh),

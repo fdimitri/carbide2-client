@@ -33,6 +33,7 @@ test('every read and write names the FileNode id and branch; main by default', (
   assert.equal(h.reads()[0].id, 'nid')
   assert.equal(h.reads()[0].path, undefined)
   assert.equal(h.reads()[0].branch, 'main')
+  assert.equal(h.reads()[0].project_branch, undefined)
   h.type(ins(0, 3, 'd'))
   assert.equal(h.writes()[0].id, 'nid')
   assert.equal(h.writes()[0].path, undefined)
@@ -45,6 +46,16 @@ test('every read and write names the FileNode id and branch; main by default', (
   assert.equal(t.writes()[0].branch, 'topic')
   assert.equal(t.sync.state.branch, 'topic')
   assert.equal(t.sync.state.id, 'nid')
+})
+
+test('a detached content line names the project tree separately', () => {
+  const h = harness({ branch: 'edit', projectBranch: 'feature' })
+  h.loaded('abc', 'r0')
+  assert.equal(h.reads()[0].branch, 'edit')
+  assert.equal(h.reads()[0].project_branch, 'feature')
+  h.type(ins(0, 3, 'd'))
+  assert.equal(h.writes()[0].branch, 'edit')
+  assert.equal(h.writes()[0].project_branch, 'feature')
 })
 
 test('one batch in flight; later edits queue and go out on the ack, based on its head', () => {

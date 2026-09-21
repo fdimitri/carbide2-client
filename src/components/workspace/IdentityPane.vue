@@ -43,7 +43,7 @@
         class="px-1.5 rounded-ui-xs text-ui-xs border border-line leading-5"
         :class="current && Number(current.seq) === Number(m.seq) && current.branch === m.branch ? 'text-text bg-bg-1' : 'text-muted'"
         :title="markTitle(m)"
-        @click="fetchAt(m.seq, m.branch)"
+        @click="fetchMark(m)"
       >{{ markLabel(m) }}</button>
 
       <button class="ui-btn ui-btn-ghost ui-btn-sm ml-auto" :disabled="loading" title="Reload" @click="fetchAxis">
@@ -142,7 +142,7 @@ import { MAIN_BRANCH, useSessionStore } from '../../stores/sessionStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import {
   chipId, eventKindLabel, eventLine, collapseEvents,
-  indexEntriesById, identityRows, visibleAxis,
+  indexEntriesById, identityRows, visibleAxis, tickIndexFor,
 } from '../../utils/identityView'
 
 const emit = defineEmits(['open-history'])
@@ -190,8 +190,8 @@ function openHistory(fileNodeId) {
 }
 
 function markLabel(m) {
-  if (m.kind === 'fork') return `forked from ${m.from}`
-  if (m.kind === 'merge') return `merged ${m.from}`
+  if (m.kind === 'fork') return `forked from ${m.from || '?'}`
+  if (m.kind === 'merge') return `merged ${m.from || '?'}`
   return m.name || m.kind || ''
 }
 
@@ -235,15 +235,25 @@ function fetchAxis() {
   workerSocket.send('fs', 'identity_axis', { branch: b })
 }
 
+function syncTick(seq, tickBranch) {
+  if (!ticks.value.length) return
+  tickIndex.value = tickIndexFor(ticks.value, seq, tickBranch)
+}
+
 function fetchAt(seq, tickBranch) {
   if (!store.wsConnected) return
   if (seq == null) return
   const b = tickBranch || requestedAtBranch.value || branch.value
   requestedAtBranch.value = b
   requestedSeq.value = Number(seq)
+  syncTick(seq, b)
   loading.value = true
   error.value = ''
   workerSocket.send('fs', 'identity_at', { branch: b, seq: Number(seq) })
+}
+
+function fetchMark(m) {
+  fetchAt(m.seq, m.branch)
 }
 
 function jumpToLastTick() {
@@ -288,9 +298,12 @@ function onAt(p) {
 }
 
 function onError(p) {
-  if (!loading.value || p?.path) return
+  if (!loading.value) return
+  const op = p?.op
+  if (op && op !== 'identity_axis' && op !== 'identity_at') return
+  if (!op && (p?.path || p?.id || p?.source || p?.target)) return
   loading.value = false
-  error.value = p.error || 'unknown error'
+  error.value = p.error || p.message || 'unknown error'
 }
 
 const offs = []

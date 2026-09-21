@@ -130,6 +130,7 @@ const emit = defineEmits(['open-file-at'])
 const store   = useWorkspaceStore()
 const session = useSessionStore()
 const docBranch = () => session.fileTabView(props.fileId).branch || MAIN_BRANCH
+const treeBranch = () => session.fileTabView(props.fileId).projectBranch || session.workspaceBranch || MAIN_BRANCH
 
 const GAPS = [
   { ms: 0,      label: 'off' },
@@ -249,7 +250,10 @@ function branchFromHere(node) {
   if (!trimmed) return
   pendingBranch = trimmed
   notice.value = ''
-  workerSocket.send('fs', 'branch_create', { id: props.fileId, branch: docBranch(), name: trimmed, at_revision: node.id })
+  workerSocket.send('fs', 'branch_create', {
+    id: props.fileId, from: docBranch(), branch: treeBranch(), project_branch: treeBranch(),
+    name: trimmed, at_revision: node.id,
+  })
 }
 
 function onFsBranchCreated(payload) {
@@ -282,7 +286,7 @@ function fetchDag() {
   if (!props.fileId || !store.wsConnected) return
   loading.value = true
   error.value = ''
-  workerSocket.send('fs', 'dag', { id: props.fileId, branch: docBranch(), gap_ms: gapMs.value, auto: showAuto.value })
+  workerSocket.send('fs', 'dag', { id: props.fileId, branch: docBranch(), project_branch: treeBranch(), gap_ms: gapMs.value, auto: showAuto.value })
 }
 
 function forThisFile(payload) {

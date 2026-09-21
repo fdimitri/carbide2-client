@@ -63,13 +63,14 @@ function sameRev(a, b) {
 export const MAIN_BRANCH = 'main'
 
 export function createFileSync({
-  id, branch = MAIN_BRANCH, send, editor, log = () => {}, onAbandon = () => {},
+  id, branch = MAIN_BRANCH, projectBranch, send, editor, log = () => {}, onAbandon = () => {},
   ackTimeoutMs = ACK_TIMEOUT_MS, maxSends = MAX_SENDS,
 }) {
   if (!id) throw new Error('createFileSync: id is required')
   const state = {
     id,
     branch,
+    projectBranch: projectBranch || '',
     loaded: false,
     connected: true,
     baseRev: null,
@@ -84,7 +85,9 @@ export function createFileSync({
   const outstanding = () => !!state.inflight || state.pending.length > 0
 
   function named(extra = {}) {
-    return { id: state.id, branch: state.branch, ...extra }
+    const p = { id: state.id, branch: state.branch, ...extra }
+    if (state.projectBranch) p.project_branch = state.projectBranch
+    return p
   }
 
   function load() {

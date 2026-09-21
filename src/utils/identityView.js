@@ -196,6 +196,25 @@ function lastSegment(segments, asked) {
   return [segments[segments.length - 1]]
 }
 
+// Slider index for a mark or identity_at: the tick at `(seq, branch)`, else
+// the last tick whose seq is ≤ that clock (snapshot marks sit between
+// running nodes).
+export function tickIndexFor(ticks, seq, branch) {
+  const list = ticks || []
+  const s = Number(seq)
+  if (!list.length || Number.isNaN(s)) return 0
+  let exact = -1
+  let last = -1
+  for (let i = 0; i < list.length; i++) {
+    const t = list[i]
+    const ts = Number(t.seq)
+    if (ts <= s) last = i
+    if (ts === s && (!branch || t.branch === branch)) exact = i
+  }
+  if (exact >= 0) return exact
+  return last >= 0 ? last : 0
+}
+
 // `includeAncestry` is all first-parent segments; otherwise the last segment
 // (the branch the axis was asked about).
 export function visibleAxis(axis, includeAncestry) {

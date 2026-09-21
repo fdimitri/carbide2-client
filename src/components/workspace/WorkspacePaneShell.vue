@@ -46,6 +46,7 @@
           :file-id="fileIdOf(tab)"
           :path="pathOf(tab)"
           :branch="tabBranch(tab)"
+          :project-branch="tab.projectBranch || workspaceBranch"
           :revision="tab.revision || null"
           @open-history="emit('open-history', fileIdOf(tab))"
           @open-preview="emit('open-preview', fileIdOf(tab))"
@@ -65,6 +66,7 @@
           :file-id="mergeIdOf(tab).id"
           :source="mergeIdOf(tab).source"
           :target="mergeIdOf(tab).target"
+          :branch="mergeIdOf(tab).branch"
           @done="() => { emit('open-file-at', mergeIdOf(tab).id, { branch: mergeIdOf(tab).target, revision: null }); emit('close-tab', paneIndex, tab.key) }"
         />
       </div>
@@ -124,6 +126,7 @@
         <MarkdownPreviewPane
           :file-id="String(tab.id)"
           :branch="session.fileTabView(String(tab.id)).branch"
+          :project-branch="session.fileTabView(String(tab.id)).projectBranch"
           :revision="session.fileTabView(String(tab.id)).revision"
           @open-file="emit('open-file-at', String(tab.id), {})"
         />
@@ -401,10 +404,28 @@ function projectMergeIdOf(tab) {
 // A merge tab's id is "source|target|fileNodeId" (see ProjectPage.openMergePane).
 function mergeIdOf(tab) {
   const id = String(tab.id)
+  const parts = id.split('|')
+  const sessionBranch = session.workspaceBranch || MAIN_BRANCH
+  if (parts.length >= 4) {
+    const nodeId = parts.slice(3).join('|')
+    return {
+      source: parts[0],
+      target: parts[1],
+      branch: parts[2] || tab.branch || sessionBranch,
+      id: nodeId,
+      path: session.fileTabView(nodeId).path || nodeId,
+    }
+  }
   const a = id.indexOf('|')
   const b = id.indexOf('|', a + 1)
-  const nodeId = id.slice(b + 1)
-  return { source: id.slice(0, a), target: id.slice(a + 1, b), id: nodeId, path: session.fileTabView(nodeId).path || nodeId }
+  const nodeId = b >= 0 ? id.slice(b + 1) : id
+  return {
+    source: a >= 0 ? id.slice(0, a) : '',
+    target: a >= 0 && b >= 0 ? id.slice(a + 1, b) : '',
+    id: nodeId,
+    path: session.fileTabView(nodeId).path || nodeId,
+    branch: tab.branch || sessionBranch,
+  }
 }
 const previewTabs = computed(() =>
   (props.pane?.tabs || []).filter((t) => t.kind === 'preview')

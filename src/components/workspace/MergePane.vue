@@ -102,6 +102,7 @@ import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import MonacoEditor from './MonacoEditor.vue'
 import workerSocket from '../../services/workerSocket'
 import { extensionToLanguage } from '../../utils/monacoLanguage'
+import { MAIN_BRANCH, useSessionStore } from '../../stores/sessionStore'
 
 // A three-way merge for a human to finish (ADR-036): `source` into `target`
 // of one file. Top: the two heads (or the base), read-only. Bottom: the
@@ -114,8 +115,12 @@ const props = defineProps({
   path:   { type: String, required: true },
   source: { type: String, required: true },
   target: { type: String, required: true },
+  // Project tree this merge's content lines live on (workspace / merge target).
+  branch: { type: String, default: '' },
 })
 const emit = defineEmits(['done'])
+const session = useSessionStore()
+const projectBranch = computed(() => props.branch || session.workspaceBranch || MAIN_BRANCH)
 
 const MARKER_RE = /^(<{7}|={7}|>{7})( |$)/m
 
@@ -140,7 +145,9 @@ const short = (id) => (id ? String(id).slice(0, 8) : '—')
 function fetchPreview() {
   loading.value = true
   notice.value = ''
-  workerSocket.send('fs', 'merge_preview', { id: props.fileId, source: props.source, target: props.target })
+  workerSocket.send('fs', 'merge_preview', {
+    id: props.fileId, source: props.source, target: props.target, branch: projectBranch.value,
+  })
 }
 
 function seed(text) {
@@ -196,12 +203,14 @@ function commit() {
   workerSocket.send('fs', 'merge_resolve', {
     id: props.fileId, source: props.source, target: props.target, content,
     expected_head: preview.value.target_head, expected_source_head: preview.value.source_head,
+    branch: projectBranch.value,
   })
 }
 
 function forThisMerge(payload) {
   return props.fileId && payload.id && String(payload.id) === String(props.fileId) &&
-    payload.source === props.source && payload.target === props.target
+    payload.source === props.source && payload.target === props.target &&
+    (!payload.branch || payload.branch === projectBranch.value)
 }
 
 function onPreview(payload) {
@@ -232,6 +241,8 @@ function onMerged(payload) {
 
 function onError(payload) {
   if (payload?.id && String(payload.id) !== String(props.fileId)) return
+  if (payload?.source && payload.source !== props.source) return
+  if (payload?.target && payload.target !== props.target) return
   if (!loading.value && !committing.value) return
   loading.value = false
   committing.value = false

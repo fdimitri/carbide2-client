@@ -53,15 +53,20 @@ import { hydrateDiagrams } from '../../utils/diagrams'
 const props = defineProps({
   fileId:   { type: String, required: true },
   branch:   { type: String, default: MAIN_BRANCH },
+  projectBranch: { type: String, default: '' },
   revision: { type: String, default: null },   // pinned, like the editor tab
 })
 const emit = defineEmits(['open-file'])
 
 const session         = useSessionStore()
 const workspaceBranch = computed(() => session.workspaceBranch || MAIN_BRANCH)
+const treeBranch      = computed(() => props.projectBranch || session.fileTabView(props.fileId).projectBranch || workspaceBranch.value)
 const offWorkspace    = computed(() => props.branch !== workspaceBranch.value)
 function followWorkspace() {
-  session.setFileTabBranch(props.fileId, workspaceBranch.value, props.branch)
+  session.setFileTabView(props.fileId, {
+    branch: workspaceBranch.value, revision: null, fromBranch: props.branch,
+    projectBranch: workspaceBranch.value,
+  })
 }
 
 const locPath   = computed(() => session.fileTabView(props.fileId).path || '')
@@ -104,11 +109,12 @@ function request() {
   loadError.value = ''
   text.value = ''
   if (props.revision) {
-    workerSocket.send('fs', 'read', { id: props.fileId, branch: props.branch, revision_id: props.revision })
+    workerSocket.send('fs', 'read', { id: props.fileId, branch: props.branch, project_branch: treeBranch.value, revision_id: props.revision })
     return
   }
   sync = createFileSync({
-    id: props.fileId, branch: props.branch, send: (cmd, payload) => workerSocket.send('fs', cmd, payload),
+    id: props.fileId, branch: props.branch, projectBranch: treeBranch.value,
+    send: (cmd, payload) => workerSocket.send('fs', cmd, payload),
     editor: stringEditor,
     onAbandon: () => { loadError.value = 'Lost the file; reload to retry.' },
   })
