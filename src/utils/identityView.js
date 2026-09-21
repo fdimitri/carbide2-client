@@ -215,6 +215,33 @@ export function tickIndexFor(ticks, seq, branch) {
   return last >= 0 ? last : 0
 }
 
+// Auto-play dwell after identity_at lands so the tree and ghosts are visible.
+export const PLAY_DWELL_MS = 500
+// Give up if identity_at never comes back (worker stall / dropped frame).
+export const PLAY_STALL_MS = 8000
+
+// Next slider index for auto-play. `dir` is +1 (forward) or -1 (reverse).
+// null means the run is over (start or end of the timeline).
+export function playNextIndex(index, count, dir) {
+  const n = Number(index) + Number(dir)
+  const len = Number(count)
+  if (!(len > 0) || !dir || Number.isNaN(n)) return null
+  if (n < 0 || n >= len) return null
+  return n
+}
+
+// Index to start from when Play is pressed. At the last tick, forward
+// restarts at 0; at the first tick, reverse restarts at the end — otherwise
+// the button would no-op.
+export function playStartIndex(index, count, dir) {
+  const i = Number(index)
+  const len = Number(count)
+  if (len < 2 || !dir || Number.isNaN(i)) return null
+  if (dir > 0 && i >= len - 1) return 0
+  if (dir < 0 && i <= 0) return len - 1
+  return Math.min(Math.max(i, 0), len - 1)
+}
+
 // `includeAncestry` is all first-parent segments; otherwise the last segment
 // (the branch the axis was asked about).
 export function visibleAxis(axis, includeAncestry) {
