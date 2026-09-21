@@ -49,8 +49,9 @@ export const MAIN_BRANCH         = 'main'
 export const PANE_SLOTS          = 4          // usePanes keeps 4 fixed pane slots
 
 // FileNode.id is SecureRandom.uuid. Stable across rename/move on a branch
-// (only branch_entries.path / file_nodes.path change). Tab identity is
-// (this id, branch); path is the current location on that branch.
+// (only the merkle tree path changes; file_nodes.path is the identity slot).
+// Tab identity is (this id, branch); path is the current location on that
+// branch.
 export const FILE_NODE_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export function isFileNodeId(id) {
