@@ -534,6 +534,7 @@ onMounted(() => {
     // lets other panes also do fs/stat without us snatching their replies.
     if (!showPropertiesDialog.value) return
     if (payload?.path && payload.path !== propertiesPath.value) return
+    if (payload?.branch && payload.branch !== branch.value) return
     propertiesData.value    = payload
     propertiesLoading.value = false
   })
@@ -546,6 +547,7 @@ onMounted(() => {
     }
     if (!propertiesLoading.value) return
     if (payload?.path && payload.path !== propertiesPath.value) return
+    if (payload?.branch && payload.branch !== branch.value) return
     propertiesError.value   = payload?.error || payload?.message || 'stat failed'
     propertiesLoading.value = false
   })
@@ -1073,7 +1075,7 @@ function openPropertiesDialog(path) {
   propertiesError.value   = ''
   propertiesLoading.value = true
   showPropertiesDialog.value = true
-  workerSocket.send('fs', 'stat', { path })
+  workerSocket.send('fs', 'stat', { path, branch: branch.value })
 }
 
 function formatBytes(n) {

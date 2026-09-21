@@ -57,7 +57,7 @@
               <span class="text-muted">
                 <span class="font-mono">{{ target }}</span> and <span class="font-mono">{{ source }}</span> both changed the text.
               </span>
-              <button class="ui-btn ui-btn-ghost ui-btn-sm" @click="emit('open-merge', c.id, { source: c.theirs.branch, target: c.ours.branch })">
+              <button class="ui-btn ui-btn-ghost ui-btn-sm" @click="openContentMerge(c)">
                 <i class="pi pi-code text-ui-xs"></i> Resolve…
               </button>
             </div>
@@ -140,6 +140,13 @@ const props = defineProps({
   target: { type: String, required: true },
 })
 const emit = defineEmits(['open-merge', 'done'])
+
+function openContentMerge(c) {
+  const source = c.theirs?.branch || props.source
+  const target = c.ours?.branch || props.target
+  if (!source) return
+  emit('open-merge', c.id, { source, target, projectBranch: props.target })
+}
 
 const preview     = ref(null)
 const loading     = ref(false)

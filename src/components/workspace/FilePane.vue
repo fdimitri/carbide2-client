@@ -52,7 +52,7 @@
           :title="mergeRefused
             ? `${branch} conflicts with ${MAIN_BRANCH}: resolve it by hand`
             : `Review ${branch} against ${MAIN_BRANCH} three-way and commit the result`"
-          @click="emit('open-merge', { source: branch, target: MAIN_BRANCH })"
+          @click="emit('open-merge', { source: branch, target: MAIN_BRANCH, projectBranch: treeBranch })"
         >{{ mergeRefused ? 'Resolve…' : 'Review merge…' }}</button>
         <button
           v-if="branch !== MAIN_BRANCH"
@@ -165,6 +165,12 @@ const props = defineProps({
     type: String,
     default: MAIN_BRANCH,
   },
+  // Project tree this content line lives on (workspace when the tab was
+  // opened). Distinct from `branch` when the tab is a detached per-file line.
+  projectBranch: {
+    type: String,
+    default: '',
+  },
   // Set: the view is pinned at this revision (read-only, no sync); `branch` is
   // then the branch to return to. Owned by the tab like `branch`.
   revision: {
@@ -186,23 +192,36 @@ let   pendingCreate  = ''           // name we asked for; switch to it when bran
 const locPath = computed(() => props.path || '')
 
 function requestBranches() {
-  if (props.fileId) workerSocket.send('fs', 'branches', { id: props.fileId, branch: props.branch })
+  if (props.fileId) workerSocket.send('fs', 'branches', docPayload())
 }
 
 function switchBranch(name) {
   if (!name || name === props.branch) return
   conflictBranch.value = ''
   loadError.value = ''
-  if (!session.setFileTabBranch(props.fileId, name, props.branch)) {
+  const ontoWorkspace = name === workspaceBranch.value
+  if (!session.setFileTabView(props.fileId, {
+    branch: name, revision: null, fromBranch: props.branch,
+    ...(ontoWorkspace ? { projectBranch: name } : {}),
+  })) {
     // No tab owns this view (should not happen); keep the editor usable anyway.
     requestFile(name)
   }
 }
 
 const workspaceBranch = computed(() => session.workspaceBranch || MAIN_BRANCH)
+const treeBranch      = computed(() => props.projectBranch || workspaceBranch.value)
 const offWorkspace    = computed(() => props.branch !== workspaceBranch.value)
+
+function docPayload(extra = {}) {
+  return { id: props.fileId, branch: props.branch, project_branch: treeBranch.value, ...extra }
+}
+
 function followWorkspace() {
-  switchBranch(workspaceBranch.value)
+  if (!session.setFileTabView(props.fileId, {
+    branch: workspaceBranch.value, revision: null, fromBranch: props.branch,
+    projectBranch: workspaceBranch.value,
+  })) requestFile(workspaceBranch.value)
 }
 
 function startCreateBranch() {
@@ -217,7 +236,7 @@ function createBranch() {
   if (!name) return
   pendingCreate = name
   creatingBranch.value = false
-  const req = { id: props.fileId, name, from: props.branch }
+  const req = docPayload({ name, from: props.branch })
   if (props.revision) req.at_revision = props.revision   // pinned: fork where we are looking
   workerSocket.send('fs', 'branch_create', req)
 }
@@ -234,7 +253,7 @@ function mergeIntoMain() {
   merging.value = true
   mergeRefused.value = false
   branchNotice.value = ''
-  workerSocket.send('fs', 'merge', { id: props.fileId, source: props.branch, target: MAIN_BRANCH })
+  workerSocket.send('fs', 'merge', docPayload({ source: props.branch, target: MAIN_BRANCH }))
 }
 
 function onFsBranches(payload) {
@@ -261,7 +280,7 @@ function deleteBranch() {
     `that was not merged into ${MAIN_BRANCH} will no longer be reachable from a branch.`
   if (!window.confirm(msg)) return
   branchNotice.value = ''
-  workerSocket.send('fs', 'branch_delete', { id: props.fileId, name })
+  workerSocket.send('fs', 'branch_delete', docPayload({ name }))
 }
 
 function onFsBranchDeleted(payload) {
@@ -388,13 +407,14 @@ function requestFile(branch = props.branch, revision = props.revision) {
     // Pinned: one read of the content at that revision, no sync — nothing here
     // is a branch head to base edits on, and Monaco is read-only.
     sync = null
-    workerSocket.send('fs', 'read', { id: props.fileId, branch, revision_id: revision })
+    workerSocket.send('fs', 'read', docPayload({ branch, revision_id: revision }))
     requestBranches()
     return
   }
   sync = createFileSync({
     id: props.fileId,
     branch,
+    projectBranch: treeBranch.value,
     send: (cmd, payload) => workerSocket.send('fs', cmd, payload),
     editor: editorAdapter,
     log: syncLog,
@@ -436,7 +456,7 @@ function onCursorChange({ line, char }) {
   if (!props.fileId) return
   clearTimeout(cursorTimer)
   cursorTimer = setTimeout(() => {
-    workerSocket.send('fs', 'cursor', { id: props.fileId, branch: props.branch, line, char })
+    workerSocket.send('fs', 'cursor', docPayload({ line, char }))
   }, 50)
 }
 

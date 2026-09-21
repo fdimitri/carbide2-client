@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   chipId, eventKindLabel, eventLine, collapseEvents, folderMoveRoot,
-  indexEntriesById, ghostEntries, identityRows, visibleAxis,
+  indexEntriesById, ghostEntries, identityRows, visibleAxis, tickIndexFor,
 } from '../../src/utils/identityView.js'
 
 const DIR  = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
@@ -146,4 +146,12 @@ test('a PROTOCOL 13 axis with no segments is one segment', () => {
   }, true)
   assert.equal(vis.ticks[0].branch, 'feature')
   assert.equal(vis.ticks.length, 1)
+})
+
+test('tickIndexFor hits the exact tick, else the last seq at or before', () => {
+  const vis = visibleAxis(AXIS, true)
+  assert.equal(tickIndexFor(vis.ticks, 5, 'feature'), 2)
+  assert.equal(tickIndexFor(vis.ticks, 2, 'main'), 1)
+  assert.equal(tickIndexFor(vis.ticks, 3, 'main'), 1, 'snapshot seq between running nodes')
+  assert.equal(tickIndexFor(vis.ticks, 1, 'main'), 0)
 })

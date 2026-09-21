@@ -519,7 +519,7 @@ export const useSessionStore = defineStore('session', () => {
     return null
   }
 
-  function setFileTabView(fileId, { branch, revision, fromBranch } = {}) {
+  function setFileTabView(fileId, { branch, revision, fromBranch, projectBranch } = {}) {
     const found = findFileTab(fileId, fromBranch !== undefined ? fromBranch : undefined)
     if (!found) return false
     const cur = found.tab
@@ -527,11 +527,20 @@ export const useSessionStore = defineStore('session', () => {
       branch:   branch === undefined ? tabBranch(cur) : (branch || MAIN_BRANCH),
       revision: revision === undefined ? (cur.revision || null) : (revision || null),
     }
-    if (tabBranch(cur) === next.branch && (cur.revision || null) === next.revision) return true
+    if (projectBranch !== undefined) next.projectBranch = projectBranch || MAIN_BRANCH
+    if (tabBranch(cur) === next.branch && (cur.revision || null) === next.revision &&
+        (next.projectBranch === undefined || (cur.projectBranch || tabBranch(cur)) === next.projectBranch)) return true
 
     const collision = next.branch !== tabBranch(cur) ? findFileTab(cur.id, next.branch) : null
     if (collision && collision.tab !== cur) {
-      collision.pane.activeTab = collision.tab.key
+      // Same (node, branch) is already open elsewhere: focus it and apply
+      // the requested pin. Dropping `revision` here made "load into editor"
+      // from history a no-op when the file was already on that branch in
+      // another pane.
+      const pinned = { ...collision.tab, revision: next.revision }
+      if (next.projectBranch !== undefined) pinned.projectBranch = next.projectBranch
+      collision.pane.tabs = collision.pane.tabs.map((t, i) => (t === collision.tab ? pinned : t))
+      collision.pane.activeTab = pinned.key
       activePaneIndex.value = collision.paneIndex
       return true
     }
@@ -548,13 +557,13 @@ export const useSessionStore = defineStore('session', () => {
   function fileTabView(fileId, branch) {
     if (branch) {
       const found = findFileTab(fileId, branch)
-      if (found) return { branch: tabBranch(found.tab), revision: found.tab.revision || null, path: fileTabPath(found.tab) }
+      if (found) return { branch: tabBranch(found.tab), revision: found.tab.revision || null, path: fileTabPath(found.tab), projectBranch: found.tab.projectBranch || tabBranch(found.tab) }
     }
     const foundWs = findFileTab(fileId, workspaceBranch.value)
-    if (foundWs) return { branch: tabBranch(foundWs.tab), revision: foundWs.tab.revision || null, path: fileTabPath(foundWs.tab) }
+    if (foundWs) return { branch: tabBranch(foundWs.tab), revision: foundWs.tab.revision || null, path: fileTabPath(foundWs.tab), projectBranch: foundWs.tab.projectBranch || tabBranch(foundWs.tab) }
     const found = findFileTab(fileId)
-    if (found) return { branch: tabBranch(found.tab), revision: found.tab.revision || null, path: fileTabPath(found.tab) }
-    return { branch: MAIN_BRANCH, revision: null, path: stripFilePath(fileId) }
+    if (found) return { branch: tabBranch(found.tab), revision: found.tab.revision || null, path: fileTabPath(found.tab), projectBranch: found.tab.projectBranch || tabBranch(found.tab) }
+    return { branch: MAIN_BRANCH, revision: null, path: stripFilePath(fileId), projectBranch: MAIN_BRANCH }
   }
 
   // Switch the file's tab to a branch head. Un-pins: a pinned view is a
@@ -611,13 +620,65 @@ export const useSessionStore = defineStore('session', () => {
     return changed
   }
 
+  // Drop file (and history/preview/merge) tabs for a deleted node, or every
+  // file tab still sitting on a deleted project branch.
+  function dropFileTabs(fileId, { branch } = {}) {
+    if (!fileId) return false
+    const want = String(fileId)
+    const b = branch == null ? null : String(branch)
+    let changed = false
+    for (const pane of panes.value) {
+      const tabs = pane.tabs || []
+      const next = tabs.filter((t) => {
+        if (t.kind === 'file' && String(t.id) === want && (b == null || tabBranch(t) === b)) return false
+        if ((t.kind === 'history' || t.kind === 'preview') && String(t.id) === want) return false
+        if (t.kind === 'merge') {
+          const id = String(t.id)
+          const last = id.lastIndexOf('|')
+          if (last >= 0 && id.slice(last + 1) === want) return false
+        }
+        return true
+      })
+      if (next.length !== tabs.length) {
+        if (pane.activeTab && !next.some((t) => t.key === pane.activeTab)) {
+          pane.activeTab = next[next.length - 1]?.key || null
+        }
+        pane.tabs = next
+        changed = true
+      }
+    }
+    return changed
+  }
+
+  function dropTabsOnProjectBranch(name) {
+    const b = String(name || '')
+    if (!b) return false
+    let changed = false
+    for (const pane of panes.value) {
+      const tabs = pane.tabs || []
+      const next = tabs.filter((t) => {
+        if (t.kind === 'file' && (tabBranch(t) === b || (t.projectBranch || '') === b)) return false
+        if (t.kind === 'merge' && (t.branch || '') === b) return false
+        return true
+      })
+      if (next.length !== tabs.length) {
+        if (pane.activeTab && !next.some((t) => t.key === pane.activeTab)) {
+          pane.activeTab = next[next.length - 1]?.key || null
+        }
+        pane.tabs = next
+        changed = true
+      }
+    }
+    return changed
+  }
+
   return {
     // identity
     sessionUuid, name, role, subscribed, rev,
     versionHistory, forkedFrom, rawDoc,
     isProducer, isWatcher,
     // layout state
-    layout, activePaneIndex, panes, workspaceBranch, setWorkspaceBranch, setFileTabBranch, setFileTabView, fileTabView, setFileTabLocation, applyFileRename,
+    layout, activePaneIndex, panes, workspaceBranch, setWorkspaceBranch, setFileTabBranch, setFileTabView, fileTabView, setFileTabLocation, applyFileRename, dropFileTabs, dropTabsOnProjectBranch,
     // resume picker
     sessions,
     // (de)serialization + patch application

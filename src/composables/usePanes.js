@@ -155,6 +155,7 @@ export function usePanes({ activePane, pendingNavigation }) {
 
   function bindFileTab(pane, id, label, extra = {}) {
     const branch = extra.branch || MAIN_BRANCH
+    const projectBranch = extra.projectBranch || extra.branch || MAIN_BRANCH
     // Explorer/open knows the current path. Heal the label even when the
     // tab is already open — do not wait for (or require) fs/renamed.
     if (focusExistingFile(id, branch)) {
@@ -164,7 +165,7 @@ export function usePanes({ activePane, pendingNavigation }) {
     const path = extra.path != null ? stripFilePath(extra.path) : stripFilePath(id)
     const key  = fileTabKey(id, branch)
     if (!pane.tabs.find((t) => t.key === key)) {
-      const tab = { key, kind: 'file', id, label, branch, revision: null }
+      const tab = { key, kind: 'file', id, label, branch, projectBranch, revision: null }
       if (path) tab.path = path
       pane.tabs.push(tab)
     }
@@ -195,7 +196,10 @@ export function usePanes({ activePane, pendingNavigation }) {
     const pane = panes.value[activePaneIndex.value]
     const key  = `${kind}:${id}`
     if (!pane.tabs.find((t) => t.key === key)) {
-      pane.tabs.push((kind === 'history' || kind === 'preview') ? auxFileTab(kind, id, label, extra) : { key, kind, id, label })
+      const tab = { key, kind, id, label }
+      if (extra.path) tab.path = extra.path
+      if (extra.branch) tab.branch = extra.branch
+      pane.tabs.push((kind === 'history' || kind === 'preview') ? auxFileTab(kind, id, label, extra) : tab)
     }
     pane.activeTab = key
   }
@@ -217,7 +221,10 @@ export function usePanes({ activePane, pendingNavigation }) {
     activePaneIndex.value = targetPaneIndex
     const key = `${kind}:${id}`
     if (!pane.tabs.find((t) => t.key === key)) {
-      pane.tabs.push((kind === 'history' || kind === 'preview') ? auxFileTab(kind, id, label, extra) : { key, kind, id, label })
+      const tab = { key, kind, id, label }
+      if (extra.path) tab.path = extra.path
+      if (extra.branch) tab.branch = extra.branch
+      pane.tabs.push((kind === 'history' || kind === 'preview') ? auxFileTab(kind, id, label, extra) : tab)
     }
     pane.activeTab = key
   }

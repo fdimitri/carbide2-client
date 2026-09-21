@@ -394,9 +394,12 @@ const openFileSubs = computed(() => {
   const tabs = panes.value.flatMap((p) => p?.tabs || [])
   for (const t of tabs) {
     if (!t.id) continue
-    if (t.kind === 'file') add({ id: String(t.id), branch: tabBranch(t) })
+    if (t.kind === 'file') add({ id: String(t.id), branch: tabBranch(t), project_branch: t.projectBranch || tabBranch(t) })
     // A preview is a viewer on the file's view: its editor tab's branch, or main.
-    if (t.kind === 'preview') add({ id: String(t.id), branch: sessionStore.fileTabView(String(t.id)).branch })
+    if (t.kind === 'preview') {
+      const v = sessionStore.fileTabView(String(t.id))
+      add({ id: String(t.id), branch: v.branch, project_branch: v.projectBranch || v.branch })
+    }
   }
   return subs
 })
@@ -672,11 +675,12 @@ function openPreviewPane(payload) {
 
 // A three-way merge tab for one file: resolve `source` into `target` by hand.
 // Keyed by all three so the same merge is one tab client-wide.
-function openMergePane(fileId, { source, target = MAIN_BRANCH } = {}) {
+function openMergePane(fileId, { source, target = MAIN_BRANCH, projectBranch, branch } = {}) {
   if (!fileId || !source) return
   const path = sessionStore.fileTabView(fileId).path || fileId
   const name = String(path).split('/').pop() || String(fileId)
-  bindTabToActivePane('merge', `${source}|${target}|${fileId}`, `${name} · ${source} → ${target}`)
+  const pb = projectBranch || branch || sessionStore.workspaceBranch || MAIN_BRANCH
+  bindTabToActivePane('merge', `${source}|${target}|${pb}|${fileId}`, `${name} · ${source} → ${target}`, { path, branch: pb })
 }
 
 // The project's branch graph, one tab per pane.
@@ -1087,6 +1091,12 @@ onMounted(async () => {
           oldPath: payload?.old_path, newPath: payload?.new_path,
           nodeId: payload?.id, branch: payload?.branch || MAIN_BRANCH,
         })
+      }),
+      workerSocket.on('fs', 'deleted', (payload) => {
+        if (payload?.id) sessionStore.dropFileTabs(payload.id, { branch: payload.branch })
+      }),
+      workerSocket.on('fs', 'project_branch_deleted', (payload) => {
+        if (payload?.name) sessionStore.dropTabsOnProjectBranch(payload.name)
       }),
       // Reflect drops so panes can react (e.g. clear stuck spinners) instead of
       // appearing frozen.
