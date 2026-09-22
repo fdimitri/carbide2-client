@@ -110,6 +110,29 @@ test('remote frames apply only when idle and chained to the base; a gap re-reads
   assert.equal(h.view.text, 'Zabc')
 })
 
+test('set_contents is a snapshot: apply even when parent does not chain', () => {
+  const h = harness()
+  h.loaded('abc', 'r0')
+  const reads = () => h.sent.filter(s => s.cmd === 'read').length
+  const before = reads()
+  assert.equal(h.sync.onRemote('set_contents', {
+    content: 'from disk\n', revision: 'r9', parent: 'r7',
+  }), true)
+  assert.equal(h.view.text, 'from disk\n')
+  assert.equal(h.sync.state.baseRev, 'r9')
+  assert.equal(reads(), before, 'no resync; the frame already has the head')
+})
+
+test('set_contents still ignored while our edits are unacknowledged', () => {
+  const h = harness()
+  h.loaded('abc', 'r0')
+  h.type(ins(0, 3, 'd'))
+  assert.equal(h.sync.onRemote('set_contents', {
+    content: 'from disk\n', revision: 'r1', parent: 'r0',
+  }), false)
+  assert.equal(h.view.text, 'abcd')
+})
+
 test('remote frames are ignored while our edits are unacknowledged', () => {
   const h = harness()
   h.loaded('abc', 'r0')

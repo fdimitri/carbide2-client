@@ -18,11 +18,14 @@
 // the ack of a rebased batch carries the edits that take our view to the head.
 //
 // Remote frames (another viewer's edits, an external change) are only applied
-// when we hold no unacknowledged edits AND the frame's `parent` is our baseRev.
-// While we hold edits they are ignored: our next batch is rebased past them and
-// its ack brings them. A frame that doesn't follow baseRev means we missed something,
-// so we re-read the file. While that read is outstanding further frames are
-// dropped, not re-requested: the reply covers them.
+// when we hold no unacknowledged edits. A `change` also needs `parent` == baseRev
+// (it is a delta). `set_contents` is a full snapshot — apply it even when parent
+// does not chain (a project-branch pin vs the live content line often diverge;
+// the watcher still sends the current head). While we hold edits they are
+// ignored: our next batch is rebased past them and its ack brings them. A
+// `change` that doesn't follow baseRev means we missed something, so we re-read
+// the file. While that read is outstanding further frames are dropped, not
+// re-requested: the reply covers them.
 //
 // A batch the worker never answers (its reply had no id, or it was lost) would
 // otherwise wedge the pane: nothing else is sent until the ack. So an inflight
@@ -57,7 +60,9 @@ function newBatchId() {
 }
 
 function sameRev(a, b) {
-  return (a ?? null) === (b ?? null)
+  if (a == null && b == null) return true
+  if (a == null || b == null) return false
+  return String(a) === String(b)
 }
 
 export const MAIN_BRANCH = 'main'
@@ -215,14 +220,20 @@ export function createFileSync({
   // fs/change | fs/set_contents from someone else (or the watcher).
   function onRemote(kind, payload) {
     if (!state.loaded || state.discarding || state.resyncing || outstanding()) return false
+    if (kind === 'set_contents') {
+      // Snapshot of the head: do not require a chained parent. A terminal
+      // ingest on a materialized project branch often has parent = the live
+      // content line while this view's baseRev is still the fork pin.
+      editor.replaceContent(payload.content ?? '')
+      state.baseRev = payload.revision ?? null
+      return true
+    }
     if (!sameRev(payload.parent, state.baseRev)) {
       resync(`remote ${kind} parent ${payload.parent} != base ${state.baseRev}`)
       return false
     }
     if (kind === 'change') {
       editor.applyChanges([{ change_type: payload.change_type, change_data: payload.change_data }])
-    } else if (kind === 'set_contents') {
-      editor.replaceContent(payload.content ?? '')
     } else {
       return false
     }
