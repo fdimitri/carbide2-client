@@ -113,18 +113,22 @@ onMounted(async () => {
   editor.value.onDidChangeConfiguration(() => requestAnimationFrame(propagateThemeVars))
 })
 
-// Replace content when the file changes without recreating the editor
+// Replace content when the file changes without recreating the editor.
+// Skip when the model already has this text: fileSync applies snapshots
+// through replaceContent (minimal edit) and then the Vue prop catches up;
+// setValue here would clobber that and reset scroll.
 watch(() => props.content, (next) => {
   if (!editor.value) return
   const model = editor.value.getModel()
-  if (model) {
-    applyingRemote = true
-    try {
-      model.setValue(next)
-      editor.value.setScrollPosition({ scrollTop: 0 })
-    } finally {
-      applyingRemote = false
-    }
+  if (!model) return
+  const text = String(next ?? '')
+  if (model.getValue() === text) return
+  applyingRemote = true
+  try {
+    model.setValue(text)
+    editor.value.setScrollPosition({ scrollTop: 0 })
+  } finally {
+    applyingRemote = false
   }
 })
 

@@ -368,12 +368,16 @@ async function loadBinaryPreview(path) {
 // still mounting, so nothing that arrives in that window is lost.
 const editorAdapter = {
   applyChanges(changes) {
-    if (editorRef.value?.applyChanges(changes)) return
+    if (editorRef.value?.applyChanges(changes)) {
+      content.value = editorRef.value.getValue?.() ?? applyChangesToText(content.value, changes)
+      return
+    }
     content.value = applyChangesToText(content.value, changes)
   },
   replaceContent(text) {
-    if (editorRef.value?.replaceContent(text)) return
-    content.value = text
+    const t = String(text ?? '')
+    editorRef.value?.replaceContent(t)
+    content.value = t
   },
 }
 
